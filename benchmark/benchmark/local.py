@@ -29,9 +29,9 @@ class LocalBench:
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
 
-    def _background_run(self, command, log_file):
+    def _background_run(self, command, log_file, env_prefix=''):
         name = splitext(basename(log_file))[0]
-        cmd = f"{command} 2> {log_file}"
+        cmd = f"{env_prefix}{command} 2> {log_file}"
         subprocess.run(["tmux", "new", "-d", "-s", name, cmd], check=True)
 
     def _kill_nodes(self):
@@ -81,6 +81,10 @@ class LocalBench:
 
             # Run the clients (they will wait for the nodes to be ready).
             workers_addresses = committee.workers_addresses(self.faults)
+            # Build environment prefix for tokio thread limit
+            tokio_threads = self.node_parameters.json.get('tokio_threads', 0)
+            env_prefix = f'TOKIO_WORKER_THREADS={tokio_threads} ' if tokio_threads > 0 else ''
+
             weights = self.rate_weights
             if weights:
                 total_weight = sum(weights)
@@ -101,7 +105,7 @@ class LocalBench:
                         [x for y in workers_addresses for _, x in y],
                     )
                     log_file = PathMaker.client_log_file(i, id)
-                    self._background_run(cmd, log_file)
+                    self._background_run(cmd, log_file, env_prefix)
 
             # Run the primaries (except the faulty ones).
             for i, address in enumerate(committee.primary_addresses(self.faults)):
@@ -113,7 +117,24 @@ class LocalBench:
                     debug=debug,
                 )
                 log_file = PathMaker.primary_log_file(i)
-                self._background_run(cmd, log_file)
+                self._background_run(cmd, log_file, env_prefix)
+
+            # Run executors if in isolated mode (must start before workers to receive messages).
+            execution_mode = self.node_parameters.json.get('execution_mode', 'in_process')
+            if execution_mode == 'isolated':
+                Print.info("Running in Isolated mode - spawning executor processes...")
+                for i, addresses in enumerate(workers_addresses):
+                    for id, address in addresses:
+                        cmd = CommandMaker.run_executor(
+                            PathMaker.key_file(i),
+                            PathMaker.committee_file(),
+                            PathMaker.db_path(i, id),
+                            PathMaker.parameters_file(),
+                            id,  # The executor's id (matches worker id).
+                            debug=debug,
+                        )
+                        log_file = PathMaker.executor_log_file(i, id)
+                        self._background_run(cmd, log_file, env_prefix)
 
             # Run the workers (except the faulty ones).
             for i, addresses in enumerate(workers_addresses):
@@ -127,7 +148,7 @@ class LocalBench:
                         debug=debug,
                     )
                     log_file = PathMaker.worker_log_file(i, id)
-                    self._background_run(cmd, log_file)
+                    self._background_run(cmd, log_file, env_prefix)
 
             # Wait for all transactions to be processed.
             Print.info(f"Running benchmark ({self.duration} sec)...")

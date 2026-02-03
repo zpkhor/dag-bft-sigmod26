@@ -17,6 +17,7 @@ def local(ctx, debug=True):
     duration = int(os.environ.get('DURATION', 20))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -33,7 +34,8 @@ def local(ctx, debug=True):
         'sync_retry_delay': 10_000,  # ms
         'sync_retry_nodes': 3,  # number of nodes
         'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200  # ms
+        'max_batch_delay': 200,  # ms
+        'tokio_threads': tokio_threads,
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
