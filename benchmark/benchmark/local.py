@@ -88,6 +88,7 @@ class LocalBench:
             weights = self.rate_weights or [1] * len(workers_addresses)
             total_weight = sum(weights)
             validator_rates = [ceil(rate * w / total_weight) for w in weights]
+            running_rate = 0
             for i, addresses in enumerate(workers_addresses):
                 num_workers = len(addresses)
                 worker_rate = ceil(validator_rates[i] / num_workers)
@@ -100,7 +101,8 @@ class LocalBench:
                     )
                     log_file = PathMaker.client_log_file(i, id)
                     self._background_run(cmd, log_file, env_prefix)
-
+                    running_rate += worker_rate
+            assert running_rate == rate, f"Running rate {running_rate} does not match target rate {rate}"
             # Run the primaries (except the faulty ones).
             for i, address in enumerate(committee.primary_addresses(self.faults)):
                 cmd = CommandMaker.run_primary(
