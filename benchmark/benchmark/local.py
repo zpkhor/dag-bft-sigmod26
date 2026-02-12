@@ -81,13 +81,23 @@ class LocalBench:
 
             # Run the clients (they will wait for the nodes to be ready).
             workers_addresses = committee.workers_addresses(self.faults)
-            rate_share = ceil(rate / committee.workers())
+            weights = self.rate_weights
+            if weights:
+                total_weight = sum(weights)
+                validator_rates = [ceil(rate * w / total_weight) for w in weights]
+            else:
+                validator_rates = [ceil(rate / committee.workers())] * len(workers_addresses)
             for i, addresses in enumerate(workers_addresses):
+                num_workers = len(addresses)
+                if weights:
+                    worker_rate = ceil(validator_rates[i] / num_workers)
+                else:
+                    worker_rate = validator_rates[i]
                 for id, address in addresses:
                     cmd = CommandMaker.run_client(
                         address,
                         self.tx_size,
-                        rate_share,
+                        worker_rate,
                         [x for y in workers_addresses for _, x in y],
                     )
                     log_file = PathMaker.client_log_file(i, id)

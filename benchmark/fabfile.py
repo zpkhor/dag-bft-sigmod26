@@ -1,4 +1,5 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+import os
 from fabric import task
 
 from benchmark.local import LocalBench
@@ -12,13 +13,18 @@ from benchmark.remote import Bench, BenchError
 @task
 def local(ctx, debug=True):
     ''' Run benchmarks on localhost '''
+    rate = int(os.environ.get('RATE', 50_000))
+    duration = int(os.environ.get('DURATION', 20))
+    rate_weights_raw = os.environ.get('RATE_WEIGHTS')
+    rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     bench_params = {
         'faults': 0,
         'nodes': 4,
         'workers': 1,
-        'rate': 50_000,
+        'rate': rate,
         'tx_size': 512,
-        'duration': 20,
+        'duration': duration,
+        'rate_weights': rate_weights,
     }
     node_params = {
         'header_size': 1_000,  # bytes

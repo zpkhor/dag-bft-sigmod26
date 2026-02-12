@@ -216,6 +216,14 @@ class BenchParameters:
             self.duration = int(json['duration'])
 
             self.runs = int(json['runs']) if 'runs' in json else 1
+
+            self.rate_weights = json.get('rate_weights', None)
+            if self.rate_weights is not None:
+                if len(self.rate_weights) != self.nodes[0]:
+                    raise ConfigError(
+                        f'rate_weights length ({len(self.rate_weights)}) '
+                        f'must match nodes ({self.nodes[0]})'
+                    )
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 
