@@ -6,8 +6,11 @@
   - **Tier 1 (Primary)**: One per validator (handles consensus)
   - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and routing)
 - There is one client per worker, each authority has workers to receive requests
-- Open-loop system: The client sends at a fixed rate. When overloaded, backpressure from TCP / tx_batch_maker mpsc channel blocks the client's send() call. The signal for overload is client misses, not latency increase
+- The client sends at a fixed rate. When overloaded, backpressure from TCP / tx_batch_maker mpsc channel blocks the client's send() call. The signal for overload is client misses, not latency increase
 - Local bench runs all processes on one machine, clock drift is not an issue
+
+## Transaction Flow
+- Client → Worker (BatchMaker) → QuorumWaiter → Processor → PrimaryConnector → Primary (Proposer) → Header → Votes → Certificate → Consensus → Commit
 
 ## Certificate Lifecycle
 - **Voting**: Validator votes for header only after verifying parent certificates and batches are available
@@ -19,8 +22,8 @@
 ## Primary Components
 - **Core**: Central coordination component
 - **Payload Receiver**: Receives payloads (digests) from workers
-- **Consensus**: Runs the consensus protocol
-- **Proposer**: Proposes blocks
+- **Proposer**: Proposes blocks, creates header when payload_size >= header_size OR max_header_delay timer. With 1 worker producing ~5 digests/sec (32B each), headers mostly timer-sealed too.
+- **Consensus**: Runs the consensus protocol, round-robin leader election. Commits entire sub-DAG when leader has f+1 support. All validators' certificates in the sub-DAG get committed together.
 - **Header Waiter**: Waits for headers from other primaries
 - **Certificate Waiter**: Waits for certificates
 - **Garbage Collector**: Receives consensus round updates, broadcasts Cleanup(round) to workers
@@ -31,6 +34,7 @@
 1. **Handle messages from primary**: Receiver → Synchronizer → Simple Sender (to other workers)
 2. **Handle client transactions**:
    - Receiver → Batch Maker (assembles txs into batches)
+       - Seals when current_batch_size >= batch_size OR max_batch_delay timer. At low rates, batches are always timer-sealed.
    - QuorumWaiter (waits for quorum of acks)
    - Processor (hashes and stores batches)
    - PrimaryConnector (sends batch digests to our primary)
