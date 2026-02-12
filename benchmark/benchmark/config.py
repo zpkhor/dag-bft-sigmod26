@@ -224,6 +224,7 @@ class BenchParameters:
                         f'rate_weights length ({len(self.rate_weights)}) '
                         f'must match nodes ({self.nodes[0]})'
                     )
+            self.warmup = int(json.get('warmup', 0))
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

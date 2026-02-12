@@ -17,7 +17,7 @@ class ParseError(Exception):
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
-                 duration=None):
+                 duration=None, warmup=0):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -51,6 +51,14 @@ class LogParser:
         proposals, commits, self.configs, primary_ips = zip(*results)
         self.proposals = self._merge_results([x.items() for x in proposals])
         self.commits = self._merge_results([x.items() for x in commits])
+
+        # Warmup trimming: discard commits/proposals in the warmup window.
+        self.warmup = warmup
+        if warmup and self.start:
+            cutoff = min(self.start) + warmup
+            self.commits = {d: t for d, t in self.commits.items() if t >= cutoff}
+            self.proposals = {d: t for d, t in self.proposals.items() if d in self.commits}
+        self.effective_start = cutoff if (warmup and self.start) else min(self.start)
 
         # Parse the workers logs.
         try:
@@ -195,7 +203,7 @@ class LogParser:
     def _end_to_end_throughput(self):
         if not self.commits:
             return 0, 0, 0
-        start, end = min(self.start), max(self.commits.values())
+        start, end = self.effective_start, max(self.commits.values())
         duration = end - start
         bytes = sum(self.sizes.values())
         bps = bytes / duration
@@ -209,6 +217,8 @@ class LogParser:
                 if batch_id in self.commits:
                     assert tx_id in sent  # We receive txs that we sent.
                     start = sent[tx_id]
+                    if start < self.effective_start:
+                        continue
                     end = self.commits[batch_id]
                     latency += [end-start]
         return mean(latency) if latency else 0
@@ -231,7 +241,7 @@ class LogParser:
     def _per_validator_end_to_end_tps(self):
         if not self.commits:
             return {}
-        start, end = min(self.start), max(self.commits.values())
+        start, end = self.effective_start, max(self.commits.values())
         duration = end - start
         if duration == 0:
             return {}
@@ -252,6 +262,8 @@ class LogParser:
             for sent, received in zip(v_sent_list, v_received_list):
                 for tx_id, batch_id in received.items():
                     if batch_id in self.commits and tx_id in sent:
+                        if sent[tx_id] < self.effective_start:
+                            continue
                         latencies.append(self.commits[batch_id] - sent[tx_id])
             if latencies:
                 result[v] = mean(latencies)
@@ -273,9 +285,10 @@ class LogParser:
         
         warnings = []
         assert isinstance(self.bench_duration, float), 'Bench duration is not set'
-        if (consensus_duration / self.bench_duration) < 0.9:
+        effective_bench_duration = self.bench_duration - self.warmup
+        if (consensus_duration / effective_bench_duration) < 0.9:
             warnings.append('Consensus stalled the system')
-        if (e2e_duration / self.bench_duration) < 0.9:
+        if (e2e_duration / effective_bench_duration) < 0.9:
             warnings.append('End-to-end stalled the system')
         assert consensus_latency <= end_to_end_latency, f"Consensus latency {consensus_latency} ms should be less than or equal to committed latency {end_to_end_latency} ms"
 
@@ -359,7 +372,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0, duration=None):
+    def process(cls, directory, faults=0, duration=None, warmup=0):
         assert isinstance(directory, str)
 
         clients = []
@@ -392,4 +405,5 @@ class LogParser:
             workers_by_validator=dict(workers_by_validator),
             clients_by_validator=dict(clients_by_validator),
             duration=duration,
+            warmup=warmup,
         )
