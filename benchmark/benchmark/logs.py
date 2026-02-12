@@ -1,8 +1,9 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+from collections import defaultdict
 from datetime import datetime
 from glob import glob
 from multiprocessing import Pool
-from os.path import join
+from os.path import basename, join
 from re import findall, search
 from statistics import mean
 
@@ -14,7 +15,8 @@ class ParseError(Exception):
 
 
 class LogParser:
-    def __init__(self, clients, primaries, workers, faults=0):
+    def __init__(self, clients, primaries, workers, faults=0,
+                 workers_by_validator=None, clients_by_validator=None):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -61,6 +63,28 @@ class LogParser:
 
         # Determine whether the primary and the workers are collocated.
         self.collocate = set(primary_ips) == set(workers_ips)
+
+        # Parse per-validator data if available.
+        self.sizes_by_validator = {}
+        self.received_samples_by_validator = {}
+        self.sent_samples_by_validator = {}
+        if workers_by_validator:
+            for v, logs in workers_by_validator.items():
+                v_sizes = {}
+                v_samples = {}
+                for log in logs:
+                    s, r, _ = self._parse_workers(log)
+                    v_sizes.update(s)
+                    v_samples.update(r)
+                self.sizes_by_validator[v] = v_sizes
+                self.received_samples_by_validator[v] = v_samples
+        if clients_by_validator:
+            for v, logs in clients_by_validator.items():
+                v_sent = {}
+                for log in logs:
+                    _, _, _, _, samples = self._parse_clients(log)
+                    v_sent.update(samples)
+                self.sent_samples_by_validator[v] = v_sent
 
         # Check whether clients missed their target rate.
         if self.misses != 0:
@@ -187,6 +211,49 @@ class LogParser:
                     latency += [end-start]
         return mean(latency) if latency else 0
 
+    def _validator_load_distribution(self):
+        result = {}
+        for v, v_sizes in sorted(self.sizes_by_validator.items()):
+            committed_bytes = sum(
+                s for d, s in v_sizes.items() if d in self.commits
+            )
+            tx_count = committed_bytes // self.size[0]
+            result[v] = tx_count
+        total = sum(result.values())
+        percentages = {
+            v: (count / total * 100 if total else 0)
+            for v, count in result.items()
+        }
+        return result, percentages
+
+    def _per_validator_end_to_end_tps(self):
+        if not self.commits:
+            return {}
+        start, end = min(self.start), max(self.commits.values())
+        duration = end - start
+        if duration == 0:
+            return {}
+        result = {}
+        for v, v_sizes in sorted(self.sizes_by_validator.items()):
+            committed_bytes = sum(
+                s for d, s in v_sizes.items() if d in self.commits
+            )
+            result[v] = (committed_bytes / duration) / self.size[0]
+        return result
+
+    def _per_validator_end_to_end_latency(self):
+        result = {}
+        for v in sorted(self.sizes_by_validator.keys()):
+            v_received = self.received_samples_by_validator.get(v, {})
+            v_sent = self.sent_samples_by_validator.get(v, {})
+            latencies = []
+            for tx_id, batch_id in v_received.items():
+                if batch_id in self.commits and tx_id in v_sent:
+                    latencies.append(self.commits[batch_id] - v_sent[tx_id])
+            if latencies:
+                result[v] = mean(latencies)
+        return result
+
     def result(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
@@ -201,7 +268,7 @@ class LogParser:
         end_to_end_tps, end_to_end_bps, duration = self._end_to_end_throughput()
         end_to_end_latency = self._end_to_end_latency() * 1_000
 
-        return (
+        output = (
             '\n'
             '-----------------------------------------\n'
             ' SUMMARY:\n'
@@ -231,8 +298,37 @@ class LogParser:
             f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
             f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
             f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
-            '-----------------------------------------\n'
         )
+
+        if self.sizes_by_validator:
+            tx_counts, percentages = self._validator_load_distribution()
+            per_v_tps = self._per_validator_end_to_end_tps()
+            per_v_latency = self._per_validator_end_to_end_latency()
+
+            output += (
+                '\n'
+                ' + VALIDATOR LOAD DISTRIBUTION:\n'
+            )
+            for v in sorted(tx_counts.keys()):
+                output += (
+                    f' Validator {v}: {tx_counts[v]:,} tx'
+                    f' ({percentages[v]:.1f}%)\n'
+                )
+
+            output += (
+                '\n'
+                ' + PER-VALIDATOR END-TO-END METRICS:\n'
+            )
+            for v in sorted(per_v_tps.keys()):
+                lat = per_v_latency.get(v)
+                lat_str = f'{round(lat * 1_000):,} ms' if lat is not None else 'N/A'
+                output += (
+                    f' Validator {v}: {round(per_v_tps[v]):,} tx/s,'
+                    f' latency {lat_str}\n'
+                )
+
+        output += '-----------------------------------------\n'
+        return output
 
     def print(self, filename):
         assert isinstance(filename, str)
@@ -244,16 +340,32 @@ class LogParser:
         assert isinstance(directory, str)
 
         clients = []
+        clients_by_validator = defaultdict(list)
         for filename in sorted(glob(join(directory, 'client-*.log'))):
             with open(filename, 'r') as f:
-                clients += [f.read()]
+                content = f.read()
+            clients.append(content)
+            m = search(r'client-(\d+)-\d+', basename(filename))
+            if m:
+                clients_by_validator[int(m.group(1))].append(content)
+
         primaries = []
         for filename in sorted(glob(join(directory, 'primary-*.log'))):
             with open(filename, 'r') as f:
                 primaries += [f.read()]
+
         workers = []
+        workers_by_validator = defaultdict(list)
         for filename in sorted(glob(join(directory, 'worker-*.log'))):
             with open(filename, 'r') as f:
-                workers += [f.read()]
+                content = f.read()
+            workers.append(content)
+            m = search(r'worker-(\d+)-\d+', basename(filename))
+            if m:
+                workers_by_validator[int(m.group(1))].append(content)
 
-        return cls(clients, primaries, workers, faults=faults)
+        return cls(
+            clients, primaries, workers, faults=faults,
+            workers_by_validator=dict(workers_by_validator),
+            clients_by_validator=dict(clients_by_validator),
+        )
