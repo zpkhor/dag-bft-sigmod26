@@ -6,6 +6,7 @@
   - **Tier 1 (Primary)**: One per validator (handles consensus)
   - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and routing)
 - There is one client per worker, each authority has workers to receive requests
+- Open-loop system: The client sends at a fixed rate. When overloaded, backpressure from TCP / tx_batch_maker mpsc channel blocks the client's send() call. The signal for overload is client misses, not latency increase
 - Local bench runs all processes on one machine, clock drift is not an issue
 
 ## Certificate Lifecycle
@@ -49,4 +50,4 @@
 
 # Dev note
 - Don't run tests at all, I will handle testing manually.
-- This is a experimental branch, no need to worry about breaking things and maintaining backwards compatibility
+- This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility
