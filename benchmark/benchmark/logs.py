@@ -78,6 +78,7 @@ class LogParser:
         self.sizes_by_validator = {}
         self.received_samples_by_validator = {}
         self.sent_samples_by_validator = {}
+        self.misses_by_validator = {}
         if workers_by_validator:
             for v, logs in workers_by_validator.items():
                 v_sizes = {}
@@ -91,10 +92,13 @@ class LogParser:
         if clients_by_validator:
             for v, logs in clients_by_validator.items():
                 v_sent_list = []
+                v_misses = 0
                 for log in logs:
-                    _, _, _, _, samples = self._parse_clients(log)
+                    _, _, _, misses, samples = self._parse_clients(log)
                     v_sent_list.append(samples)
+                    v_misses += misses
                 self.sent_samples_by_validator[v] = v_sent_list
+                self.misses_by_validator[v] = v_misses
 
         # Check whether clients missed their target rate.
         if self.misses != 0:
@@ -351,14 +355,25 @@ class LogParser:
             output += (
                 '\n'
                 ' + PER-VALIDATOR END-TO-END METRICS:\n'
+                ' Validator    TPS (tx/s)    Latency (ms)    Misses\n'
             )
             for v in sorted(per_v_tps.keys()):
                 lat = per_v_latency.get(v)
-                lat_str = f'{round(lat * 1_000):,} ms' if lat is not None else 'N/A'
+                lat_str = f'{round(lat * 1_000):,}' if lat is not None else 'N/A'
+                misses = self.misses_by_validator.get(v, 0)
                 output += (
-                    f' Validator {v}: {round(per_v_tps[v]):,} tx/s,'
-                    f' latency {lat_str}\n'
+                    f' {v:<12} {round(per_v_tps[v]):<13,} {lat_str:<15} {misses}\n'
                 )
+            total_tps = sum(per_v_tps.values())
+            weighted_lat = sum(
+                per_v_latency[v] * percentages[v] / 100
+                for v in per_v_latency if v in percentages
+            )
+            weighted_lat_str = f'{round(weighted_lat * 1_000):,}' if per_v_latency else 'N/A'
+            total_misses = sum(self.misses_by_validator.values())
+            output += (
+                f' {"Overall":<12} {round(total_tps):<13,} {weighted_lat_str + " (wtd)":<15} {total_misses}\n'
+            )
                 
         if warnings_str:
             output += warnings_str
