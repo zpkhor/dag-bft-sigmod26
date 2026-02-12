@@ -25,3 +25,9 @@ workspace.xml
 **/*.rs.bk
 scripts/build_and_fab
 .agent/**
+
+
+# Logs
+benchmark/bash_logs/
+benchmark/logs/
+benchmark/logs_copies
