@@ -16,13 +16,15 @@ class ParseError(Exception):
 
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
-                 workers_by_validator=None, clients_by_validator=None):
+                 workers_by_validator=None, clients_by_validator=None,
+                 duration=None):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
 
         self.faults = faults
+        self.bench_duration = float(duration) if duration is not None else None
         if isinstance(faults, int):
             self.committee_size = len(primaries) + int(faults)
             self.workers =  len(workers) // len(primaries)
@@ -264,9 +266,24 @@ class LogParser:
         max_batch_delay = self.configs[0]['max_batch_delay']
 
         consensus_latency = self._consensus_latency() * 1_000
-        consensus_tps, consensus_bps, _ = self._consensus_throughput()
-        end_to_end_tps, end_to_end_bps, duration = self._end_to_end_throughput()
+        consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
+        end_to_end_tps, end_to_end_bps, e2e_duration = self._end_to_end_throughput()
         end_to_end_latency = self._end_to_end_latency() * 1_000
+        
+        warnings = []
+        assert isinstance(self.bench_duration, float), 'Bench duration is not set'
+        if (consensus_duration / self.bench_duration) < 0.9:
+            warnings.append('Consensus stalled the system')
+        if (e2e_duration / self.bench_duration) < 0.9:
+            warnings.append('End-to-end stalled the system')
+        assert consensus_latency <= end_to_end_latency, f"Consensus latency {consensus_latency} ms should be less than or equal to committed latency {end_to_end_latency} ms"
+
+        warnings_str = ''
+        if warnings:
+            warnings_str = (
+            '\n WARNINGS:\n'
+            + ''.join(f'  - {msg}\n' for msg in warnings)
+            )
 
         output = (
             '\n'
@@ -280,7 +297,9 @@ class LogParser:
             f' Collocate primary and workers: {self.collocate}\n'
             f' Input rate: {sum(self.rate):,} tx/s\n'
             f' Transaction size: {self.size[0]:,} B\n'
-            f' Execution time: {round(duration):,} s\n'
+            f' Benchmark duration: {self.bench_duration:,} s\n'
+            f' Consensus duration: {round(consensus_duration, 2):,} s\n'
+            f' End-to-end duration: {round(e2e_duration, 2):,} s\n'
             '\n'
             f' Header size: {header_size:,} B\n'
             f' Max header delay: {max_header_delay:,} ms\n'
@@ -326,6 +345,9 @@ class LogParser:
                     f' Validator {v}: {round(per_v_tps[v]):,} tx/s,'
                     f' latency {lat_str}\n'
                 )
+                
+        if warnings_str:
+            output += warnings_str
 
         output += '-----------------------------------------\n'
         return output
@@ -336,7 +358,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0):
+    def process(cls, directory, faults=0, duration=None):
         assert isinstance(directory, str)
 
         clients = []
@@ -368,4 +390,5 @@ class LogParser:
             clients, primaries, workers, faults=faults,
             workers_by_validator=dict(workers_by_validator),
             clients_by_validator=dict(clients_by_validator),
+            duration=duration,
         )
