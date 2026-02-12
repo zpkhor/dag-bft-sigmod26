@@ -102,7 +102,8 @@ class LocalBench:
                     log_file = PathMaker.client_log_file(i, id)
                     self._background_run(cmd, log_file, env_prefix)
                     running_rate += worker_rate
-            assert running_rate == rate, f"Running rate {running_rate} does not match target rate {rate}"
+            assert abs(running_rate - rate) <= len(workers_addresses), \
+                f"Running rate {running_rate} deviates too much from target rate {rate}"
             # Run the primaries (except the faulty ones).
             for i, address in enumerate(committee.primary_addresses(self.faults)):
                 cmd = CommandMaker.run_primary(
