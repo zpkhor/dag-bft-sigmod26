@@ -85,18 +85,12 @@ class LocalBench:
             tokio_threads = self.node_parameters.json.get('tokio_threads', 0)
             env_prefix = f'TOKIO_WORKER_THREADS={tokio_threads} ' if tokio_threads > 0 else ''
 
-            weights = self.rate_weights
-            if weights:
-                total_weight = sum(weights)
-                validator_rates = [ceil(rate * w / total_weight) for w in weights]
-            else:
-                validator_rates = [ceil(rate / committee.workers())] * len(workers_addresses)
+            weights = self.rate_weights or [1] * len(workers_addresses)
+            total_weight = sum(weights)
+            validator_rates = [ceil(rate * w / total_weight) for w in weights]
             for i, addresses in enumerate(workers_addresses):
                 num_workers = len(addresses)
-                if weights:
-                    worker_rate = ceil(validator_rates[i] / num_workers)
-                else:
-                    worker_rate = validator_rates[i]
+                worker_rate = ceil(validator_rates[i] / num_workers)
                 for id, address in addresses:
                     cmd = CommandMaker.run_client(
                         address,
