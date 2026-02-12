@@ -73,20 +73,20 @@ class LogParser:
         if workers_by_validator:
             for v, logs in workers_by_validator.items():
                 v_sizes = {}
-                v_samples = {}
+                v_received_list = []
                 for log in logs:
                     s, r, _ = self._parse_workers(log)
                     v_sizes.update(s)
-                    v_samples.update(r)
+                    v_received_list.append(r)
                 self.sizes_by_validator[v] = v_sizes
-                self.received_samples_by_validator[v] = v_samples
+                self.received_samples_by_validator[v] = v_received_list
         if clients_by_validator:
             for v, logs in clients_by_validator.items():
-                v_sent = {}
+                v_sent_list = []
                 for log in logs:
                     _, _, _, _, samples = self._parse_clients(log)
-                    v_sent.update(samples)
-                self.sent_samples_by_validator[v] = v_sent
+                    v_sent_list.append(samples)
+                self.sent_samples_by_validator[v] = v_sent_list
 
         # Check whether clients missed their target rate.
         if self.misses != 0:
@@ -246,12 +246,13 @@ class LogParser:
     def _per_validator_end_to_end_latency(self):
         result = {}
         for v in sorted(self.sizes_by_validator.keys()):
-            v_received = self.received_samples_by_validator.get(v, {})
-            v_sent = self.sent_samples_by_validator.get(v, {})
+            v_received_list = self.received_samples_by_validator.get(v, [])
+            v_sent_list = self.sent_samples_by_validator.get(v, [])
             latencies = []
-            for tx_id, batch_id in v_received.items():
-                if batch_id in self.commits and tx_id in v_sent:
-                    latencies.append(self.commits[batch_id] - v_sent[tx_id])
+            for sent, received in zip(v_sent_list, v_received_list):
+                for tx_id, batch_id in received.items():
+                    if batch_id in self.commits and tx_id in sent:
+                        latencies.append(self.commits[batch_id] - sent[tx_id])
             if latencies:
                 result[v] = mean(latencies)
         return result
