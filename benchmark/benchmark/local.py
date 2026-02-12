@@ -116,23 +116,6 @@ class LocalBench:
                 log_file = PathMaker.primary_log_file(i)
                 self._background_run(cmd, log_file, env_prefix)
 
-            # Run executors if in isolated mode (must start before workers to receive messages).
-            execution_mode = self.node_parameters.json.get('execution_mode', 'in_process')
-            if execution_mode == 'isolated':
-                Print.info("Running in Isolated mode - spawning executor processes...")
-                for i, addresses in enumerate(workers_addresses):
-                    for id, address in addresses:
-                        cmd = CommandMaker.run_executor(
-                            PathMaker.key_file(i),
-                            PathMaker.committee_file(),
-                            PathMaker.db_path(i, id),
-                            PathMaker.parameters_file(),
-                            id,  # The executor's id (matches worker id).
-                            debug=debug,
-                        )
-                        log_file = PathMaker.executor_log_file(i, id)
-                        self._background_run(cmd, log_file, env_prefix)
-
             # Run the workers (except the faulty ones).
             for i, addresses in enumerate(workers_addresses):
                 for id, address in addresses:
@@ -151,7 +134,7 @@ class LocalBench:
             Print.info(f"Running benchmark ({self.duration} sec)...")
             sleep(self.duration)
             self._kill_nodes()
-
+            sleep(1)  # Wait for logs to be flushed.
             # Parse logs and return the parser.
             Print.info("Parsing logs...")
             return LogParser.process(PathMaker.logs_path(), faults=self.faults, duration=self.duration, warmup=self.warmup)
