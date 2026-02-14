@@ -16,6 +16,6 @@ from benchmark.logs import LogParser, ParseError
 from benchmark.utils import Print, BenchError, PathMaker
 
 r = LogParser.process(
-                PathMaker.logs_path(), faults=0, duration=20
+                PathMaker.logs_path(), faults=0, duration=25, warmup=5
             )
 print(r.result())

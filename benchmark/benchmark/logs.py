@@ -5,7 +5,7 @@ from glob import glob
 from multiprocessing import Pool
 from os.path import basename, join
 from re import findall, search
-from statistics import mean
+from statistics import mean, quantiles
 
 from benchmark.utils import Print
 
@@ -190,6 +190,25 @@ class LogParser:
         x = datetime.fromisoformat(string.replace('Z', '+00:00'))
         return datetime.timestamp(x)
 
+    def _calculate_latency_metrics(self, latency_list):
+        """Calculate mean and p95 latency from a list of latencies."""
+        if not latency_list:
+            return {'mean': 0, 'p95': 0}
+
+        result = {'mean': mean(latency_list)}
+
+        # Calculate p95 if we have enough samples
+        if len(latency_list) >= 20:
+            # quantiles(data, n=20) gives 19 cut points
+            # Index 18 is the 95th percentile (19/20 = 0.95)
+            q = quantiles(latency_list, n=20)
+            result['p95'] = q[18]
+        else:
+            # For small samples, use max as p95 approximation
+            result['p95'] = max(latency_list)
+
+        return result
+
     def _consensus_throughput(self):
         if not self.commits:
             return 0, 0, 0
@@ -202,7 +221,7 @@ class LogParser:
 
     def _consensus_latency(self):
         latency = [c - self.proposals[d] for d, c in self.commits.items()]
-        return mean(latency) if latency else 0
+        return self._calculate_latency_metrics(latency)
 
     def _end_to_end_throughput(self):
         if not self.commits:
@@ -225,7 +244,7 @@ class LogParser:
                         continue
                     end = self.commits[batch_id]
                     latency += [end-start]
-        return mean(latency) if latency else 0
+        return self._calculate_latency_metrics(latency)
 
     def _validator_load_distribution(self):
         result = {}
@@ -270,7 +289,7 @@ class LogParser:
                             continue
                         latencies.append(self.commits[batch_id] - sent[tx_id])
             if latencies:
-                result[v] = mean(latencies)
+                result[v] = self._calculate_latency_metrics(latencies)
         return result
 
     def result(self):
@@ -282,10 +301,14 @@ class LogParser:
         batch_size = self.configs[0]['batch_size']
         max_batch_delay = self.configs[0]['max_batch_delay']
 
-        consensus_latency = self._consensus_latency() * 1_000
+        consensus_metrics = self._consensus_latency()
+        consensus_latency = consensus_metrics['mean'] * 1_000
+        consensus_p95 = consensus_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
         end_to_end_tps, end_to_end_bps, e2e_duration = self._end_to_end_throughput()
-        end_to_end_latency = self._end_to_end_latency() * 1_000
+        e2e_metrics = self._end_to_end_latency()
+        end_to_end_latency = e2e_metrics['mean'] * 1_000
+        e2e_p95 = e2e_metrics['p95'] * 1_000
         
         warnings = []
         assert isinstance(self.bench_duration, float), 'Bench duration is not set'
@@ -330,11 +353,13 @@ class LogParser:
             ' + RESULTS:\n'
             f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
             f' Consensus BPS: {round(consensus_bps):,} B/s\n'
-            f' Consensus latency: {round(consensus_latency):,} ms\n'
+            f' Consensus latency (mean): {round(consensus_latency):,} ms\n'
+            f' Consensus latency (p95): {round(consensus_p95):,} ms\n'
             '\n'
             f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
             f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
-            f' End-to-end latency: {round(end_to_end_latency):,} ms\n'
+            f' End-to-end latency (mean): {round(end_to_end_latency):,} ms\n'
+            f' End-to-end latency (p95): {round(e2e_p95):,} ms\n'
         )
 
         if self.sizes_by_validator:
@@ -358,15 +383,15 @@ class LogParser:
                 ' Validator    TPS (tx/s)    Latency (ms)    Misses\n'
             )
             for v in sorted(per_v_tps.keys()):
-                lat = per_v_latency.get(v)
-                lat_str = f'{round(lat * 1_000):,}' if lat is not None else 'N/A'
+                lat_metrics = per_v_latency.get(v)
+                lat_str = f'{round(lat_metrics["mean"] * 1_000):,}' if lat_metrics else 'N/A'
                 misses = self.misses_by_validator.get(v, 0)
                 output += (
                     f' {v:<12} {round(per_v_tps[v]):<13,} {lat_str:<15} {misses}\n'
                 )
             total_tps = sum(per_v_tps.values())
             weighted_lat = sum(
-                per_v_latency[v] * percentages[v] / 100
+                per_v_latency[v]['mean'] * percentages[v] / 100
                 for v in per_v_latency if v in percentages
             )
             weighted_lat_str = f'{round(weighted_lat * 1_000):,}' if per_v_latency else 'N/A'
@@ -374,7 +399,28 @@ class LogParser:
             output += (
                 f' {"Overall":<12} {round(total_tps):<13,} {weighted_lat_str + " (wtd)":<15} {total_misses}\n'
             )
-                
+
+            output += (
+                '\n'
+                ' + PER-VALIDATOR END-TO-END TAIL LATENCY (p95):\n'
+            )
+            for v in sorted(per_v_latency.keys()):
+                lat_metrics = per_v_latency.get(v)
+                p95_str = f'{round(lat_metrics["p95"] * 1_000):,}' if lat_metrics else 'N/A'
+                output += (
+                    f' Validator {v}: {p95_str} ms\n'
+                )
+
+            # Calculate weighted p95 for overall
+            if per_v_latency:
+                weighted_p95 = sum(
+                    per_v_latency[v]['p95'] * percentages[v] / 100
+                    for v in per_v_latency if v in percentages
+                )
+                output += (
+                    f' Overall (weighted): {round(weighted_p95 * 1_000):,} ms\n'
+                )
+
         if warnings_str:
             output += warnings_str
 
