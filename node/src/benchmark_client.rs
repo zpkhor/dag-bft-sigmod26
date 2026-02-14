@@ -5,11 +5,13 @@ use bytes::BytesMut;
 use clap::{crate_name, crate_version, App, AppSettings};
 use env_logger::Env;
 use futures::future::join_all;
+use bytes::Bytes;
 use futures::sink::SinkExt as _;
 use log::{info, warn};
 use rand::Rng;
 use std::net::SocketAddr;
 use tokio::net::TcpStream;
+use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
@@ -98,12 +100,25 @@ impl Client {
             .await
             .context(format!("failed to connect to {}", self.target))?;
 
+        let transport = Framed::new(stream, LengthDelimitedCodec::new());
+        let (chan_tx, mut chan_rx) = mpsc::unbounded_channel::<Bytes>();
+
+        // Background task owns the TCP transport and drains the channel.
+        tokio::spawn(async move {
+            let mut transport = transport;
+            while let Some(bytes) = chan_rx.recv().await {
+                if let Err(e) = transport.send(bytes).await {
+                    warn!("Failed to send transaction: {}", e);
+                    break;
+                }
+            }
+        });
+
         // Submit all transactions.
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0;
         let mut r = rand::thread_rng().gen();
-        let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
@@ -129,8 +144,8 @@ impl Client {
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-                if let Err(e) = transport.send(bytes).await {
-                    warn!("Failed to send transaction: {}", e);
+                if let Err(e) = chan_tx.send(bytes) {
+                    warn!("Failed to queue transaction: {}", e);
                     break 'main;
                 }
             }
