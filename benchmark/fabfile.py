@@ -19,6 +19,7 @@ def local(ctx, debug=True):
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
+    open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -28,6 +29,7 @@ def local(ctx, debug=True):
         'duration': duration,
         'rate_weights': rate_weights,
         'warmup': warmup,
+        'open_loop': open_loop,
     }
     node_params = {
         'header_size': 1_000,  # bytes

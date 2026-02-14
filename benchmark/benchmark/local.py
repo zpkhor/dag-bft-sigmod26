@@ -98,6 +98,7 @@ class LocalBench:
                         self.tx_size,
                         worker_rate,
                         [x for y in workers_addresses for _, x in y],
+                        self.open_loop,
                     )
                     log_file = PathMaker.client_log_file(i, id)
                     self._background_run(cmd, log_file, env_prefix)

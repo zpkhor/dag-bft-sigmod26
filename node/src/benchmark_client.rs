@@ -24,6 +24,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
+        .args_from_usage("--open-loop 'Use open-loop mode (no TCP backpressure)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -53,6 +54,7 @@ async fn main() -> Result<()> {
         .map(|x| x.parse::<SocketAddr>())
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
+    let open_loop = matches.is_present("open-loop");
 
     info!("Node address: {}", target);
 
@@ -62,11 +64,14 @@ async fn main() -> Result<()> {
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {} tx/s", rate);
 
+    info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
+
     let client = Client {
         target,
         size,
         rate,
         nodes,
+        open_loop,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -81,12 +86,11 @@ struct Client {
     size: usize,
     rate: u64,
     nodes: Vec<SocketAddr>,
+    open_loop: bool,
 }
 
 impl Client {
     pub async fn send(&self) -> Result<()> {
-        const PRECISION: u64 = 20; // Sample precision.
-        const BURST_DURATION: u64 = 1000 / PRECISION;
 
         // The transaction size must be at least 16 bytes to ensure all txs are different.
         if self.size < 9 {
@@ -101,6 +105,18 @@ impl Client {
             .context(format!("failed to connect to {}", self.target))?;
 
         let transport = Framed::new(stream, LengthDelimitedCodec::new());
+
+        if self.open_loop {
+            self.send_open_loop(transport).await
+        } else {
+            self.send_closed_loop(transport).await
+        }
+    }
+
+    async fn send_open_loop(&self, transport: Framed<TcpStream, LengthDelimitedCodec>) -> Result<()> {
+        const PRECISION: u64 = 20;
+        const BURST_DURATION: u64 = 1000 / PRECISION;
+
         let (chan_tx, mut chan_rx) = mpsc::unbounded_channel::<Bytes>();
 
         // Background task owns the TCP transport and drains the channel.
@@ -151,6 +167,50 @@ impl Client {
             }
             if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 // NOTE: This log entry is used to compute performance.
+                warn!("Transaction rate too high for this client");
+            }
+            counter += 1;
+        }
+        Ok(())
+    }
+
+    async fn send_closed_loop(&self, mut transport: Framed<TcpStream, LengthDelimitedCodec>) -> Result<()> {
+        const PRECISION: u64 = 20;
+        const BURST_DURATION: u64 = 1000 / PRECISION;
+
+        let burst = self.rate / PRECISION;
+        let mut tx = BytesMut::with_capacity(self.size);
+        let mut counter = 0;
+        let mut r = rand::thread_rng().gen();
+        let interval = interval(Duration::from_millis(BURST_DURATION));
+        tokio::pin!(interval);
+
+        info!("Start sending transactions");
+
+        loop {
+            interval.as_mut().tick().await;
+            let now = Instant::now();
+
+            for x in 0..burst {
+                if x == counter % burst {
+                    info!("Sending sample transaction {}", counter);
+
+                    tx.put_u8(0u8);
+                    tx.put_u64(counter);
+                } else {
+                    r += 1;
+                    tx.put_u8(1u8);
+                    tx.put_u64(r);
+                };
+
+                tx.resize(self.size, 0u8);
+                let bytes = tx.split().freeze();
+                if let Err(e) = transport.send(bytes).await {
+                    warn!("Failed to send transaction: {}", e);
+                    break;
+                }
+            }
+            if now.elapsed().as_millis() > BURST_DURATION as u128 {
                 warn!("Transaction rate too high for this client");
             }
             counter += 1;

@@ -225,6 +225,7 @@ class BenchParameters:
                         f'must match nodes ({self.nodes[0]})'
                     )
             self.warmup = int(json.get('warmup', 0))
+            self.open_loop = bool(json.get('open_loop', False))
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 
