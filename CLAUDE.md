@@ -55,3 +55,14 @@
 # Dev note
 - Don't run tests at all, I will handle testing manually.
 - This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility
+- When editing existing code, don't "improve" adjacent code, comments, or formatting. If you notice unrelated dead code, mention it - don't delete it.
+
+Think Before Coding
+
+**Don't assume. Don't hide confusion. Surface tradeoffs.**
+
+Before implementing:
+- State your assumptions explicitly. If uncertain, ask.
+- If multiple interpretations exist, present them - don't pick silently.
+- If a simpler approach exists, say so. Push back when warranted.
+- If something is unclear, stop. Name what's confusing. Ask.
