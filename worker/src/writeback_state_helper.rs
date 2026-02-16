@@ -1,35 +1,17 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
+// Adapted from origin/old-executor-patch:worker/src/state_helper.rs
+use crate::state_helper::{ExecutorToExecutorMessage, StateTransfer, StateTransferRequest};
 use crate::transaction::TxID;
 use crate::workload::AccountState;
 use bytes::Bytes;
 use config::{Committee, ExecutorId};
 use crypto::PublicKey;
 use log::{debug, info};
-use network::SimpleSender;
+use network::{SimpleSender, LAN_BANDWIDTH};
 use primary::ExecutorPrimaryMessage;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::Receiver;
-
-#[derive(Debug, Clone)]
-pub struct State {
-    pub account_id: u64,
-    pub account_state: AccountState,
-}
-
-#[derive(Debug, Clone)]
-pub struct StateTransfer {
-    pub tx_id: TxID,
-    pub src_account_id: u64,
-    pub src_account_state: AccountState,
-}
-
-/// Request from BatchExecutor to send StateTransfer to remote executor.
-#[derive(Debug, Clone)]
-pub struct StateTransferRequest {
-    pub state_transfer: StateTransfer,
-    pub dest_executor_id: ExecutorId,
-}
 
 /// Metadata for outgoing StateTransfer (Source side).
 #[derive(Debug, Clone)]
@@ -53,30 +35,7 @@ pub struct StateWritebackRequest {
     pub src_executor_id: ExecutorId,
 }
 
-use serde::{Deserialize, Serialize};
-/// Messages sent between executors for distributed transaction coordination.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum ExecutorToExecutorMessage {
-    /// State transfer from source executor to destination executor.
-    /// Sent when source executor needs to transfer account state for distributed SendPayment.
-    StateTransfer {
-        tx_id: crate::transaction::TxID,
-        src_account_id: u64,
-        src_account_state: AccountState,
-    },
-
-    /// State writeback from destination executor to source executor.
-    /// Sent after destination completes transaction to return updated source state.
-    StateWriteback {
-        tx_id: crate::transaction::TxID,
-        src_account_id: u64,
-        updated_state: AccountState,
-        success: bool,
-        dest_account_id: u64,
-    },
-}
-
-/// StateHelper manages bidirectional executor-to-executor state transfers.
+/// WritebackStateHelper manages bidirectional executor-to-executor state transfers.
 ///
 /// Responsibilities:
 /// - Send StateTransfer messages to Dest executors from Source side
@@ -84,7 +43,7 @@ pub enum ExecutorToExecutorMessage {
 /// - Receive StateTransfer and StateWriteback messages from network, putting them into shared buffers
 /// - Maintain ongoing_states_buffer for tracking outgoing states awaiting writeback
 /// - Forward execution feedback from BatchExecutor to Primary for flow control
-pub struct StateHelper {
+pub struct WritebackStateHelper {
     /// Executor ID (for logging and address lookup)
     executor_id: ExecutorId,
     /// Authority's public key
@@ -119,7 +78,7 @@ pub struct StateHelper {
     incoming_writebacks: Arc<Mutex<HashMap<TxID, StateWritebackArrival>>>,
 }
 
-impl StateHelper {
+impl WritebackStateHelper {
     /// Spawns StateHelper thread and returns shared state buffers.
     #[allow(clippy::type_complexity)]
     pub fn spawn(
@@ -148,7 +107,7 @@ impl StateHelper {
                 executor_id,
                 name,
                 committee,
-                network: SimpleSender::new(),
+                network: SimpleSender::new(LAN_BANDWIDTH),
                 rx_send_state,
                 rx_state_writeback,
                 rx_executor_message,
@@ -166,7 +125,7 @@ impl StateHelper {
 
     /// Main event loop handling StateTransfer requests and network messages.
     async fn run(&mut self) {
-        info!("StateHelper {} started", self.executor_id);
+        info!("WritebackStateHelper {} started", self.executor_id);
 
         loop {
             tokio::select! {
