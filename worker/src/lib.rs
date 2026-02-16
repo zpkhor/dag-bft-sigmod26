@@ -9,6 +9,7 @@ mod processor;
 mod quorum_waiter;
 pub mod router;
 pub mod state_helper;
+pub mod writeback_batch_executor;
 pub mod writeback_state_helper;
 mod synchronizer;
 pub mod transaction;

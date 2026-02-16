@@ -1,10 +1,10 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
+// Adapted from origin/old-executor-patch:worker/src/batch_executor.rs
 use crate::account_accesses::AccountStatsTracker;
-use crate::state_helper::{
-    OutgoingStateInfo, StateTransfer, StateTransferRequest, StateWritebackArrival, StateWritebackRequest
-};
+use crate::batch_executor::ClientReplyRequest;
+use crate::state_helper::{StateTransfer, StateTransferRequest};
+use crate::writeback_state_helper::{OutgoingStateInfo, StateWritebackArrival, StateWritebackRequest};
 use crate::transaction::{Transaction, SAMPLE_TX_TYPE, TxID};
-use crate::worker::RoutingStrategy;
 use crate::workload::{AccountState, AccountStore, WorkloadType};
 use config::{Committee, Partition};
 use crypto::{Digest, PublicKey};
@@ -17,17 +17,6 @@ use tokio::sync::mpsc::{Receiver, Sender};
 
 /// Flow control feedback interval
 const FEEDBACK_INTERVAL: u64 = 100;
-
-/// Represents a client reply request with named fields for clarity.
-pub struct ClientReplyRequest {
-    pub batch_digest: Digest,
-    pub client_addr: SocketAddr,
-    pub tx_type: u8,
-    pub tx_id: TxID,
-    pub success: bool,
-    pub account_id: u64,
-    pub account_state: Option<crate::workload::AccountState>,
-}
 
 /// Buffered batch waiting for its sequence number to be executed.
 struct BufferedBatch {
@@ -89,7 +78,7 @@ impl LockStatistics {
 }
 
 /// Handles the execution of committed batches with strict sequence ordering.
-pub struct BatchExecutor {
+pub struct DistributedTxExecutor {
     /// Receives execute requests from both local Router and remote workers (merged channel).
     rx_batch_executor: Receiver<(Digest, u64, Vec<Vec<u8>>)>,
     /// Sends client reply requests to ClientReplier.
@@ -102,8 +91,6 @@ pub struct BatchExecutor {
     account_store: Option<AccountStore>,
     /// Account-level statistics tracker (Some if load balancer enabled).
     account_accesses: Option<AccountStatsTracker>,
-    /// Routing strategy (determines if buffering is needed)
-    routing_strategy: RoutingStrategy,
     /// Next expected sequence number.
     next_sequence: u64,
     /// Buffer for out-of-order batches.
@@ -146,7 +133,7 @@ pub struct BatchExecutor {
     executed_tx_count: u64,
 }
 
-impl BatchExecutor {
+impl DistributedTxExecutor {
     #[allow(clippy::too_many_arguments)]
     pub fn spawn(
         rx_batch_executor: Receiver<(Digest, u64, Vec<Vec<u8>>)>,
@@ -160,7 +147,6 @@ impl BatchExecutor {
         sharding_strategy: config::ShardingStrategy,
         enable_load_balancer: bool,
         lb_window_ms: u64,
-        routing_strategy: RoutingStrategy,
         executor_id: u32,
         node_id: usize,
         initial_partition: Option<Partition>,
@@ -218,7 +204,7 @@ impl BatchExecutor {
         };
 
         info!(
-            "BatchExecutor {} initialized: workload={:?}, accounts={}, workers={}, sharding={:?}, load_balancer={}",
+            "DistributedTxExecutor {} initialized: workload={:?}, accounts={}, workers={}, sharding={:?}, load_balancer={}",
             executor_id, workload_type, num_accounts, num_workers, sharding_strategy, enable_load_balancer
         );
 
@@ -230,7 +216,6 @@ impl BatchExecutor {
                 workload_type,
                 account_store,
                 account_accesses,
-                routing_strategy,
                 next_sequence: 0,
                 buffer: BTreeMap::new(),
                 executor_id,
@@ -282,94 +267,71 @@ impl BatchExecutor {
     }
 
     async fn process_execute(&mut self, digest: Digest, sequence: u64, transactions: Vec<Vec<u8>>) {
-        match self.routing_strategy {
-            RoutingStrategy::Direct => {
-                // Direct routing: batches arrive in order, execute immediately
-                debug!(
-                    "Direct routing: executing batch {:?} (seq={}) immediately",
-                    digest, sequence
-                );
-                self.execute_batch(&digest, &transactions).await;
+        if sequence == self.next_sequence {
+            self.execute_batch(&digest, &transactions).await;
+            self.next_sequence += 1;
+            self.send_feedback_if_needed().await;
+
+            while let Some(buffered) = self.buffer.remove(&self.next_sequence) {
+                self.execute_batch(&buffered.digest, &buffered.transactions).await;
                 self.next_sequence += 1;
-                // Send feedback after execution
                 self.send_feedback_if_needed().await;
             }
-            RoutingStrategy::PartitionRouting => {
-                // Partition routing: buffer out-of-order batches
-                if sequence == self.next_sequence {
-                    // Execute immediately (removed "Executing batch in order" debug log - happens too frequently)
-                    self.execute_batch(&digest, &transactions).await;
-                    self.next_sequence += 1;
-                    self.send_feedback_if_needed().await;
+        } else if sequence > self.next_sequence {
+            if transactions.is_empty() && digest == Digest::default() {
+                warn!(
+                    "Buffering sequence sync marker (seq={}), expecting seq={}, buffer_size={}",
+                    sequence,
+                    self.next_sequence,
+                    self.buffer.len() + 1
+                );
+            } else {
+                warn!(
+                    "Buffering batch {:?} (seq={}), expecting seq={}, buffer_size={}",
+                    digest,
+                    sequence,
+                    self.next_sequence,
+                    self.buffer.len() + 1
+                );
+            }
 
-                    // Drain consecutive buffered batches (removed "Draining buffered batch" debug log - happens too frequently)
-                    while let Some(buffered) = self.buffer.remove(&self.next_sequence) {
-                        self.execute_batch(&buffered.digest, &buffered.transactions).await;
-                        self.next_sequence += 1;
-                        // Send feedback after each batch execution
-                        self.send_feedback_if_needed().await;
-                    }
-                } else if sequence > self.next_sequence {
-                    // Buffer for later
-                    if transactions.is_empty() && digest == Digest::default() {
-                        warn!(
-                            "Buffering sequence sync marker (seq={}), expecting seq={}, buffer_size={}",
-                            sequence,
-                            self.next_sequence,
-                            self.buffer.len() + 1
-                        );
-                    } else {
-                        warn!(
-                            "Buffering batch {:?} (seq={}), expecting seq={}, buffer_size={}",
-                            digest,
-                            sequence,
-                            self.next_sequence,
-                            self.buffer.len() + 1
-                        );
-                    }
+            if self.buffer.len() >= 5000 {
+                warn!("Panicking");
+                panic!(
+                    "DistributedTxExecutor buffer exceeded limit of 5000 batches! \
+                     Executor is stuck waiting for sequence {} but received up to seq={}. \
+                     Buffer contents: {:?}",
+                    self.next_sequence,
+                    sequence,
+                    self.buffer.keys().collect::<Vec<_>>()
+                );
+            }
 
-                    // Hard limit at 5000 batches to prevent unbounded memory growth
-                    if self.buffer.len() >= 5000 {
-                        warn!("Panicking");
-                        panic!(
-                            "BatchExecutor buffer exceeded limit of 5000 batches! \
-                             Executor is stuck waiting for sequence {} but received up to seq={}. \
-                             This indicates a critical bug in sequence number assignment or network delivery. \
-                             Buffer contents: {:?}",
-                            self.next_sequence,
-                            sequence,
-                            self.buffer.keys().collect::<Vec<_>>()
-                        );
-                    }
+            self.buffer.insert(
+                sequence,
+                BufferedBatch {
+                    digest,
+                    transactions,
+                },
+            );
 
-                    self.buffer.insert(
-                        sequence,
-                        BufferedBatch {
-                            digest,
-                            transactions,
-                        },
-                    );
-
-                    if self.buffer.len() % 100 == 0 {
-                        warn!(
-                            "missing seq {}",
-                            self.next_sequence
-                        );
-                    }
-                } else {
-                    // Duplicate or late arrival, discard
-                    if transactions.is_empty() && digest == Digest::default() {
-                        warn!(
-                            "Received old sequence {} (sync marker), expecting {} (discarding)",
-                            sequence, self.next_sequence
-                        );
-                    } else {
-                        warn!(
-                            "Received old sequence {} for batch {:?}, expecting {} (discarding)",
-                            sequence, digest, self.next_sequence
-                        );
-                    }
-                }
+            if self.buffer.len() % 100 == 0 {
+                warn!(
+                    "missing seq {}",
+                    self.next_sequence
+                );
+            }
+        } else {
+            if transactions.is_empty() && digest == Digest::default() {
+                warn!(
+                    "Received old sequence {} (sync marker), expecting {} (discarding)",
+                    sequence, self.next_sequence
+                );
+            } else {
+                warn!(
+                    "Received old sequence {} for batch {:?}, expecting {} (discarding)",
+                    sequence, digest, self.next_sequence
+                );
             }
         }
     }
@@ -535,6 +497,7 @@ impl BatchExecutor {
         let mut success = true;
         let mut account_id = 0u64;
         let mut account_state = None;
+        let mut sb_tx_type = None;
 
         match self.workload_type {
             WorkloadType::Default => {
@@ -543,6 +506,7 @@ impl BatchExecutor {
             WorkloadType::SmallBank => {
                 let transaction = Transaction::new(tx_bytes);
                 if let Some(sb_tx) = transaction.parse_smallbank_payload() {
+                    sb_tx_type = Some(sb_tx.tx_type);
                     // Record account statistics if load balancer is enabled
                     if let Some(ref mut stats) = self.account_accesses {
                         match sb_tx.tx_type {
@@ -634,6 +598,7 @@ impl BatchExecutor {
             success,
             account_id,
             account_state,
+            sb_tx_type,
         };
 
         if let Err(e) = self.tx_client_reply.send(reply_request).await {
@@ -1187,6 +1152,7 @@ impl BatchExecutor {
             success,
             account_id,
             account_state,
+            sb_tx_type: Some(pending_tx.sb_tx.tx_type),
         };
 
         if let Err(e) = self.tx_client_reply.send(reply_request).await {
