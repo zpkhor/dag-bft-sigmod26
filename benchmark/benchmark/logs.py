@@ -284,7 +284,8 @@ class LogParser:
             latencies = []
             for sent, received in zip(v_sent_list, v_received_list):
                 for tx_id, batch_id in received.items():
-                    if batch_id in self.commits and tx_id in sent:
+                    if batch_id in self.commits:
+                        assert tx_id in sent  # We receive txs that we sent.
                         if sent[tx_id] < self.effective_start:
                             continue
                         latencies.append(self.commits[batch_id] - sent[tx_id])
