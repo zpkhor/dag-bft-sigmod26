@@ -1,6 +1,7 @@
 use crate::batch_executor::BatchExecutor;
 use crate::client_replier::ClientReplier;
 use crate::state_helper::{ExecutorToExecutorMessage, StateHelper};
+use crate::workload::WorkloadType;
 use async_trait::async_trait;
 use bytes::Bytes;
 use config::{Committee, ExecutorId, Partition, ShardingStrategy};
@@ -8,7 +9,9 @@ use crypto::{Digest, PublicKey};
 use log::{info, warn};
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::error::Error;
+use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{channel, Sender};
 
 const CHANNEL_CAPACITY: usize = 1_000;
@@ -40,33 +43,72 @@ impl Executor {
         let (tx_executor_message, rx_executor_message) = channel(CHANNEL_CAPACITY);
         let (tx_feedback, rx_feedback) = channel(CHANNEL_CAPACITY);
 
-        // State helper (handles state transfer and feedback)
-        let incoming_transfers = StateHelper::spawn(
-            id,
-            name,
-            committee.clone(),
-            rx_send_state,
-            rx_executor_message,
-            rx_feedback,
-        );
+        if parameters.use_writeback_executor {
+            // Writeback path: bidirectional state helper + DistributedTxExecutor
+            let (tx_state_writeback, rx_state_writeback) = channel(CHANNEL_CAPACITY);
 
-        // Batch executor
-        BatchExecutor::spawn(
-            rx_batch_executor,
-            tx_client_reply,
-            committee.clone(),
-            parameters.num_accounts,
-            num_executors,
-            parameters.min_balance,
-            parameters.max_balance,
-            id,
-            initial_partition,
-            name,
-            tx_send_state,
-            incoming_transfers,
-            tx_feedback,
-            parameters.use_new_scheduler,
-        );
+            let (outgoing_states_buffer, incoming_transfers, incoming_writebacks) =
+                crate::writeback_state_helper::WritebackStateHelper::spawn(
+                    id,
+                    name,
+                    committee.clone(),
+                    rx_send_state,
+                    rx_state_writeback,
+                    rx_executor_message,
+                    rx_feedback,
+                );
+
+            crate::writeback_batch_executor::DistributedTxExecutor::spawn(
+                rx_batch_executor,
+                tx_client_reply,
+                committee.clone(),
+                WorkloadType::SmallBank,
+                parameters.num_accounts,
+                num_executors,
+                parameters.min_balance,
+                parameters.max_balance,
+                _sharding_strategy,
+                false,
+                0,
+                id,
+                0,
+                Some(initial_partition),
+                name,
+                tx_send_state,
+                tx_state_writeback,
+                outgoing_states_buffer,
+                incoming_transfers,
+                incoming_writebacks,
+                tx_feedback,
+            );
+        } else {
+            // Data fusion path: one-way state helper + BatchExecutor
+            let incoming_transfers = StateHelper::spawn(
+                id,
+                name,
+                committee.clone(),
+                rx_send_state,
+                rx_executor_message,
+                rx_feedback,
+            );
+
+            BatchExecutor::spawn(
+                rx_batch_executor,
+                tx_client_reply,
+                committee.clone(),
+                parameters.num_accounts,
+                num_executors,
+                parameters.min_balance,
+                parameters.max_balance,
+                id,
+                initial_partition,
+                name,
+                tx_send_state,
+                incoming_transfers,
+                tx_feedback,
+                parameters.use_new_scheduler,
+            );
+        }
 
         // Client replier
         ClientReplier::spawn(name, id, rx_client_reply);
