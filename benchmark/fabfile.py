@@ -39,6 +39,7 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     no_send_payment = os.environ.get('NO_SEND_PAYMENT', '0') == '1'
     zipf_exponent = float(os.environ.get('ZIPF_EXPONENT', 0.0))
     in_memory_store = os.environ.get('IN_MEMORY_STORE', '0') == '1'
+    use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', 'false').lower() in ('1', 'true', 'yes')
     bench_params = {
         'faults': 0,
         'nodes': nodes,
@@ -59,6 +60,7 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
         'sync_retry_nodes': 3,
         'batch_size': 500_000,
         'max_batch_delay': 200,
+        'use_writeback_executor': use_writeback_executor,
     }
     try:
         ret = DockerBench(
