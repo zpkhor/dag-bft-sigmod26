@@ -115,6 +115,20 @@ class LogParser:
                     merged[k] = v
         return merged
 
+    def _merge_results_fplus1(self, input):
+        # Use the (f+1)th earliest timestamp (f=1, so 2nd earliest).
+        # A commit is only meaningful once f+1 validators have committed it.
+        collected = {}
+        for x in input:
+            for k, v in x:
+                collected.setdefault(k, []).append(v)
+        merged = {}
+        for k, timestamps in collected.items():
+            timestamps.sort()
+            # Pick the 2nd earliest (index 1) if available, else the earliest
+            merged[k] = timestamps[min(1, len(timestamps) - 1)]
+        return merged
+
     def _parse_clients(self, log):
         if search(r'Error', log) is not None:
             raise ParseError('Client(s) panicked')
