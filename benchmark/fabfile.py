@@ -58,7 +58,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     warmup = int(os.environ.get('WARMUP', 0))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
-    tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))
+    tokio_threads = int(os.environ.get('TOKIO_THREADS', 8))
     open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     bench_params = {
         'faults': 0,

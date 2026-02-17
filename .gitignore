@@ -31,3 +31,4 @@ scripts/build_and_fab
 benchmark/bash_logs/
 benchmark/logs/
 benchmark/logs_copies
+benchmark/docker-compose.yml
