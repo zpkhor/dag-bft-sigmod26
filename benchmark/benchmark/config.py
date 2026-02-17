@@ -161,6 +161,38 @@ class LocalCommittee(Committee):
         super().__init__(addresses, port)
 
 
+class DockerCommittee(Committee):
+    def __init__(self, names, port, workers, container_ips):
+        assert isinstance(names, list)
+        assert all(isinstance(x, str) for x in names)
+        assert isinstance(port, int)
+        assert isinstance(workers, int) and workers > 0
+        assert isinstance(container_ips, list)
+        assert len(container_ips) == len(names)
+
+        # Build addresses with container IPs for all hosts (primary + workers)
+        addresses = OrderedDict(
+            (name, [ip] * (1 + workers))
+            for name, ip in zip(names, container_ips)
+        )
+        super().__init__(addresses, port)
+
+        # Override intra-validator addresses to 127.0.0.1
+        for name in names:
+            auth = self.json['authorities'][name]
+            # worker_to_primary is intra-validator
+            addr = auth['primary']['worker_to_primary']
+            auth['primary']['worker_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
+
+            for worker in auth['workers'].values():
+                # primary_to_worker is intra-validator
+                addr = worker['primary_to_worker']
+                worker['primary_to_worker'] = f'127.0.0.1:{addr.split(":")[1]}'
+                # transactions is intra-validator (client colocated)
+                addr = worker['transactions']
+                worker['transactions'] = f'127.0.0.1:{addr.split(":")[1]}'
+
+
 class NodeParameters:
     def __init__(self, json):
         inputs = []

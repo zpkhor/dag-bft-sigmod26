@@ -3,6 +3,7 @@ import os
 from fabric import task
 
 from benchmark.local import LocalBench
+from benchmark.docker_bench import DockerBench
 from benchmark.logs import ParseError, LogParser
 from benchmark.utils import Print
 from benchmark.plot import Ploter, PlotError
@@ -43,6 +44,50 @@ def local(ctx, debug=True):
     }
     try:
         ret = LocalBench(bench_params, node_params).run(debug)
+        print(ret.result())
+    except BenchError as e:
+        Print.error(e)
+
+
+@task
+def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
+           cpus_per_validator=0, lan_bandwidth='100gbit'):
+    ''' Run benchmarks in Docker containers with tc bandwidth shaping '''
+    rate = int(os.environ.get('RATE', 50_000))
+    duration = int(os.environ.get('DURATION', 20))
+    warmup = int(os.environ.get('WARMUP', 0))
+    rate_weights_raw = os.environ.get('RATE_WEIGHTS')
+    rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))
+    open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
+    bench_params = {
+        'faults': 0,
+        'nodes': 4,
+        'workers': 1,
+        'rate': rate,
+        'tx_size': 512,
+        'duration': duration,
+        'rate_weights': rate_weights,
+        'warmup': warmup,
+        'open_loop': open_loop,
+    }
+    node_params = {
+        'header_size': 1_000,
+        'max_header_delay': 200,
+        'gc_depth': 50,
+        'sync_retry_delay': 10_000,
+        'sync_retry_nodes': 3,
+        'batch_size': 500_000,
+        'max_batch_delay': 200,
+        'tokio_threads': tokio_threads,
+    }
+    try:
+        ret = DockerBench(
+            bench_params, node_params,
+            bandwidth=bandwidth, latency=latency, jitter=jitter,
+            cpus_per_validator=int(cpus_per_validator),
+            lan_bandwidth=lan_bandwidth,
+        ).run(debug)
         print(ret.result())
     except BenchError as e:
         Print.error(e)

@@ -1,0 +1,66 @@
+#!/bin/bash
+set -e
+
+# Apply tc egress shaping on eth0 if bandwidth is specified
+if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
+    tc qdisc add dev eth0 root handle 1: htb default 10
+    tc class add dev eth0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
+
+    if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+        JITTER_ARG=""
+        if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
+            JITTER_ARG="$TC_JITTER"
+        fi
+        tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG
+    fi
+
+    echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
+    tc qdisc show dev eth0
+fi
+
+# Apply tc shaping on lo if LAN bandwidth is specified
+if [ -n "$TC_LAN_BANDWIDTH" ] && [ "$TC_LAN_BANDWIDTH" != "0" ]; then
+    tc qdisc add dev lo root handle 1: htb default 10
+    tc class add dev lo parent 1: classid 1:10 htb rate $TC_LAN_BANDWIDTH
+    echo "tc rules applied on lo: lan_bandwidth=$TC_LAN_BANDWIDTH"
+    tc qdisc show dev lo
+fi
+
+# Set tokio threads if specified
+ENV_PREFIX=""
+if [ -n "$TOKIO_WORKER_THREADS" ] && [ "$TOKIO_WORKER_THREADS" != "0" ]; then
+    ENV_PREFIX="TOKIO_WORKER_THREADS=$TOKIO_WORKER_THREADS "
+fi
+
+PIDS=()
+
+cleanup() {
+    echo "Shutting down..."
+    for pid in "${PIDS[@]}"; do
+        kill "$pid" 2>/dev/null || true
+    done
+    wait
+    exit 0
+}
+trap cleanup SIGTERM SIGINT
+
+# Start primary
+eval "${ENV_PREFIX}${PRIMARY_CMD}" &
+PIDS+=($!)
+
+# Start workers
+IFS=';' read -ra WORKER_CMDS <<< "$WORKER_CMD"
+for cmd in "${WORKER_CMDS[@]}"; do
+    eval "${ENV_PREFIX}${cmd}" &
+    PIDS+=($!)
+done
+
+# Start clients
+IFS=';' read -ra CLIENT_CMDS <<< "$CLIENT_CMD"
+for cmd in "${CLIENT_CMDS[@]}"; do
+    eval "${ENV_PREFIX}${cmd}" &
+    PIDS+=($!)
+done
+
+# Wait for all children
+wait
