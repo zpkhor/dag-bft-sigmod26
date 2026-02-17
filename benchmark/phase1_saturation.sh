@@ -2,14 +2,15 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(10000 20000 40000 60000 100000 150000 200000)
-RETRIES=3
-DURATION=${DURATION:-120}
-WARMUP=${WARMUP:-10}
-TOKIO_THREADS=${TOKIO_THREADS:-16}
+RATES=(10000 20000)
+RETRIES=1
+DURATION=${DURATION:-20}
+WARMUP=${WARMUP:-5}
+TOKIO_THREADS=${TOKIO_THREADS:-8}
 
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
 cd "$(dirname "$0")"
 
@@ -27,8 +28,8 @@ for RATE in "${RATES[@]}"; do
         echo ""
         echo "--- Rate: $RATE tx/s, Run: $RETRY/$RETRIES ---"
 
-        OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab local 2>&1) || true
-        echo "$OUTPUT" | tee "$RUN_DIR/output.log"
+        OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=32 --bandwidth=150mbit --latency=50ms 2>&1) || true
+        echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
         # Copy logs for this run
         cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
