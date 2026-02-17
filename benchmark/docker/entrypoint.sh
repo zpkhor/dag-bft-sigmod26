@@ -18,6 +18,18 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     tc qdisc show dev eth0
 fi
 
+# Apply ingress shaping on eth0 via IFB device
+if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
+    ip link add ifb0 type ifb 2>/dev/null || true
+    ip link set dev ifb0 up
+    tc qdisc add dev eth0 handle ffff: ingress
+    tc filter add dev eth0 parent ffff: protocol ip u32 match u32 0 0 \
+        action mirred egress redirect dev ifb0
+    tc qdisc add dev ifb0 root handle 1: htb default 10
+    tc class add dev ifb0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
+    echo "ingress shaping applied via ifb0: rate=$TC_BANDWIDTH"
+fi
+
 # Apply tc shaping on lo if LAN bandwidth is specified
 if [ -n "$TC_LAN_BANDWIDTH" ] && [ "$TC_LAN_BANDWIDTH" != "0" ]; then
     tc qdisc add dev lo root handle 1: htb default 10
