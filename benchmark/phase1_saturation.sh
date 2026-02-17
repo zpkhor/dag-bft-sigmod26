@@ -2,9 +2,9 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(10000 20000)
+RATES=(10000 20000 30000 40000 50000) # /home/zpkhor/narwhal/benchmark/results/phase1_20260217_180435/merged_output.log
 RETRIES=1
-DURATION=${DURATION:-20}
+DURATION=${DURATION:-45}
 WARMUP=${WARMUP:-5}
 TOKIO_THREADS=${TOKIO_THREADS:-8}
 
