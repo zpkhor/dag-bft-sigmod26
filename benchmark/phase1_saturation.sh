@@ -2,10 +2,10 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(10000 20000 30000 40000 50000) # /home/zpkhor/narwhal/benchmark/results/phase1_20260217_180435/merged_output.log
-RETRIES=1
-DURATION=${DURATION:-45}
-WARMUP=${WARMUP:-5}
+RATES=(14750 15000 15250) # /home/zpkhor/narwhal/benchmark/results/phase1_20260217_180435/merged_output.log
+RETRIES=2
+DURATION=${DURATION:-120}
+WARMUP=${WARMUP:-10}
 TOKIO_THREADS=${TOKIO_THREADS:-8}
 
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
@@ -28,7 +28,7 @@ for RATE in "${RATES[@]}"; do
         echo ""
         echo "--- Rate: $RATE tx/s, Run: $RETRY/$RETRIES ---"
 
-        OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=32 --bandwidth=150mbit --latency=50ms 2>&1) || true
+        OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=32 --bandwidth=300mbit --latency=50ms 2>&1) || true
         echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
         # Copy logs for this run
@@ -46,4 +46,4 @@ done
 
 echo ""
 echo "==========================================="
-echo "Phase 1 complete. Results in $RESULTS_DIR"
+echo "Phase 1 complete. Results in $RESULTS_DIR/merged_output.log"

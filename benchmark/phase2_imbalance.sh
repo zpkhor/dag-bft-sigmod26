@@ -3,15 +3,17 @@
 # Set RATES env var based on Phase 1 results (~30%, ~70%, ~90% of saturation).
 set -euo pipefail
 
-RATES=(${RATES:-20000 40000 60000})
-RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "4,1,1,1" "10,1,1,1" "100,1,1,1")
-RETRIES=3
-DURATION=${DURATION:-120}
-WARMUP=${WARMUP:-10}
-TOKIO_THREADS=${TOKIO_THREADS:-16}
+RATES=(${RATES:-20000}) # 4500
+# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "4,1,1,1" "10,1,1,1")
+RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1") # /home/zpkhor/narwhal/benchmark/phase2_imbalance.sh
+RETRIES=1
+DURATION=${DURATION:-60}
+WARMUP=${WARMUP:-5}
+TOKIO_THREADS=${TOKIO_THREADS:-8}
 
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
 cd "$(dirname "$0")"
 
@@ -32,8 +34,8 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab local 2>&1) || true
-            echo "$OUTPUT" | tee "$RUN_DIR/output.log"
+            OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=32 --bandwidth=300mbit --latency=50ms 2>&1) || true
+            echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
             cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
@@ -51,4 +53,4 @@ done
 
 echo ""
 echo "==========================================="
-echo "Phase 2 complete. Results in $RESULTS_DIR"
+echo "Phase 2 complete. Results in $RESULTS_DIR/merged_output.log"
