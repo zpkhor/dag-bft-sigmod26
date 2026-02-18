@@ -215,7 +215,6 @@ impl Client {
             }
             counter += 1;
         }
-        Ok(())
     }
 
     pub async fn wait(&self) {

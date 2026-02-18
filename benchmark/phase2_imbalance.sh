@@ -3,9 +3,10 @@
 # Set RATES env var based on Phase 1 results (~30%, ~70%, ~90% of saturation).
 set -euo pipefail
 
-RATES=(${RATES:-20000}) # 4500
+RATES=(${RATES:-22500 17500 7500})
 # RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "4,1,1,1" "10,1,1,1")
-RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1") # /home/zpkhor/narwhal/benchmark/phase2_imbalance.sh
+# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1") # /home/zpkhor/narwhal/benchmark/results/phase2_20260218_155933/merged_output.log
+RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1") # /home/zpkhor/narwhal/benchmark/results/phase2_20260218_163321/merged_output.log
 RETRIES=1
 DURATION=${DURATION:-60}
 WARMUP=${WARMUP:-5}
@@ -34,7 +35,7 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=32 --bandwidth=300mbit --latency=50ms 2>&1) || true
+            OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=32 --bandwidth=100mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
