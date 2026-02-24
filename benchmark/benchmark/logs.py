@@ -38,9 +38,11 @@ class LogParser:
                 results = p.map(self._parse_clients, clients)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse clients\' logs: {e}')
-        self.size, self.rate, self.start, misses, self.sent_samples \
+        self.size, self.rate, self.start, misses, self.sent_samples, reply_samples_list, reply_mismatches \
             = zip(*results)
         self.misses = sum(misses)
+        self.reply_samples = list(reply_samples_list)
+        self.reply_mismatches = sum(reply_mismatches)
 
         # Parse the primaries logs.
         try:
@@ -94,7 +96,7 @@ class LogParser:
                 v_sent_list = []
                 v_misses = 0
                 for log in logs:
-                    _, _, _, misses, samples = self._parse_clients(log)
+                    _, _, _, misses, samples, _, _ = self._parse_clients(log)
                     v_sent_list.append(samples)
                     v_misses += misses
                 self.sent_samples_by_validator[v] = v_sent_list
@@ -144,7 +146,18 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
         samples = {int(s): self._to_posix(t) for t, s in tmp}
 
-        return size, rate, start, misses, samples
+        tmp = findall(r'\[(.*Z) .* Received reply for tx (\d+) account (\d+)', log)
+        reply_samples = {}
+        for t, tx_str, acct_str in tmp:
+            tx_id = int(tx_str)
+            ts = self._to_posix(t)
+            if tx_id not in reply_samples:
+                reply_samples[tx_id] = []
+            reply_samples[tx_id].append(ts)
+
+        reply_mismatches = len(findall(r'Reply mismatch for tx', log))
+
+        return size, rate, start, misses, samples, reply_samples, reply_mismatches
 
     def _parse_primaries(self, log):
         if search(r'(?:panicked|Error)', log) is not None:
@@ -260,6 +273,22 @@ class LogParser:
                     latency += [end-start]
         return self._calculate_latency_metrics(latency)
 
+    def _e2e_committed_latency(self):
+        if not isinstance(self.faults, int):
+            return {'mean': 0, 'p95': 0}
+        threshold = self.faults + 1
+        latency = []
+        for sent, replies in zip(self.sent_samples, self.reply_samples):
+            for tx_id, timestamps in replies.items():
+                assert tx_id in sent  # We receive replies for txs that we sent.
+                if sent[tx_id] < self.effective_start:
+                    continue
+                if len(timestamps) < threshold:
+                    continue
+                end_time = sorted(timestamps)[threshold - 1]  # (f+1)-th earliest
+                latency.append(end_time - sent[tx_id])
+        return self._calculate_latency_metrics(latency)
+
     def _validator_load_distribution(self):
         result = {}
         for v, v_sizes in sorted(self.sizes_by_validator.items()):
@@ -324,6 +353,9 @@ class LogParser:
         committed_metrics = self._committed_latency()
         committed_latency = committed_metrics['mean'] * 1_000
         e2e_p95 = committed_metrics['p95'] * 1_000
+        e2e_reply_metrics = self._e2e_committed_latency()
+        e2e_reply_latency = e2e_reply_metrics['mean'] * 1_000
+        e2e_reply_p95 = e2e_reply_metrics['p95'] * 1_000
         
         warnings = []
         assert isinstance(self.bench_duration, float), 'Bench duration is not set'
@@ -375,7 +407,11 @@ class LogParser:
             f' Committed BPS: {round(committed_bps):,} B/s\n'
             f' Committed latency (mean): {round(committed_latency):,} ms\n'
             f' Committed latency (p95): {round(e2e_p95):,} ms\n'
+            f' E2E latency f+1 replies (mean): {round(e2e_reply_latency):,} ms\n'
+            f' E2E latency f+1 replies (p95): {round(e2e_reply_p95):,} ms\n'
         )
+        if self.reply_mismatches > 0:
+            output += f' Reply mismatches: {self.reply_mismatches:,}\n'
 
         if self.sizes_by_validator:
             tx_counts, percentages = self._validator_load_distribution()

@@ -10,7 +10,9 @@ use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
 use log::{info, warn};
 use rand::Rng;
+use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration, Instant};
@@ -92,10 +94,13 @@ async fn main() -> Result<()> {
     info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
 
     // Spawn reply listener if reply_port is set.
+    let seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>> =
+        Arc::new(Mutex::new(HashMap::new()));
     if let Some(port) = reply_port {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+        let seen = Arc::clone(&seen_replies);
         tokio::spawn(async move {
-            listen_for_replies(addr).await;
+            listen_for_replies(addr, seen).await;
         });
     }
 
@@ -284,7 +289,7 @@ impl Client {
 }
 
 /// Listen for commit replies from workers and log them.
-async fn listen_for_replies(addr: SocketAddr) {
+async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>>) {
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to bind reply listener");
@@ -294,10 +299,24 @@ async fn listen_for_replies(addr: SocketAddr) {
         match listener.accept().await {
             Ok((stream, peer)) => {
                 info!("Reply connection from {}", peer);
+                let seen = Arc::clone(&seen_replies);
                 tokio::spawn(async move {
                     let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
                     while let Some(Ok(frame)) = transport.next().await {
-                        if let Ok((counter, account_id, _digest)) = parse_reply(&frame) {
+                        if let Ok((counter, account_id, digest)) = parse_reply(&frame) {
+                            {
+                                let mut seen_map = seen.lock().unwrap();
+                                if let Some((prev_acct, prev_digest)) = seen_map.get(&counter) {
+                                    if *prev_acct != account_id || *prev_digest != digest {
+                                        warn!(
+                                            "Reply mismatch for tx {}: account {}/{}, digest {:?}/{:?}",
+                                            counter, prev_acct, account_id, prev_digest, digest
+                                        );
+                                    }
+                                } else {
+                                    seen_map.insert(counter, (account_id, digest));
+                                }
+                            }
                             // NOTE: This log entry is used to compute performance.
                             info!(
                                 "Received reply for tx {} account {}",
