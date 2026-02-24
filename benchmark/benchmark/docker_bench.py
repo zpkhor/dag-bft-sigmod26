@@ -212,8 +212,14 @@ networks:
 
             v = "-vvv" if debug else "-vv"
 
+            num_accounts = self.bench_parameters.num_accounts
+            total_clients = nodes * self.workers
+            accounts_base = num_accounts // total_clients if num_accounts > 0 else 0
+            accounts_remainder = num_accounts % total_clients if num_accounts > 0 else 0
+
             commands_per_validator = {}
             running_rate = 0
+            client_index = 0
             for i, addresses in enumerate(workers_addresses):
                 primary_cmd = (
                     f"./node {v} run --keys .node-{i}.json --committee .committee.json "
@@ -239,13 +245,20 @@ networks:
 
                     nodes_arg = " ".join(local_tx_addresses)
                     open_loop_flag = "--open-loop" if self.open_loop else ""
+                    if num_accounts > 0:
+                        acct_start = client_index * accounts_base + min(client_index, accounts_remainder)
+                        acct_count = accounts_base + (1 if client_index < accounts_remainder else 0)
+                        account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
+                    else:
+                        account_args = ""
                     c_cmd = (
                         f"./benchmark_client {address} --size {self.tx_size} "
-                        f"--rate {worker_rate} --nodes {nodes_arg} {open_loop_flag}"
+                        f"--rate {worker_rate} --nodes {nodes_arg} {open_loop_flag} {account_args}"
                     )
                     c_cmd += f" 2> /logs/client-{i}-{id}.log"
                     client_cmds.append(c_cmd)
                     running_rate += worker_rate
+                    client_index += 1
 
                 commands_per_validator[i] = {
                     "primary": primary_cmd,

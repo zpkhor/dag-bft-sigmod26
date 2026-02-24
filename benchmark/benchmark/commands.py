@@ -46,7 +46,7 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
-    def run_client(address, size, rate, nodes, open_loop=False):
+    def run_client(address, size, rate, nodes, open_loop=False, account_start=None, num_accounts=None):
         assert isinstance(address, str)
         assert isinstance(size, int) and size > 0
         assert isinstance(rate, int) and rate >= 0
@@ -55,7 +55,10 @@ class CommandMaker:
         assert isinstance(open_loop, bool)
         nodes = f'--nodes {" ".join(nodes)}' if nodes else ''
         open_loop_flag = '--open-loop' if open_loop else ''
-        return f'./benchmark_client {address} --size {size} --rate {rate} {nodes} {open_loop_flag}'
+        account_args = ''
+        if account_start is not None and num_accounts is not None:
+            account_args = f'--account-start {account_start} --num-accounts {num_accounts}'
+        return f'./benchmark_client {address} --size {size} --rate {rate} {nodes} {open_loop_flag} {account_args}'
 
     @staticmethod
     def kill():

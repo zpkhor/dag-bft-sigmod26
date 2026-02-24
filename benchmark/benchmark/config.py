@@ -258,6 +258,7 @@ class BenchParameters:
                     )
             self.warmup = int(json.get('warmup', 0))
             self.open_loop = bool(json.get('open_loop', False))
+            self.num_accounts = int(json.get('num_accounts', 0))
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

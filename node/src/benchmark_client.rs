@@ -25,6 +25,8 @@ async fn main() -> Result<()> {
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .args_from_usage("--open-loop 'Use open-loop mode (no TCP backpressure)'")
+        .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
+        .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (0 = disabled)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -55,6 +57,16 @@ async fn main() -> Result<()> {
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
     let open_loop = matches.is_present("open-loop");
+    let account_start = matches
+        .value_of("account-start")
+        .unwrap_or("0")
+        .parse::<u64>()
+        .context("account-start must be a non-negative integer")?;
+    let num_accounts = matches
+        .value_of("num-accounts")
+        .unwrap_or("0")
+        .parse::<u64>()
+        .context("num-accounts must be a non-negative integer")?;
 
     info!("Node address: {}", target);
 
@@ -72,6 +84,8 @@ async fn main() -> Result<()> {
         rate,
         nodes,
         open_loop,
+        account_start,
+        num_accounts,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -87,15 +101,16 @@ struct Client {
     rate: u64,
     nodes: Vec<SocketAddr>,
     open_loop: bool,
+    account_start: u64,
+    num_accounts: u64,
 }
 
 impl Client {
     pub async fn send(&self) -> Result<()> {
 
-        // The transaction size must be at least 16 bytes to ensure all txs are different.
-        if self.size < 9 {
+        if self.size < 17 {
             return Err(anyhow::Error::msg(
-                "Transaction size must be at least 9 bytes",
+                "Transaction size must be at least 17 bytes",
             ));
         }
 
@@ -146,9 +161,14 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
+                let account_id = if self.num_accounts > 0 {
+                    self.account_start + (counter % self.num_accounts) // TODO: use random account_id
+                } else {
+                    0
+                };
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {}", counter);
+                    info!("Sending sample transaction {} account {}", counter, account_id);
 
                     tx.put_u8(0u8); // Sample txs start with 0.
                     tx.put_u64(counter); // This counter identifies the tx.
@@ -157,6 +177,7 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
+                tx.put_u64(account_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
@@ -192,8 +213,13 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
+                let account_id = if self.num_accounts > 0 {
+                    self.account_start + (counter % self.num_accounts)
+                } else {
+                    0
+                };
                 if x == counter % burst {
-                    info!("Sending sample transaction {}", counter);
+                    info!("Sending sample transaction {} account {}", counter, account_id);
 
                     tx.put_u8(0u8);
                     tx.put_u64(counter);
@@ -202,6 +228,7 @@ impl Client {
                     tx.put_u8(1u8);
                     tx.put_u64(r);
                 };
+                tx.put_u64(account_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
