@@ -79,8 +79,8 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator):
-        """Generate docker-compose.yml programmatically. Don't move the spacing around the f-strings, it will change the indentation of the generated YAML and break it."""
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator):
+        """Generate docker-compose.yml programmatically."""
         services = []
         for i in range(nodes):
             ip = self._container_ip(i)
@@ -135,6 +135,9 @@ class DockerBench:
             client_cmd = ";".join(cmds["clients"])
             service += f"""
       - CLIENT_CMD={client_cmd}"""
+
+            service += f"""
+      - WAIT_PORTS={wait_ports_per_validator[i]}"""
 
             services.append(service)
 # end of for loop
@@ -275,12 +278,19 @@ networks:
                 workers_addresses
             ), f"Running rate {running_rate} deviates too much from target rate {rate}"
 
+            # Compute remote wait ports for each validator.
+            wait_ports_per_validator = {}
+            for i, name in enumerate(names):
+                wait_ports_per_validator[i] = " ".join(
+                    committee.remote_addresses(name)
+                )
+
             # Build Docker image.
             Print.info("Building Docker image...")
             self._build_image()
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator)
 
             # Start containers.
             Print.info("Starting containers...")

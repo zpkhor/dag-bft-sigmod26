@@ -194,6 +194,24 @@ class DockerCommittee(Committee):
                 addr = worker['transactions']
                 worker['transactions'] = f'127.0.0.1:{addr.split(":")[1]}'
 
+    def remote_addresses(self, name):
+        ''' Returns host:port pairs for all listening ports of other validators
+            (excludes 127.0.0.1 addresses and the given validator). '''
+        addrs = []
+        for auth_name, auth in self.json['authorities'].items():
+            if auth_name == name:
+                continue
+            for addr in [auth['primary']['primary_to_primary'],
+                         auth['primary']['worker_to_primary']]:
+                if not addr.startswith('127.0.0.1:'):
+                    addrs.append(addr)
+            for worker in auth['workers'].values():
+                for key in ['primary_to_worker', 'worker_to_worker']:
+                    addr = worker[key]
+                    if not addr.startswith('127.0.0.1:'):
+                        addrs.append(addr)
+        return addrs
+
 
 class NodeParameters:
     def __init__(self, json):
