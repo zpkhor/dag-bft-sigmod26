@@ -76,8 +76,9 @@ class Committee:
                     'primary_to_worker': f'{host}:{port}',
                     'transactions': f'{host}:{port + 1}',
                     'worker_to_worker': f'{host}:{port + 2}',
+                    'client_reply': f'{host}:{port + 3}',
                 }
-                port += 3
+                port += 4
 
             self.json['authorities'][name] = {
                 'stake': 1,
@@ -123,6 +124,7 @@ class Committee:
                 ips.add(self.ip(worker['primary_to_worker']))
                 ips.add(self.ip(worker['worker_to_worker']))
                 ips.add(self.ip(worker['transactions']))
+                ips.add(self.ip(worker['client_reply']))
 
         return list(ips)
 

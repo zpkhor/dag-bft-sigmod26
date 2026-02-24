@@ -61,7 +61,10 @@ pub struct HeaderWaiter {
     batch_requests: HashMap<Digest, Round>,
     /// List of digests (either certificates, headers or tx batch) that are waiting
     /// to be processed. Their processing will resume when we get all their dependencies.
-    pending: HashMap<Digest, (Round, Sender<()>)>,
+    /// The bool flag indicates if this is a batch sync (true) or parent sync (false).
+    /// Batch syncs should not be cancelled on GC because validators can commit certificates
+    /// they never voted for.
+    pending: HashMap<Digest, (Round, Sender<()>, bool)>,
 }
 
 impl HeaderWaiter {
@@ -149,7 +152,7 @@ impl HeaderWaiter {
                                 })
                                 .collect();
                             let (tx_cancel, rx_cancel) = channel(1);
-                            self.pending.insert(header_id, (round, tx_cancel));
+                            self.pending.insert(header_id, (round, tx_cancel, true)); // true = batch sync
                             let fut = Self::waiter(wait_for, header, rx_cancel);
                             waiting.push(fut);
 
@@ -192,7 +195,7 @@ impl HeaderWaiter {
                                 .map(|x| (x.to_vec(), self.store.clone()))
                                 .collect();
                             let (tx_cancel, rx_cancel) = channel(1);
-                            self.pending.insert(header_id, (round, tx_cancel));
+                            self.pending.insert(header_id, (round, tx_cancel, false)); // false = parent sync
                             let fut = Self::waiter(wait_for, header, rx_cancel);
                             waiting.push(fut);
 
@@ -279,13 +282,18 @@ impl HeaderWaiter {
             if round > self.gc_depth {
                 let mut gc_round = round - self.gc_depth;
 
-                for (r, handler) in self.pending.values() {
-                    if r <= &gc_round {
+                // Cancel only parent syncs on GC, NOT batch syncs.
+                // A validator can commit a certificate it never voted for (certified by others).
+                // If we cancel batch syncs on GC, workers will wait forever for batches that
+                // were never synced. Batch syncs must complete even if the header is GC'd.
+                for (r, handler, is_batch_sync) in self.pending.values() {
+                    if r <= &gc_round && !is_batch_sync {
                         let _ = handler.send(()).await;
                     }
                 }
-                self.pending.retain(|_, (r, _)| r > &mut gc_round);
-                self.batch_requests.retain(|_, r| r > &mut gc_round);
+                self.pending.retain(|_, (r, _, is_batch_sync)| {
+                    r > &mut gc_round || *is_batch_sync
+                });
                 self.parent_requests.retain(|_, (r, _)| r > &mut gc_round);
             }
         }

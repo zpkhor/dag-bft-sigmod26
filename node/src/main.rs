@@ -1,12 +1,16 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use anyhow::{Context, Result};
+use bytes::Bytes;
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use config::Export as _;
 use config::Import as _;
 use config::{Committee, KeyPair, Parameters, WorkerId};
 use consensus::Consensus;
+use crypto::PublicKey;
 use env_logger::Env;
-use primary::{Certificate, Primary};
+use network::SimpleSender;
+use primary::{Certificate, Primary, PrimaryWorkerMessage};
+use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
 use worker::Worker;
@@ -74,6 +78,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
 
     // Read the committee and node's keypair from file.
     let keypair = KeyPair::import(key_file).context("Failed to load the node's keypair")?;
+    let name = keypair.name;
     let committee =
         Committee::import(committee_file).context("Failed to load the committee information")?;
 
@@ -105,6 +110,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 /* tx_consensus */ tx_new_certificates,
                 /* rx_consensus */ rx_feedback,
             );
+            let analyze_committee = committee.clone();
             Consensus::spawn(
                 committee,
                 parameters.gc_depth,
@@ -112,6 +118,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 /* tx_primary */ tx_feedback,
                 tx_output,
             );
+            analyze(rx_output, analyze_committee, name).await;
         }
 
         // Spawn a single worker.
@@ -121,21 +128,48 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .unwrap()
                 .parse::<WorkerId>()
                 .context("The worker id must be a positive integer")?;
-            Worker::spawn(keypair.name, id, committee, parameters, store);
+            Worker::spawn(name, id, committee, parameters, store);
         }
         _ => unreachable!(),
     }
 
-    // Analyze the consensus' output.
-    analyze(rx_output).await;
-
-    // If this expression is reached, the program ends and all other tasks terminate.
+    // For workers, keep the process alive (primary path awaits analyze() forever).
+    std::future::pending::<()>().await;
     unreachable!();
 }
 
-/// Receives an ordered list of certificates and apply any application-specific logic.
-async fn analyze(mut rx_output: Receiver<Certificate>) {
-    while let Some(_certificate) = rx_output.recv().await {
-        // NOTE: Here goes the application logic.
+/// Receives an ordered list of certificates and dispatches committed batch digests to our workers.
+async fn analyze(mut rx_output: Receiver<Certificate>, committee: Committee, name: PublicKey) {
+    let mut network = SimpleSender::new();
+
+    // Build a map from worker_id -> our worker's primary_to_worker address.
+    let our_workers: HashMap<WorkerId, _> = committee
+        .authorities
+        .get(&name)
+        .expect("Our key is not in the committee")
+        .workers
+        .iter()
+        .map(|(id, addr)| (*id, addr.primary_to_worker))
+        .collect();
+
+    while let Some(certificate) = rx_output.recv().await {
+        // Group committed batch digests by worker_id.
+        let mut per_worker: HashMap<WorkerId, Vec<_>> = HashMap::new();
+        for (digest, worker_id) in &certificate.header.payload {
+            per_worker
+                .entry(*worker_id)
+                .or_default()
+                .push(digest.clone());
+        }
+
+        // Send CommittedBatches to each of our workers.
+        for (worker_id, digests) in per_worker {
+            if let Some(&address) = our_workers.get(&worker_id) {
+                let message = PrimaryWorkerMessage::CommittedBatches(digests);
+                let bytes = bincode::serialize(&message)
+                    .expect("Failed to serialize CommittedBatches");
+                network.send(address, Bytes::from(bytes)).await;
+            }
+        }
     }
 }

@@ -125,6 +125,8 @@ pub struct WorkerAddresses {
     pub worker_to_worker: SocketAddr,
     /// Address to receive messages from our primary (LAN).
     pub primary_to_worker: SocketAddr,
+    /// Address to send commit replies to the client (LAN).
+    pub client_reply: SocketAddr,
 }
 
 #[derive(Clone, Deserialize)]

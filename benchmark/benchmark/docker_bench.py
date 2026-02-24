@@ -251,9 +251,14 @@ networks:
                         account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
                     else:
                         account_args = ""
+                    client_id_val = i * num_workers + int(id)
+                    # Extract reply port from committee config
+                    worker_info = committee.json['authorities'][names[i]]['workers'][int(id)]
+                    reply_port = worker_info['client_reply'].split(':')[1]
+                    reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
                     c_cmd = (
                         f"./benchmark_client {address} --size {self.tx_size} "
-                        f"--rate {worker_rate} --nodes {nodes_arg} {open_loop_flag} {account_args}"
+                        f"--rate {worker_rate} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args}"
                     )
                     c_cmd += f" 2> /logs/client-{i}-{id}.log"
                     client_cmds.append(c_cmd)

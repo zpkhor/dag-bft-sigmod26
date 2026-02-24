@@ -5,10 +5,12 @@ use config::{Committee, WorkerId};
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error};
+use log::{debug, error, warn};
 use network::SimpleSender;
 use primary::PrimaryWorkerMessage;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::convert::TryInto;
 use std::time::{SystemTime, UNIX_EPOCH};
 use store::{Store, StoreError};
 use tokio::sync::mpsc::{channel, Receiver, Sender};
@@ -20,6 +22,15 @@ pub mod synchronizer_tests;
 
 /// Resolution of the timer managing retrials of sync requests (in ms).
 const TIMER_RESOLUTION: u64 = 1_000;
+
+/// Reply sent from worker to client when a batch is committed.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitReply {
+    pub counter: u64,
+    pub account_id: u64,
+    pub client_id: u64,
+    pub digest: Digest,
+}
 
 // The `Synchronizer` is responsible to keep the worker in sync with the others.
 pub struct Synchronizer {
@@ -97,6 +108,69 @@ impl Synchronizer {
         }
     }
 
+    /// Handle committed batches: wait for each batch to be available, extract sample txs, send replies to clients.
+    async fn handle_committed_batches(&mut self, digests: Vec<Digest>) {
+        let ordered_keys: Vec<PublicKey> = self.committee.authorities.keys().cloned().collect();
+        let num_workers = self
+            .committee
+            .authorities
+            .values()
+            .next()
+            .map(|a| a.workers.len() as u64)
+            .unwrap_or(1);
+
+        for digest in digests {
+            let mut store = self.store.clone();
+            let committee = self.committee.clone();
+            let ordered_keys = ordered_keys.clone();
+
+            tokio::spawn(async move {
+                let batch_data = store
+                    .notify_read(digest.to_vec())
+                    .await
+                    .expect("Failed to read committed batch from store");
+
+                let txs = match bincode::deserialize::<WorkerMessage>(&batch_data) {
+                    Ok(WorkerMessage::Batch(txs)) => txs,
+                    Ok(_) => return,
+                    Err(e) => {
+                        panic!("Failed to deserialize committed batch {}: {}", digest, e);
+                    }
+                };
+
+                let mut network = SimpleSender::new();
+                for tx in &txs {
+                    if tx.len() > 24 && tx[0] == 0u8 {
+                        let counter = u64::from_be_bytes(tx[1..9].try_into().unwrap());
+                        let account_id = u64::from_be_bytes(tx[9..17].try_into().unwrap());
+                        let client_id = u64::from_be_bytes(tx[17..25].try_into().unwrap());
+
+                        let validator_index = client_id / num_workers;
+                        let worker_index = client_id % num_workers;
+
+                        if let Some(pubkey) = ordered_keys.get(validator_index as usize) {
+                            if let Ok(worker_addr) =
+                                committee.worker(pubkey, &(worker_index as u32))
+                            {
+                                let reply = CommitReply {
+                                    counter,
+                                    account_id,
+                                    client_id,
+                                    digest: digest.clone(),
+                                };
+                                let bytes = bincode::serialize(&reply)
+                                    .expect("Failed to serialize commit reply");
+                                network
+                                    .send(worker_addr.client_reply, Bytes::from(bytes))
+                                    .await;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
     /// Main loop listening to the primary's messages.
     async fn run(&mut self) {
         let mut waiting = FuturesUnordered::new();
@@ -156,6 +230,9 @@ impl Synchronizer {
                         let message = WorkerMessage::BatchRequest(missing, self.name);
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
                         self.network.send(address, Bytes::from(serialized)).await;
+                    },
+                    PrimaryWorkerMessage::CommittedBatches(digests) => {
+                        self.handle_committed_batches(digests).await;
                     },
                     PrimaryWorkerMessage::Cleanup(round) => {
                         // Keep track of the primary's round number.

@@ -44,6 +44,8 @@ pub enum PrimaryWorkerMessage {
     Synchronize(Vec<Digest>, /* target */ PublicKey),
     /// The primary indicates a round update.
     Cleanup(Round),
+    /// The primary indicates that these batches have been committed by consensus.
+    CommittedBatches(Vec<Digest>),
 }
 
 /// The messages sent by the workers to their primary.

@@ -7,10 +7,11 @@ use env_logger::Env;
 use futures::future::join_all;
 use bytes::Bytes;
 use futures::sink::SinkExt as _;
+use futures::stream::StreamExt as _;
 use log::{info, warn};
 use rand::Rng;
 use std::net::SocketAddr;
-use tokio::net::TcpStream;
+use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -27,6 +28,8 @@ async fn main() -> Result<()> {
         .args_from_usage("--open-loop 'Use open-loop mode (no TCP backpressure)'")
         .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
         .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (0 = disabled)'")
+        .args_from_usage("--client-id=[INT] 'Unique client identifier (validator_index * num_workers + worker_index)'")
+        .args_from_usage("--reply-port=[INT] 'Port to listen for commit replies'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -67,6 +70,16 @@ async fn main() -> Result<()> {
         .unwrap_or("0")
         .parse::<u64>()
         .context("num-accounts must be a non-negative integer")?;
+    let client_id = matches
+        .value_of("client-id")
+        .unwrap_or("0")
+        .parse::<u64>()
+        .context("client-id must be a non-negative integer")?;
+    let reply_port = matches
+        .value_of("reply-port")
+        .map(|v| v.parse::<u16>())
+        .transpose()
+        .context("reply-port must be a valid port number")?;
 
     info!("Node address: {}", target);
 
@@ -78,6 +91,14 @@ async fn main() -> Result<()> {
 
     info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
 
+    // Spawn reply listener if reply_port is set.
+    if let Some(port) = reply_port {
+        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
+        tokio::spawn(async move {
+            listen_for_replies(addr).await;
+        });
+    }
+
     let client = Client {
         target,
         size,
@@ -86,6 +107,7 @@ async fn main() -> Result<()> {
         open_loop,
         account_start,
         num_accounts,
+        client_id,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -103,14 +125,15 @@ struct Client {
     open_loop: bool,
     account_start: u64,
     num_accounts: u64,
+    client_id: u64,
 }
 
 impl Client {
     pub async fn send(&self) -> Result<()> {
 
-        if self.size < 17 {
+        if self.size < 25 {
             return Err(anyhow::Error::msg(
-                "Transaction size must be at least 17 bytes",
+                "Transaction size must be at least 25 bytes",
             ));
         }
 
@@ -178,6 +201,7 @@ impl Client {
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
                 tx.put_u64(account_id);
+                tx.put_u64(self.client_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
@@ -229,6 +253,7 @@ impl Client {
                     tx.put_u64(r);
                 };
                 tx.put_u64(account_id);
+                tx.put_u64(self.client_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
@@ -256,4 +281,50 @@ impl Client {
         }))
         .await;
     }
+}
+
+/// Listen for commit replies from workers and log them.
+async fn listen_for_replies(addr: SocketAddr) {
+    let listener = TcpListener::bind(addr)
+        .await
+        .expect("Failed to bind reply listener");
+    info!("Listening for commit replies on {}", addr);
+
+    loop {
+        match listener.accept().await {
+            Ok((stream, peer)) => {
+                info!("Reply connection from {}", peer);
+                tokio::spawn(async move {
+                    let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
+                    while let Some(Ok(frame)) = transport.next().await {
+                        if let Ok((counter, account_id, _digest)) = parse_reply(&frame) {
+                            // NOTE: This log entry is used to compute performance.
+                            info!(
+                                "Received reply for tx {} account {}",
+                                counter, account_id,
+                            );
+                        }
+                    }
+                });
+            }
+            Err(e) => {
+                warn!("Failed to accept reply connection: {}", e);
+            }
+        }
+    }
+}
+
+fn parse_reply(data: &[u8]) -> Result<(u64, u64, Vec<u8>)> {
+    // Deserialize CommitReply using bincode (matches worker's serialization).
+    #[derive(serde::Deserialize)]
+    struct CommitReply {
+        counter: u64,
+        account_id: u64,
+        #[allow(dead_code)]
+        client_id: u64,
+        digest: crypto::Digest,
+    }
+    let reply: CommitReply =
+        bincode::deserialize(data).context("Failed to deserialize commit reply")?;
+    Ok((reply.counter, reply.account_id, reply.digest.to_vec()))
 }

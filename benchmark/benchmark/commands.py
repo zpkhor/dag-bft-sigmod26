@@ -46,7 +46,7 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
-    def run_client(address, size, rate, nodes, open_loop=False, account_start=None, num_accounts=None):
+    def run_client(address, size, rate, nodes, open_loop=False, account_start=None, num_accounts=None, client_id=None, reply_port=None):
         assert isinstance(address, str)
         assert isinstance(size, int) and size > 0
         assert isinstance(rate, int) and rate >= 0
@@ -58,7 +58,10 @@ class CommandMaker:
         account_args = ''
         if account_start is not None and num_accounts is not None:
             account_args = f'--account-start {account_start} --num-accounts {num_accounts}'
-        return f'./benchmark_client {address} --size {size} --rate {rate} {nodes} {open_loop_flag} {account_args}'
+        reply_args = ''
+        if client_id is not None and reply_port is not None:
+            reply_args = f'--client-id {client_id} --reply-port {reply_port}'
+        return f'./benchmark_client {address} --size {size} --rate {rate} {nodes} {open_loop_flag} {account_args} {reply_args}'
 
     @staticmethod
     def kill():
