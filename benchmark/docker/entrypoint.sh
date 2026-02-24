@@ -67,6 +67,21 @@ for cmd in "${WORKER_CMDS[@]}"; do
     PIDS+=($!)
 done
 
+# Wait for remote ports before starting clients
+if [ -n "$WAIT_PORTS" ]; then
+    sleep 1
+    for addr in $WAIT_PORTS; do
+        host="${addr%%:*}"
+        port="${addr##*:}"
+        echo "Waiting for $host:$port..."
+        for i in $(seq 1 60); do
+            (echo > /dev/tcp/$host/$port) 2>/dev/null && break
+            sleep 0.5
+        done
+    done
+    echo "All remote ports reachable."
+fi
+
 # Start clients
 IFS=';' read -ra CLIENT_CMDS <<< "$CLIENT_CMD"
 for cmd in "${CLIENT_CMDS[@]}"; do
