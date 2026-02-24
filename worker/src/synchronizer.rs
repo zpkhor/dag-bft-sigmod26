@@ -5,7 +5,7 @@ use config::{Committee, WorkerId};
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error, warn};
+use log::{debug, error};
 use network::SimpleSender;
 use primary::PrimaryWorkerMessage;
 use serde::{Deserialize, Serialize};
@@ -120,54 +120,46 @@ impl Synchronizer {
             .unwrap_or(1);
 
         for digest in digests {
-            let mut store = self.store.clone();
-            let committee = self.committee.clone();
-            let ordered_keys = ordered_keys.clone();
+            let batch_data = self.store
+                .notify_read(digest.to_vec())
+                .await
+                .expect("Failed to read committed batch from store");
 
-            tokio::spawn(async move {
-                let batch_data = store
-                    .notify_read(digest.to_vec())
-                    .await
-                    .expect("Failed to read committed batch from store");
+            let txs = match bincode::deserialize::<WorkerMessage>(&batch_data) {
+                Ok(WorkerMessage::Batch(txs)) => txs,
+                _ => {
+                    panic!("Failed to read committed batch {}", digest);
+                }
+            };
 
-                let txs = match bincode::deserialize::<WorkerMessage>(&batch_data) {
-                    Ok(WorkerMessage::Batch(txs)) => txs,
-                    Ok(_) => return,
-                    Err(e) => {
-                        panic!("Failed to deserialize committed batch {}: {}", digest, e);
-                    }
-                };
+            for tx in &txs {
+                if tx.len() > 24 && tx[0] == 0u8 {
+                    let counter = u64::from_be_bytes(tx[1..9].try_into().unwrap());
+                    let account_id = u64::from_be_bytes(tx[9..17].try_into().unwrap());
+                    let client_id = u64::from_be_bytes(tx[17..25].try_into().unwrap());
 
-                let mut network = SimpleSender::new();
-                for tx in &txs {
-                    if tx.len() > 24 && tx[0] == 0u8 {
-                        let counter = u64::from_be_bytes(tx[1..9].try_into().unwrap());
-                        let account_id = u64::from_be_bytes(tx[9..17].try_into().unwrap());
-                        let client_id = u64::from_be_bytes(tx[17..25].try_into().unwrap());
+                    let validator_index = client_id / num_workers;
+                    let worker_index = client_id % num_workers;
 
-                        let validator_index = client_id / num_workers;
-                        let worker_index = client_id % num_workers;
-
-                        if let Some(pubkey) = ordered_keys.get(validator_index as usize) {
-                            if let Ok(worker_addr) =
-                                committee.worker(pubkey, &(worker_index as u32))
-                            {
-                                let reply = CommitReply {
-                                    counter,
-                                    account_id,
-                                    client_id,
-                                    digest: digest.clone(),
-                                };
-                                let bytes = bincode::serialize(&reply)
-                                    .expect("Failed to serialize commit reply");
-                                network
-                                    .send(worker_addr.client_reply, Bytes::from(bytes))
-                                    .await;
-                            }
+                    if let Some(pubkey) = ordered_keys.get(validator_index as usize) {
+                        if let Ok(worker_addr) =
+                            self.committee.worker(pubkey, &(worker_index as u32))
+                        {
+                            let reply = CommitReply {
+                                counter,
+                                account_id,
+                                client_id,
+                                digest: digest.clone(),
+                            };
+                            let bytes = bincode::serialize(&reply)
+                                .expect("Failed to serialize commit reply");
+                            self.network
+                                .send(worker_addr.client_reply, Bytes::from(bytes))
+                                .await;
                         }
                     }
                 }
-            });
+            }
         }
     }
 
