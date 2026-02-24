@@ -237,7 +237,7 @@ class LogParser:
         latency = [c - self.proposals[d] for d, c in self.commits.items()]
         return self._calculate_latency_metrics(latency)
 
-    def _end_to_end_throughput(self):
+    def _committed_throughput(self):
         if not self.commits:
             return 0, 0, 0
         start, end = self.effective_start, max(self.commits.values())
@@ -247,7 +247,7 @@ class LogParser:
         tps = bps / self.size[0]
         return tps, bps, duration
 
-    def _end_to_end_latency(self):
+    def _committed_latency(self):
         latency = []
         for sent, received in zip(self.sent_samples, self.received_samples):
             for tx_id, batch_id in received.items():
@@ -275,7 +275,7 @@ class LogParser:
         }
         return result, percentages
 
-    def _per_validator_end_to_end_tps(self):
+    def _per_validator_committed_tps(self):
         if not self.commits:
             return {}
         start, end = self.effective_start, max(self.commits.values())
@@ -290,7 +290,7 @@ class LogParser:
             result[v] = (committed_bytes / duration) / self.size[0]
         return result
 
-    def _per_validator_end_to_end_latency(self):
+    def _per_validator_committed_latency(self):
         result = {}
         for v in sorted(self.sizes_by_validator.keys()):
             v_received_list = self.received_samples_by_validator.get(v, [])
@@ -320,19 +320,19 @@ class LogParser:
         consensus_latency = consensus_metrics['mean'] * 1_000
         consensus_p95 = consensus_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
-        end_to_end_tps, end_to_end_bps, e2e_duration = self._end_to_end_throughput()
-        e2e_metrics = self._end_to_end_latency()
-        end_to_end_latency = e2e_metrics['mean'] * 1_000
-        e2e_p95 = e2e_metrics['p95'] * 1_000
+        committed_tps, committed_bps, commit_duration = self._committed_throughput()
+        committed_metrics = self._committed_latency()
+        committed_latency = committed_metrics['mean'] * 1_000
+        e2e_p95 = committed_metrics['p95'] * 1_000
         
         warnings = []
         assert isinstance(self.bench_duration, float), 'Bench duration is not set'
         effective_bench_duration = self.bench_duration - self.warmup
         if (consensus_duration / effective_bench_duration) < 0.9:
             warnings.append('Consensus stalled the system')
-        if (e2e_duration / effective_bench_duration) < 0.9:
-            warnings.append('End-to-end stalled the system')
-        assert consensus_latency <= end_to_end_latency, f"Consensus latency {consensus_latency} ms should be less than or equal to committed latency {end_to_end_latency} ms"
+        if (commit_duration / effective_bench_duration) < 0.9:
+            warnings.append('Commit stalled the system')
+        assert consensus_latency <= committed_latency, f"Consensus latency {consensus_latency} ms should be less than or equal to committed latency {committed_latency} ms"
 
         warnings_str = ''
         if warnings:
@@ -355,7 +355,7 @@ class LogParser:
             f' Transaction size: {self.size[0]:,} B\n'
             f' Benchmark duration: {self.bench_duration:,} s\n'
             f' Consensus duration: {round(consensus_duration, 2):,} s\n'
-            f' End-to-end duration: {round(e2e_duration, 2):,} s\n'
+            f' Commit duration: {round(commit_duration, 2):,} s\n'
             '\n'
             f' Header size: {header_size:,} B\n'
             f' Max header delay: {max_header_delay:,} ms\n'
@@ -371,16 +371,16 @@ class LogParser:
             f' Consensus latency (mean): {round(consensus_latency):,} ms\n'
             f' Consensus latency (p95): {round(consensus_p95):,} ms\n'
             '\n'
-            f' End-to-end TPS: {round(end_to_end_tps):,} tx/s\n'
-            f' End-to-end BPS: {round(end_to_end_bps):,} B/s\n'
-            f' End-to-end latency (mean): {round(end_to_end_latency):,} ms\n'
-            f' End-to-end latency (p95): {round(e2e_p95):,} ms\n'
+            f' Committed TPS: {round(committed_tps):,} tx/s\n'
+            f' Committed BPS: {round(committed_bps):,} B/s\n'
+            f' Committed latency (mean): {round(committed_latency):,} ms\n'
+            f' Committed latency (p95): {round(e2e_p95):,} ms\n'
         )
 
         if self.sizes_by_validator:
             tx_counts, percentages = self._validator_load_distribution()
-            per_v_tps = self._per_validator_end_to_end_tps()
-            per_v_latency = self._per_validator_end_to_end_latency()
+            per_v_tps = self._per_validator_committed_tps()
+            per_v_latency = self._per_validator_committed_latency()
 
             output += (
                 '\n'
@@ -394,7 +394,7 @@ class LogParser:
 
             output += (
                 '\n'
-                ' + PER-VALIDATOR END-TO-END METRICS:\n'
+                ' + PER-VALIDATOR COMMIT METRICS:\n'
                 ' Validator    TPS (tx/s)    Latency (ms)    Misses\n'
             )
             for v in sorted(per_v_tps.keys()):
@@ -417,7 +417,7 @@ class LogParser:
 
             output += (
                 '\n'
-                ' + PER-VALIDATOR END-TO-END TAIL LATENCY (p95):\n'
+                ' + PER-VALIDATOR COMMIT TAIL LATENCY (p95):\n'
             )
             for v in sorted(per_v_latency.keys()):
                 lat_metrics = per_v_latency.get(v)
