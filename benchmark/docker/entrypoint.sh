@@ -4,7 +4,8 @@ set -e
 # Apply tc egress shaping on eth0 if bandwidth is specified
 if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     tc qdisc add dev eth0 root handle 1: htb default 10
-    tc class add dev eth0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
+    tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
+    tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
 
     if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
         JITTER_ARG=""
@@ -19,8 +20,8 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
 
     # Exempt replies to own client from latency (own client is colocated)
     if [ -n "$OWN_CLIENT_IP" ] && [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
-        tc class add dev eth0 parent 1: classid 1:20 htb rate $TC_BANDWIDTH
-        tc filter add dev eth0 parent 1: protocol ip u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:20
+        tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+        tc filter add dev eth0 parent 1:0 protocol ip u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:20
         echo "tc: exempt own client $OWN_CLIENT_IP from latency"
     fi
 fi
