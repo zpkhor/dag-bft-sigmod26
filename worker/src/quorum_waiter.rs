@@ -1,10 +1,18 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::processor::SerializedBatchMessage;
 use config::{Committee, Stake};
+#[cfg(feature = "benchmark")]
+use crypto::Digest;
 use crypto::PublicKey;
+#[cfg(feature = "benchmark")]
+use ed25519_dalek::{Digest as _, Sha512};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
+#[cfg(feature = "benchmark")]
+use log::info;
 use network::CancelHandler;
+#[cfg(feature = "benchmark")]
+use std::convert::TryInto as _;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[cfg(test)]
@@ -75,6 +83,13 @@ impl QuorumWaiter {
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
+                    #[cfg(feature = "benchmark")]
+                    {
+                        let digest = Digest(
+                            Sha512::digest(&batch).as_ref()[..32].try_into().unwrap(),
+                        );
+                        info!("Quorum for batch {:?}", digest);
+                    }
                     self.tx_batch
                         .send(batch)
                         .await

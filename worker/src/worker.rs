@@ -15,6 +15,8 @@ use network::{MessageHandler, Receiver, Writer};
 use primary::PrimaryWorkerMessage;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
+#[cfg(feature = "benchmark")]
+use std::convert::TryInto as _;
 use store::Store;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -249,6 +251,21 @@ struct TxReceiverHandler {
 impl MessageHandler for TxReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
         // Send the transaction to the batch maker.
+        #[cfg(feature = "benchmark")]
+        {
+            if message.len() > 24 && message[0] == 0u8 {
+                if let (Ok(id), Ok(account), Ok(client_id)) = (
+                    message[1..9].try_into().map(u64::from_be_bytes),
+                    message[9..17].try_into().map(u64::from_be_bytes),
+                    message[17..25].try_into().map(u64::from_be_bytes),
+                ) {
+                    info!(
+                        "Worker received sample tx {} account {} client {}",
+                        id, account, client_id
+                    );
+                }
+            }
+        }
         self.tx_batch_maker
             .send(message.to_vec())
             .await

@@ -68,10 +68,18 @@ class LogParser:
                 results = p.map(self._parse_workers, workers)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse workers\' logs: {e}')
-        sizes, self.received_samples, workers_ips = zip(*results)
+        sizes, self.received_samples, workers_ips, \
+            arrival_times_list, seal_times_list, quorum_times_list, processed_times_list \
+            = zip(*results)
         self.sizes = {
             k: v for x in sizes for k, v in x.items() if k in self.commits
         }
+
+        # Merge stage timing dicts across all workers.
+        self.arrival_times = {k: v for d in arrival_times_list for k, v in d.items()}
+        self.seal_times = {k: v for d in seal_times_list for k, v in d.items()}
+        self.quorum_times = {k: v for d in quorum_times_list for k, v in d.items()}
+        self.processed_times = {k: v for d in processed_times_list for k, v in d.items()}
 
         # Determine whether the primary and the workers are collocated.
         self.collocate = set(primary_ips) == set(workers_ips)
@@ -86,7 +94,7 @@ class LogParser:
                 v_sizes = {}
                 v_received_list = []
                 for log in logs:
-                    s, r, _ = self._parse_workers(log)
+                    s, r, _, _, _, _, _ = self._parse_workers(log)
                     v_sizes.update(s)
                     v_received_list.append(r)
                 self.sizes_by_validator[v] = v_sizes
@@ -208,7 +216,23 @@ class LogParser:
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
 
-        return sizes, samples, ip
+        # Stage 1: Worker arrival timestamps for sample txs
+        tmp = findall(r'\[(.*Z) .* Worker received sample tx (\d+) account (\d+) client (\d+)', log)
+        arrival_times = {(int(c), int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
+
+        # Stage 2: Batch seal timestamps (from "Batch X contains Y B" log)
+        tmp = findall(r'\[(.*Z) .* Batch ([^ ]+) contains \d+ B', log)
+        seal_times = {d: self._to_posix(t) for t, d in tmp}
+
+        # Stage 3: Quorum achieved timestamps
+        tmp = findall(r'\[(.*Z) .* Quorum for batch (\S+)', log)
+        quorum_times = {d: self._to_posix(t) for t, d in tmp}
+
+        # Stage 4: Processed batch timestamps
+        tmp = findall(r'\[(.*Z) .* Processed batch (\S+)', log)
+        processed_times = {d: self._to_posix(t) for t, d in tmp}
+
+        return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times
 
     def _to_posix(self, string):
         x = datetime.fromisoformat(string.replace('Z', '+00:00'))
@@ -353,6 +377,75 @@ class LogParser:
                 result[v] = self._calculate_latency_metrics(latencies)
         return result
 
+    def _per_stage_latency_breakdown(self):
+        global_sent = {}
+        for sent in self.sent_samples:
+            global_sent.update(sent)
+
+        global_received = {}
+        for received in self.received_samples:
+            global_received.update(received)
+
+        stages = {
+            'Client -> Worker': [],
+            'Worker -> Batch seal': [],
+            'Batch seal -> Quorum': [],
+            'Quorum -> Processed': [],
+            'Processed -> Header': [],
+            'Header -> Committed': [],
+        }
+
+        # Stages 1-2: keyed by sample tx (client_id, counter, account_id)
+        for key in global_received:
+            batch_id = global_received[key]
+            if batch_id not in self.commits:
+                continue
+            send_time = global_sent.get(key)
+            if send_time is None or send_time < self.effective_start:
+                continue
+
+            # Stage 1: Client send -> Worker arrival
+            arrival = self.arrival_times.get(key)
+            if arrival is not None:
+                stages['Client -> Worker'].append(arrival - send_time)
+
+            # Stage 2: Worker arrival -> Batch seal
+            seal = self.seal_times.get(batch_id)
+            if arrival is not None and seal is not None:
+                stages['Worker -> Batch seal'].append(seal - arrival)
+
+        # Stages 3-6: keyed by batch digest
+        for batch_id in self.commits:
+            seal = self.seal_times.get(batch_id)
+            quorum = self.quorum_times.get(batch_id)
+            processed = self.processed_times.get(batch_id)
+            proposed = self.proposals.get(batch_id)
+            committed = self.commits[batch_id]
+
+            # Stage 3: Batch seal -> Quorum
+            if seal is not None and quorum is not None:
+                stages['Batch seal -> Quorum'].append(quorum - seal)
+
+            # Stage 4: Quorum -> Processed
+            if quorum is not None and processed is not None:
+                stages['Quorum -> Processed'].append(processed - quorum)
+
+            # Stage 5: Processed -> Header created
+            if processed is not None and proposed is not None:
+                stages['Processed -> Header'].append(proposed - processed)
+
+            # Stage 6: Header created -> Committed
+            if proposed is not None:
+                stages['Header -> Committed'].append(committed - proposed)
+
+        result = {}
+        for label, latencies in stages.items():
+            if latencies:
+                result[label] = {'mean': mean(latencies) * 1_000, 'count': len(latencies)}
+            else:
+                result[label] = {'mean': 0, 'count': 0}
+        return result
+
     def result(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
@@ -488,6 +581,20 @@ class LogParser:
                 output += (
                     f' Overall (weighted): {round(weighted_p95 * 1_000):,} ms\n'
                 )
+
+        # Per-stage latency breakdown
+        stage_data = self._per_stage_latency_breakdown()
+        has_stage_data = any(v['count'] > 0 for v in stage_data.values())
+        if has_stage_data:
+            output += (
+                '\n'
+                ' + PER-STAGE LATENCY BREAKDOWN (mean, ms):\n'
+            )
+            stage_sum = 0
+            for label, data in stage_data.items():
+                output += f'   {label + ":":<28} {round(data["mean"]):,} ms  (n={data["count"]})\n'
+                stage_sum += data['mean']
+            output += f'   {"Sum:":<28} {round(stage_sum):,} ms\n'
 
         if warnings_str:
             output += warnings_str

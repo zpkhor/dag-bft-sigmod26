@@ -4,6 +4,8 @@ use config::WorkerId;
 use crypto::Digest;
 use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
+#[cfg(feature = "benchmark")]
+use log::info;
 use primary::WorkerPrimaryMessage;
 use std::convert::TryInto;
 use store::Store;
@@ -39,6 +41,11 @@ impl Processor {
 
                 // Store the batch.
                 store.write(digest.to_vec(), batch).await;
+
+                #[cfg(feature = "benchmark")]
+                if own_digest {
+                    info!("Processed batch {:?}", digest);
+                }
 
                 // Deliver the batch's digest.
                 let message = match own_digest {
