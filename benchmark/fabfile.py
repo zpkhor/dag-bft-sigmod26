@@ -60,7 +60,8 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     tokio_threads = int(os.environ.get('TOKIO_THREADS', 8))
     open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
-    num_accounts = int(os.environ.get('NUM_ACCOUNTS', 0))
+    num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
+    rr = os.environ.get('RR', 'false').lower() in ('true', '1', 'yes')
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -72,6 +73,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
         'warmup': warmup,
         'open_loop': open_loop,
         'num_accounts': num_accounts,
+        'rr': rr,
     }
     node_params = {
         'header_size': 1_000,

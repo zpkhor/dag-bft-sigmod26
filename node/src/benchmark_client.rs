@@ -29,9 +29,11 @@ async fn main() -> Result<()> {
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
         .args_from_usage("--open-loop 'Use open-loop mode (no TCP backpressure)'")
         .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
-        .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (0 = disabled)'")
+        .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (default 1000000)'")
         .args_from_usage("--client-id=[INT] 'Unique client identifier (validator_index * num_workers + worker_index)'")
         .args_from_usage("--reply-port=[INT] 'Port to listen for commit replies'")
+        .args_from_usage("--rr 'Round-robin across validators (requires --num-validators)'")
+        .args_from_usage("--num-validators=[INT] 'Number of validators (default 1)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -70,7 +72,7 @@ async fn main() -> Result<()> {
         .context("account-start must be a non-negative integer")?;
     let num_accounts = matches
         .value_of("num-accounts")
-        .unwrap_or("0")
+        .unwrap_or("1000000")
         .parse::<u64>()
         .context("num-accounts must be a non-negative integer")?;
     let client_id = matches
@@ -83,6 +85,12 @@ async fn main() -> Result<()> {
         .map(|v| v.parse::<u16>())
         .transpose()
         .context("reply-port must be a valid port number")?;
+    let rr = matches.is_present("rr");
+    let num_validators = matches
+        .value_of("num-validators")
+        .unwrap_or("1")
+        .parse::<usize>()
+        .context("num-validators must be a positive integer")?;
 
     info!("Node addresses: {:?}", targets);
 
@@ -114,6 +122,8 @@ async fn main() -> Result<()> {
         account_start,
         num_accounts,
         client_id,
+        rr,
+        num_validators,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -132,6 +142,8 @@ struct Client {
     account_start: u64,
     num_accounts: u64,
     client_id: u64,
+    rr: bool,
+    num_validators: usize,
 }
 
 impl Client {
@@ -140,6 +152,11 @@ impl Client {
         if self.size < 25 {
             return Err(anyhow::Error::msg(
                 "Transaction size must be at least 25 bytes",
+            ));
+        }
+        if self.num_accounts == 0 {
+            return Err(anyhow::Error::msg(
+                "num-accounts must be greater than 0",
             ));
         }
 
@@ -180,11 +197,13 @@ impl Client {
         }
 
         let num_workers = senders.len();
+        let num_workers_per_v = num_workers / self.num_validators;
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
-        let mut account_rr: HashMap<u64, usize> = HashMap::new();
+        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
+        let mut worker_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
@@ -196,17 +215,22 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
-                let account_id = if self.num_accounts > 0 {
-                    self.account_start + (counter % self.num_accounts) // TODO: use random account_id
+                let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
+                let v_idx = if self.rr {
+                    let entry = validator_rr.entry(account_id).or_insert(0usize);
+                    let v = *entry;
+                    *entry = (v + 1) % self.num_validators;
+                    v
                 } else {
                     0
                 };
-                let worker = {
-                    let entry = account_rr.entry(account_id).or_insert(0usize);
+                let w_idx = {
+                    let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
-                    *entry = (w + 1) % num_workers;
+                    *entry = (w + 1) % num_workers_per_v;
                     w
                 };
+                let worker = v_idx * num_workers_per_v + w_idx;
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {} account {}", counter, account_id);
@@ -242,11 +266,13 @@ impl Client {
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
         let num_workers = transports.len();
+        let num_workers_per_v = num_workers / self.num_validators;
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
-        let mut account_rr: HashMap<u64, usize> = HashMap::new();
+        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
+        let mut worker_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
@@ -257,26 +283,32 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
-                let account_id = if self.num_accounts > 0 {
-                    self.account_start + (counter % self.num_accounts)
+                let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
+                let v_idx = if self.rr {
+                    let entry = validator_rr.entry(account_id).or_insert(0usize);
+                    let v = *entry;
+                    *entry = (v + 1) % self.num_validators;
+                    v
                 } else {
                     0
                 };
-                let worker = {
-                    let entry = account_rr.entry(account_id).or_insert(0usize);
+                let w_idx = {
+                    let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
-                    *entry = (w + 1) % num_workers;
+                    *entry = (w + 1) % num_workers_per_v;
                     w
                 };
+                let worker = v_idx * num_workers_per_v + w_idx;
                 if x == counter % burst {
+                    // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {} account {}", counter, account_id);
 
-                    tx.put_u8(0u8);
-                    tx.put_u64(counter);
+                    tx.put_u8(0u8); // Sample txs start with 0.
+                    tx.put_u64(counter); // This counter identifies the tx.
                 } else {
                     r += 1;
-                    tx.put_u8(1u8);
-                    tx.put_u64(r);
+                    tx.put_u8(1u8); // Standard txs start with 1.
+                    tx.put_u64(r); // Ensures all clients send different txs.
                 };
                 tx.put_u64(account_id);
                 tx.put_u64(self.client_id);

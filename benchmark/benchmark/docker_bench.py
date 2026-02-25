@@ -217,8 +217,8 @@ networks:
 
             num_accounts = self.bench_parameters.num_accounts
             total_clients = nodes
-            accounts_base = num_accounts // total_clients if num_accounts > 0 else 0
-            accounts_remainder = num_accounts % total_clients if num_accounts > 0 else 0
+            accounts_base = num_accounts // total_clients
+            accounts_remainder = num_accounts % total_clients
 
             commands_per_validator = {}
             running_rate = 0
@@ -244,12 +244,9 @@ networks:
                 nodes_arg = " ".join(worker_addrs)
                 open_loop_flag = "--open-loop" if self.open_loop else ""
 
-                if num_accounts > 0:
-                    acct_start = i * accounts_base + min(i, accounts_remainder)
-                    acct_count = accounts_base + (1 if i < accounts_remainder else 0)
-                    account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
-                else:
-                    account_args = ""
+                acct_start = i * accounts_base + min(i, accounts_remainder)
+                acct_count = accounts_base + (1 if i < accounts_remainder else 0)
+                account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
@@ -261,10 +258,23 @@ networks:
                 reply_port = worker_0_info['client_reply'].split(':')[1]
                 reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
 
-                addrs_str = " ".join(worker_addrs)
+                rr = self.bench_parameters.rr
+                if rr:
+                    all_worker_addrs = []
+                    for v_idx, addrs in enumerate(workers_addresses):
+                        cip = container_ips[v_idx]
+                        for _, addr in addrs:
+                            port = addr.split(':')[1]
+                            all_worker_addrs.append(f'{cip}:{port}')
+                    addrs_str = " ".join(all_worker_addrs)
+                    rr_args = f"--rr --num-validators {nodes}"
+                else:
+                    addrs_str = " ".join(worker_addrs)
+                    rr_args = ""
+                print(f"addrs_str: {addrs_str}")
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
-                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args}"
+                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args} {rr_args}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 client_cmds.append(c_cmd)
