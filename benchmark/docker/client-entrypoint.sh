@@ -16,7 +16,7 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
 
         # Exempt own validator from latency (own validator is colocated)
         if [ -n "$OWN_VALIDATOR_IP" ]; then
-            tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+            tc class add dev eth0 parent 1:1 classid 1:20 htb rate 1mbit ceil $TC_BANDWIDTH
             tc filter add dev eth0 parent 1:0 protocol ip u32 match ip dst ${OWN_VALIDATOR_IP}/32 flowid 1:20
             echo "tc: exempt own validator $OWN_VALIDATOR_IP from latency"
         fi
