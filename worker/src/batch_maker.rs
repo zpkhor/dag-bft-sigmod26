@@ -103,16 +103,17 @@ impl BatchMaker {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
-        // Look for sample txs (they all start with 0) and gather their tx id (bytes 1–8) and account_id (bytes 9–16).
+        // Look for sample txs (they all start with 0) and gather their tx id (bytes 1–8), account_id (bytes 9–16), and client_id (bytes 17–24).
         #[cfg(feature = "benchmark")]
         let tx_ids: Vec<_> = self
             .current_batch
             .iter()
-            .filter(|tx| tx[0] == 0u8 && tx.len() > 16)
+            .filter(|tx| tx[0] == 0u8 && tx.len() > 24)
             .filter_map(|tx| {
                 let id: [u8; 8] = tx[1..9].try_into().ok()?;
                 let account: [u8; 8] = tx[9..17].try_into().ok()?;
-                Some((id, account))
+                let client_id: [u8; 8] = tx[17..25].try_into().ok()?;
+                Some((id, account, client_id))
             })
             .collect();
 
@@ -131,13 +132,14 @@ impl BatchMaker {
                     .unwrap(),
             );
 
-            for (id, account) in tx_ids {
+            for (id, account, client_id) in tx_ids {
                 // NOTE: This log entry is used to compute performance.
                 info!(
-                    "Batch {:?} contains sample tx {} account {}",
+                    "Batch {:?} contains sample tx {} account {} client {}",
                     digest,
                     u64::from_be_bytes(id),
                     u64::from_be_bytes(account),
+                    u64::from_be_bytes(client_id),
                 );
             }
 

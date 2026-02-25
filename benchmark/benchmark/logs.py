@@ -143,17 +143,14 @@ class LogParser:
 
         misses = len(findall(r'rate too high', log))
 
-        tmp = findall(r'\[(.*Z) .* sample transaction (\d+)', log)
-        samples = {int(s): self._to_posix(t) for t, s in tmp}
+        tmp = findall(r'\[(.*Z) .* sample transaction (\d+) account (\d+) client (\d+)', log)
+        samples = {(int(c), int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
 
-        tmp = findall(r'\[(.*Z) .* Received reply for tx (\d+) account (\d+)', log)
+        tmp = findall(r'\[(.*Z) .* Received reply for tx (\d+) account (\d+) client (\d+)', log)
         reply_samples = {}
-        for t, tx_str, acct_str in tmp:
-            tx_id = int(tx_str)
-            ts = self._to_posix(t)
-            if tx_id not in reply_samples:
-                reply_samples[tx_id] = []
-            reply_samples[tx_id].append(ts)
+        for t, tx_str, acct_str, cli_str in tmp:
+            key = (int(cli_str), int(tx_str), int(acct_str))
+            reply_samples.setdefault(key, []).append(self._to_posix(t))
 
         reply_mismatches = len(findall(r'Reply mismatch for tx', log))
 
@@ -206,8 +203,8 @@ class LogParser:
         tmp = findall(r'Batch ([^ ]+) contains (\d+) B', log)
         sizes = {d: int(s) for d, s in tmp}
 
-        tmp = findall(r'Batch ([^ ]+) contains sample tx (\d+)', log)
-        samples = {int(s): d for d, s in tmp}
+        tmp = findall(r'Batch ([^ ]+) contains sample tx (\d+) account (\d+) client (\d+)', log)
+        samples = {(int(c), int(s), int(a)): d for d, s, a, c in tmp}
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
 
@@ -261,32 +258,48 @@ class LogParser:
         return tps, bps, duration
 
     def _committed_latency(self):
+        global_sent = {}
+        for sent in self.sent_samples:
+            global_sent.update(sent)
+
+        global_received = {}
+        for received in self.received_samples:
+            global_received.update(received)
+
         latency = []
-        for sent, received in zip(self.sent_samples, self.received_samples):
-            for tx_id, batch_id in received.items():
-                if batch_id in self.commits:
-                    assert tx_id in sent  # We receive txs that we sent.
-                    start = sent[tx_id]
-                    if start < self.effective_start:
-                        continue
-                    end = self.commits[batch_id]
-                    latency += [end-start]
+        for key, batch_id in global_received.items():
+            if batch_id in self.commits:
+                assert key in global_sent  # We receive txs that we sent.
+                start = global_sent[key]
+                if start < self.effective_start:
+                    continue
+                latency.append(self.commits[batch_id] - start)
         return self._calculate_latency_metrics(latency)
 
     def _e2e_committed_latency(self):
         if not isinstance(self.faults, int):
             return {'mean': 0, 'p95': 0}
         threshold = self.faults + 1
+
+        global_sent = {}
+        for sent in self.sent_samples:
+            global_sent.update(sent)
+
+        global_replies = {}
+        for replies in self.reply_samples:
+            for key, timestamps in replies.items():
+                global_replies.setdefault(key, []).extend(timestamps)
+
         latency = []
-        for sent, replies in zip(self.sent_samples, self.reply_samples):
-            for tx_id, timestamps in replies.items():
-                assert tx_id in sent  # We receive replies for txs that we sent.
-                if sent[tx_id] < self.effective_start:
-                    continue
-                if len(timestamps) < threshold:
-                    continue
-                end_time = sorted(timestamps)[threshold - 1]  # (f+1)-th earliest
-                latency.append(end_time - sent[tx_id])
+        for key, timestamps in global_replies.items():
+            assert key in global_sent  # We receive replies for txs that we sent.
+            start = global_sent[key]
+            if start < self.effective_start:
+                continue
+            if len(timestamps) < threshold:
+                continue
+            end_time = sorted(timestamps)[threshold - 1]  # (f+1)-th earliest
+            latency.append(end_time - start)
         return self._calculate_latency_metrics(latency)
 
     def _validator_load_distribution(self):
@@ -320,18 +333,22 @@ class LogParser:
         return result
 
     def _per_validator_committed_latency(self):
+        global_sent = {}
+        for sent in self.sent_samples:
+            global_sent.update(sent)
+
         result = {}
         for v in sorted(self.sizes_by_validator.keys()):
             v_received_list = self.received_samples_by_validator.get(v, [])
-            v_sent_list = self.sent_samples_by_validator.get(v, [])
             latencies = []
-            for sent, received in zip(v_sent_list, v_received_list):
-                for tx_id, batch_id in received.items():
+            for received in v_received_list:
+                for key, batch_id in received.items():
                     if batch_id in self.commits:
-                        assert tx_id in sent  # We receive txs that we sent.
-                        if sent[tx_id] < self.effective_start:
+                        assert key in global_sent  # We receive txs that we sent.
+                        start = global_sent[key]
+                        if start < self.effective_start:
                             continue
-                        latencies.append(self.commits[batch_id] - sent[tx_id])
+                        latencies.append(self.commits[batch_id] - start)
             if latencies:
                 result[v] = self._calculate_latency_metrics(latencies)
         return result

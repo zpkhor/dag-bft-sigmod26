@@ -237,7 +237,7 @@ impl Client {
                 let worker = v_idx * num_workers_per_v + w_idx;
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {} account {}", counter, account_id);
+                    info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
 
                     tx.put_u8(0u8); // Sample txs start with 0.
                     tx.put_u64(counter); // This counter identifies the tx.
@@ -305,7 +305,7 @@ impl Client {
                 let worker = v_idx * num_workers_per_v + w_idx;
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {} account {}", counter, account_id);
+                    info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
 
                     tx.put_u8(0u8); // Sample txs start with 0.
                     tx.put_u64(counter); // This counter identifies the tx.
@@ -360,7 +360,7 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                 tokio::spawn(async move {
                     let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
                     while let Some(Ok(frame)) = transport.next().await {
-                        if let Ok((tx_type, counter, account_id, digest, name, worker_id)) = parse_reply(&frame) {
+                        if let Ok((tx_type, counter, account_id, client_id, digest, name, worker_id)) = parse_reply(&frame) {
                             if tx_type != 0 {
                                 continue;
                             }
@@ -379,8 +379,8 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                             }
                             // NOTE: This log entry is used to compute performance.
                             info!(
-                                "Received reply for tx {} account {} from validator {:?} worker {}",
-                                counter, account_id, name, worker_id,
+                                "Received reply for tx {} account {} client {} from validator {:?} worker {}",
+                                counter, account_id, client_id, name, worker_id,
                             );
                         }
                     }
@@ -393,13 +393,12 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
     }
 }
 
-fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>, crypto::PublicKey, config::WorkerId)> {
+fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, u64, Vec<u8>, crypto::PublicKey, config::WorkerId)> {
     // Deserialize CommitReply using bincode (matches worker's serialization).
     #[derive(serde::Deserialize)]
     struct CommitReply {
         counter: u64,
         account_id: u64,
-        #[allow(dead_code)]
         client_id: u64,
         tx_type: u8,
         digest: crypto::Digest,
@@ -408,5 +407,5 @@ fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>, crypto::PublicKey,
     }
     let reply: CommitReply =
         bincode::deserialize(data).context("Failed to deserialize commit reply")?;
-    Ok((reply.tx_type, reply.counter, reply.account_id, reply.digest.to_vec(), reply.name, reply.worker_id))
+    Ok((reply.tx_type, reply.counter, reply.account_id, reply.client_id, reply.digest.to_vec(), reply.name, reply.worker_id))
 }
