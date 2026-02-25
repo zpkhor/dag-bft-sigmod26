@@ -216,13 +216,12 @@ networks:
             v = "-vvv" if debug else "-vv"
 
             num_accounts = self.bench_parameters.num_accounts
-            total_clients = nodes * self.workers
+            total_clients = nodes
             accounts_base = num_accounts // total_clients if num_accounts > 0 else 0
             accounts_remainder = num_accounts % total_clients if num_accounts > 0 else 0
 
             commands_per_validator = {}
             running_rate = 0
-            client_index = 0
             for i, addresses in enumerate(workers_addresses):
                 primary_cmd = (
                     f"./node {v} run --keys .node-{i}.json --committee .committee.json "
@@ -232,11 +231,6 @@ networks:
 
                 worker_cmds = []
                 client_cmds = []
-                num_workers = len(addresses)
-                worker_rate = ceil(validator_rates[i] / num_workers)
-
-                # Only local worker addresses for the --nodes wait check
-                local_tx_addresses = [addr for _, addr in addresses]
 
                 for id, address in addresses:
                     w_cmd = (
@@ -246,27 +240,32 @@ networks:
                     w_cmd += f" 2> /logs/worker-{i}-{id}.log"
                     worker_cmds.append(w_cmd)
 
-                    nodes_arg = " ".join(local_tx_addresses)
-                    open_loop_flag = "--open-loop" if self.open_loop else ""
-                    if num_accounts > 0:
-                        acct_start = client_index * accounts_base + min(client_index, accounts_remainder)
-                        acct_count = accounts_base + (1 if client_index < accounts_remainder else 0)
-                        account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
-                    else:
-                        account_args = ""
-                    client_id_val = i * num_workers + int(id)
-                    # Extract reply port from committee config
-                    worker_info = committee.json['authorities'][names[i]]['workers'][int(id)]
-                    reply_port = worker_info['client_reply'].split(':')[1]
-                    reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
-                    c_cmd = (
-                        f"./benchmark_client {address} --size {self.tx_size} "
-                        f"--rate {worker_rate} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args}"
-                    )
-                    c_cmd += f" 2> /logs/client-{i}-{id}.log"
-                    client_cmds.append(c_cmd)
-                    running_rate += worker_rate
-                    client_index += 1
+                worker_addrs = [addr for _, addr in addresses]
+                nodes_arg = " ".join(worker_addrs)
+                open_loop_flag = "--open-loop" if self.open_loop else ""
+
+                if num_accounts > 0:
+                    acct_start = i * accounts_base + min(i, accounts_remainder)
+                    acct_count = accounts_base + (1 if i < accounts_remainder else 0)
+                    account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
+                else:
+                    account_args = ""
+
+                num_workers = len(addresses)
+                client_id_val = i * num_workers
+                # Use worker 0's reply port for the single client per validator
+                worker_0_info = committee.json['authorities'][names[i]]['workers'][0]
+                reply_port = worker_0_info['client_reply'].split(':')[1]
+                reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
+
+                addrs_str = " ".join(worker_addrs)
+                c_cmd = (
+                    f"./benchmark_client {addrs_str} --size {self.tx_size} "
+                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args}"
+                )
+                c_cmd += f" 2> /logs/client-{i}-0.log"
+                client_cmds.append(c_cmd)
+                running_rate += validator_rates[i]
 
                 commands_per_validator[i] = {
                     "primary": primary_cmd,

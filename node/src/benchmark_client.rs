@@ -23,7 +23,7 @@ async fn main() -> Result<()> {
     let matches = App::new(crate_name!())
         .version(crate_version!())
         .about("Benchmark client for Narwhal and Tusk.")
-        .args_from_usage("<ADDR> 'The network address of the node where to send txs'")
+        .args_from_usage("<ADDR>... 'Network addresses of this validator\\'s workers'")
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
@@ -39,10 +39,11 @@ async fn main() -> Result<()> {
         .format_timestamp_millis()
         .init();
 
-    let target = matches
-        .value_of("ADDR")
+    let targets = matches
+        .values_of("ADDR")
         .unwrap()
-        .parse::<SocketAddr>()
+        .map(|x| x.parse::<SocketAddr>())
+        .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
     let size = matches
         .value_of("size")
@@ -83,7 +84,7 @@ async fn main() -> Result<()> {
         .transpose()
         .context("reply-port must be a valid port number")?;
 
-    info!("Node address: {}", target);
+    info!("Node addresses: {:?}", targets);
 
     // NOTE: This log entry is used to compute performance.
     info!("Transactions size: {} B", size);
@@ -105,7 +106,7 @@ async fn main() -> Result<()> {
     }
 
     let client = Client {
-        target,
+        targets,
         size,
         rate,
         nodes,
@@ -123,7 +124,7 @@ async fn main() -> Result<()> {
 }
 
 struct Client {
-    target: SocketAddr,
+    targets: Vec<SocketAddr>,
     size: usize,
     rate: u64,
     nodes: Vec<SocketAddr>,
@@ -142,42 +143,48 @@ impl Client {
             ));
         }
 
-        // Connect to the mempool.
-        let stream = TcpStream::connect(self.target)
-            .await
-            .context(format!("failed to connect to {}", self.target))?;
-
-        let transport = Framed::new(stream, LengthDelimitedCodec::new());
+        // Connect to all worker targets.
+        let mut transports = Vec::new();
+        for target in &self.targets {
+            let stream = TcpStream::connect(target)
+                .await
+                .context(format!("failed to connect to {}", target))?;
+            transports.push(Framed::new(stream, LengthDelimitedCodec::new()));
+        }
 
         if self.open_loop {
-            self.send_open_loop(transport).await
+            self.send_open_loop(transports).await
         } else {
-            self.send_closed_loop(transport).await
+            self.send_closed_loop(transports).await
         }
     }
 
-    async fn send_open_loop(&self, transport: Framed<TcpStream, LengthDelimitedCodec>) -> Result<()> {
+    async fn send_open_loop(&self, transports: Vec<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<()> {
         const PRECISION: u64 = 20;
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
-        let (chan_tx, mut chan_rx) = mpsc::unbounded_channel::<Bytes>();
-
-        // Background task owns the TCP transport and drains the channel.
-        tokio::spawn(async move {
-            let mut transport = transport;
-            while let Some(bytes) = chan_rx.recv().await {
-                if let Err(e) = transport.send(bytes).await {
-                    warn!("Failed to send transaction: {}", e);
-                    break;
+        // Spawn one drain task per transport, collect the senders.
+        let mut senders = Vec::new();
+        for transport in transports {
+            let (chan_tx, mut chan_rx) = mpsc::unbounded_channel::<Bytes>();
+            tokio::spawn(async move {
+                let mut transport = transport;
+                while let Some(bytes) = chan_rx.recv().await {
+                    if let Err(e) = transport.send(bytes).await {
+                        warn!("Failed to send transaction: {}", e);
+                        break;
+                    }
                 }
-            }
-        });
+            });
+            senders.push(chan_tx);
+        }
 
-        // Submit all transactions.
+        let num_workers = senders.len();
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
-        let mut counter = 0;
+        let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
+        let mut account_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
@@ -193,6 +200,12 @@ impl Client {
                     self.account_start + (counter % self.num_accounts) // TODO: use random account_id
                 } else {
                     0
+                };
+                let worker = {
+                    let entry = account_rr.entry(account_id).or_insert(0usize);
+                    let w = *entry;
+                    *entry = (w + 1) % num_workers;
+                    w
                 };
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
@@ -210,7 +223,7 @@ impl Client {
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-                if let Err(e) = chan_tx.send(bytes) {
+                if let Err(e) = senders[worker].send(bytes) {
                     warn!("Failed to queue transaction: {}", e);
                     break 'main;
                 }
@@ -224,14 +237,16 @@ impl Client {
         Ok(())
     }
 
-    async fn send_closed_loop(&self, mut transport: Framed<TcpStream, LengthDelimitedCodec>) -> Result<()> {
+    async fn send_closed_loop(&self, mut transports: Vec<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<()> {
         const PRECISION: u64 = 20;
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
+        let num_workers = transports.len();
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
-        let mut counter = 0;
+        let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
+        let mut account_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
@@ -246,6 +261,12 @@ impl Client {
                     self.account_start + (counter % self.num_accounts)
                 } else {
                     0
+                };
+                let worker = {
+                    let entry = account_rr.entry(account_id).or_insert(0usize);
+                    let w = *entry;
+                    *entry = (w + 1) % num_workers;
+                    w
                 };
                 if x == counter % burst {
                     info!("Sending sample transaction {} account {}", counter, account_id);
@@ -262,7 +283,7 @@ impl Client {
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-                if let Err(e) = transport.send(bytes).await {
+                if let Err(e) = transports[worker].send(bytes).await {
                     warn!("Failed to send transaction: {}", e);
                     break;
                 }
@@ -303,7 +324,7 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                 tokio::spawn(async move {
                     let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
                     while let Some(Ok(frame)) = transport.next().await {
-                        if let Ok((tx_type, counter, account_id, digest)) = parse_reply(&frame) {
+                        if let Ok((tx_type, counter, account_id, digest, name, worker_id)) = parse_reply(&frame) {
                             if tx_type != 0 {
                                 continue;
                             }
@@ -322,8 +343,8 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                             }
                             // NOTE: This log entry is used to compute performance.
                             info!(
-                                "Received reply for tx {} account {}",
-                                counter, account_id,
+                                "Received reply for tx {} account {} from validator {:?} worker {}",
+                                counter, account_id, name, worker_id,
                             );
                         }
                     }
@@ -336,7 +357,7 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
     }
 }
 
-fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>)> {
+fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>, crypto::PublicKey, config::WorkerId)> {
     // Deserialize CommitReply using bincode (matches worker's serialization).
     #[derive(serde::Deserialize)]
     struct CommitReply {
@@ -346,8 +367,10 @@ fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>)> {
         client_id: u64,
         tx_type: u8,
         digest: crypto::Digest,
+        name: crypto::PublicKey,
+        worker_id: config::WorkerId,
     }
     let reply: CommitReply =
         bincode::deserialize(data).context("Failed to deserialize commit reply")?;
-    Ok((reply.tx_type, reply.counter, reply.account_id, reply.digest.to_vec()))
+    Ok((reply.tx_type, reply.counter, reply.account_id, reply.digest.to_vec(), reply.name, reply.worker_id))
 }

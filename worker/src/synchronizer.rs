@@ -31,6 +31,8 @@ pub struct CommitReply {
     pub client_id: u64,
     pub tx_type: u8,
     pub digest: Digest,
+    pub name: PublicKey,
+    pub worker_id: WorkerId,
 }
 
 // The `Synchronizer` is responsible to keep the worker in sync with the others.
@@ -152,6 +154,8 @@ impl Synchronizer {
                                 client_id,
                                 tx_type: tx[0],
                                 digest: digest.clone(),
+                                name: self.name,
+                                worker_id: self.id,
                             };
                             let bytes = bincode::serialize(&reply)
                                 .expect("Failed to serialize commit reply");

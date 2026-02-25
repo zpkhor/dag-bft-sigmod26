@@ -90,19 +90,22 @@ class LocalBench:
             validator_rates = [ceil(rate * w / total_weight) for w in weights]
             running_rate = 0
             for i, addresses in enumerate(workers_addresses):
+                worker_addrs = [address for _, address in addresses]
                 num_workers = len(addresses)
-                worker_rate = ceil(validator_rates[i] / num_workers)
-                for id, address in addresses:
-                    cmd = CommandMaker.run_client(
-                        address,
-                        self.tx_size,
-                        worker_rate,
-                        [x for y in workers_addresses for _, x in y],
-                        self.open_loop,
-                    )
-                    log_file = PathMaker.client_log_file(i, id)
-                    self._background_run(cmd, log_file, env_prefix)
-                    running_rate += worker_rate
+                worker_0_info = committee.json['authorities'][names[i]]['workers'][0]
+                reply_port = int(worker_0_info['client_reply'].split(':')[1])
+                cmd = CommandMaker.run_client(
+                    worker_addrs,
+                    self.tx_size,
+                    validator_rates[i],
+                    [x for y in workers_addresses for _, x in y],
+                    self.open_loop,
+                    client_id=i * num_workers,
+                    reply_port=reply_port,
+                )
+                log_file = PathMaker.client_log_file(i, 0)
+                self._background_run(cmd, log_file, env_prefix)
+                running_rate += validator_rates[i]
             assert abs(running_rate - rate) <= len(workers_addresses), \
                 f"Running rate {running_rate} deviates too much from target rate {rate}"
             # Run the primaries (except the faulty ones).

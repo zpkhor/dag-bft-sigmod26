@@ -222,18 +222,19 @@ class Bench:
         # for the faulty nodes to be online).
         Print.info('Booting clients...')
         workers_addresses = committee.workers_addresses(faults)
-        rate_share = ceil(rate / committee.workers())
+        num_validators = len(workers_addresses)
+        rate_share = ceil(rate / num_validators)
         for i, addresses in enumerate(workers_addresses):
-            for (id, address) in addresses:
-                host = Committee.ip(address)
-                cmd = CommandMaker.run_client(
-                    address,
-                    bench_parameters.tx_size,
-                    rate_share,
-                    [x for y in workers_addresses for _, x in y]
-                )
-                log_file = PathMaker.client_log_file(i, id)
-                self._background_run(host, cmd, log_file)
+            worker_addrs = [address for _, address in addresses]
+            host = Committee.ip(worker_addrs[0])  # run on worker-0's host
+            cmd = CommandMaker.run_client(
+                worker_addrs,
+                bench_parameters.tx_size,
+                rate_share,
+                [x for y in workers_addresses for _, x in y],
+            )
+            log_file = PathMaker.client_log_file(i, 0)
+            self._background_run(host, cmd, log_file)
 
         # Run the primaries (except the faulty ones).
         Print.info('Booting primaries...')
