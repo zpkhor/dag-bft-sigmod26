@@ -34,6 +34,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--reply-port=[INT] 'Port to listen for commit replies'")
         .args_from_usage("--rr 'Round-robin across validators (requires --num-validators)'")
         .args_from_usage("--num-validators=[INT] 'Number of validators (default 1)'")
+        .args_from_usage("--check-mismatch 'Enable mismatch detection in replies'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -91,6 +92,7 @@ async fn main() -> Result<()> {
         .unwrap_or("1")
         .parse::<usize>()
         .context("num-validators must be a positive integer")?;
+    let check_mismatch = matches.is_present("check-mismatch");
 
     info!("Node addresses: {:?}", targets);
 
@@ -109,7 +111,7 @@ async fn main() -> Result<()> {
         let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
         let seen = Arc::clone(&seen_replies);
         tokio::spawn(async move {
-            listen_for_replies(addr, seen).await;
+            listen_for_replies(addr, seen, check_mismatch).await;
         });
     }
 
@@ -124,6 +126,7 @@ async fn main() -> Result<()> {
         client_id,
         rr,
         num_validators,
+        check_mismatch,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -144,6 +147,7 @@ struct Client {
     client_id: u64,
     rr: bool,
     num_validators: usize,
+    check_mismatch: bool,
 }
 
 impl Client {
@@ -342,7 +346,7 @@ impl Client {
 }
 
 /// Listen for commit replies from workers and log them.
-async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>>) {
+async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>>, check_mismatch: bool) {
     let listener = TcpListener::bind(addr)
         .await
         .expect("Failed to bind reply listener");
@@ -360,7 +364,7 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                             if tx_type != 0 {
                                 continue;
                             }
-                            {
+                            if check_mismatch {
                                 let mut seen_map = seen.lock().unwrap();
                                 if let Some((prev_acct, prev_digest)) = seen_map.get(&counter) {
                                     if *prev_acct != account_id || *prev_digest != digest {

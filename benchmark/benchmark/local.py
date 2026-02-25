@@ -19,12 +19,13 @@ from benchmark.utils import Print, BenchError, PathMaker
 class LocalBench:
     BASE_PORT = 5000
 
-    def __init__(self, bench_parameters_dict, node_parameters_dict):
+    def __init__(self, bench_parameters_dict, node_parameters_dict, check_mismatch=False):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
             self.node_parameters = NodeParameters(node_parameters_dict)
         except ConfigError as e:
             raise BenchError("Invalid nodes or bench parameters", e)
+        self.check_mismatch = check_mismatch
 
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
@@ -106,6 +107,7 @@ class LocalBench:
                     self.open_loop,
                     client_id=i * num_workers,
                     reply_port=reply_port,
+                    check_mismatch=self.check_mismatch,
                 )
                 log_file = PathMaker.client_log_file(i, 0)
                 self._background_run(cmd, log_file, env_prefix)

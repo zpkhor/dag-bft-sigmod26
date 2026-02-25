@@ -31,6 +31,7 @@ class DockerBench:
         jitter="0ms",
         cpus_per_validator=0,
         lan_bandwidth="100gbit",
+        check_mismatch=False,
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -43,6 +44,7 @@ class DockerBench:
         self.jitter = jitter
         self.cpus_per_validator = cpus_per_validator
         self.lan_bandwidth = lan_bandwidth
+        self.check_mismatch = check_mismatch
 
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
@@ -272,9 +274,10 @@ networks:
                     addrs_str = " ".join(worker_addrs)
                     rr_args = ""
                 print(f"addrs_str: {addrs_str}")
+                check_mismatch_flag = "--check-mismatch" if self.check_mismatch else ""
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
-                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args} {rr_args}"
+                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args} {rr_args} {check_mismatch_flag}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 client_cmds.append(c_cmd)

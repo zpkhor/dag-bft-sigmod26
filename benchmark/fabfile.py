@@ -21,6 +21,7 @@ def local(ctx, debug=True):
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
     open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
+    check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -43,7 +44,7 @@ def local(ctx, debug=True):
         'tokio_threads': tokio_threads,
     }
     try:
-        ret = LocalBench(bench_params, node_params).run(debug)
+        ret = LocalBench(bench_params, node_params, check_mismatch=check_mismatch).run(debug)
         print(ret.result())
     except BenchError as e:
         Print.error(e)
@@ -62,6 +63,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     rr = os.environ.get('RR', 'false').lower() in ('true', '1', 'yes')
+    check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -91,6 +93,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
             bandwidth=bandwidth, latency=latency, jitter=jitter,
             cpus_per_validator=int(cpus_per_validator),
             lan_bandwidth=lan_bandwidth,
+            check_mismatch=check_mismatch,
         ).run(debug)
         print(ret.result())
     except BenchError as e:
