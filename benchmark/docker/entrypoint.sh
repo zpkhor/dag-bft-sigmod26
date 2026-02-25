@@ -82,12 +82,5 @@ if [ -n "$WAIT_PORTS" ]; then
     echo "All remote ports reachable."
 fi
 
-# Start clients
-IFS=';' read -ra CLIENT_CMDS <<< "$CLIENT_CMD"
-for cmd in "${CLIENT_CMDS[@]}"; do
-    eval "${ENV_PREFIX}${cmd}" &
-    PIDS+=($!)
-done
-
 # Wait for all children
 wait

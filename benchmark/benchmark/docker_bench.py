@@ -81,7 +81,7 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator):
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips):
         """Generate docker-compose.yml programmatically."""
         services = []
         for i in range(nodes):
@@ -107,7 +107,6 @@ class DockerBench:
         ipv4_address: {ip}
     volumes:
       - ./node:/app/node:ro
-      - ./benchmark_client:/app/benchmark_client:ro
       - ./.node-{i}.json:/app/.node-{i}.json:ro
       - ./.committee.json:/app/.committee.json:ro
       - ./.parameters.json:/app/.parameters.json:ro
@@ -134,12 +133,34 @@ class DockerBench:
             service += f"""
       - WORKER_CMD={worker_cmd}"""
 
-            client_cmd = ";".join(cmds["clients"])
-            service += f"""
-      - CLIENT_CMD={client_cmd}"""
-
             service += f"""
       - WAIT_PORTS={wait_ports_per_validator[i]}"""
+
+            services.append(service)
+
+        # Client containers
+        for i in range(nodes):
+            client_ip = client_ips[i]
+            client_command = client_commands[i]
+            own_validator_ip = container_ips[i]
+            service = f"""  client-{i}:
+    image: {self.IMAGE_NAME}
+    container_name: narwhal-client-{i}
+    working_dir: /app
+    cap_add:
+      - NET_ADMIN
+    entrypoint: ["/client-entrypoint.sh"]
+    networks:
+      {self.NETWORK_NAME}:
+        ipv4_address: {client_ip}
+    volumes:
+      - ./benchmark_client:/app/benchmark_client:ro
+      - ./logs:/logs:rw
+    environment:
+      - CLIENT_CMD={client_command}
+      - OWN_VALIDATOR_IP={own_validator_ip}
+      - TC_LATENCY={self.latency}
+      - TC_JITTER={self.jitter}"""
 
             services.append(service)
 # end of for loop
@@ -196,8 +217,9 @@ networks:
 
             names = [x.name for x in keys]
             container_ips = [self._container_ip(i) for i in range(nodes)]
+            client_ips = [f"172.20.0.{10 + nodes + i}" for i in range(nodes)]
             committee = DockerCommittee(
-                names, self.BASE_PORT, self.workers, container_ips
+                names, self.BASE_PORT, self.workers, container_ips, client_ips
             )
             committee.print(PathMaker.committee_file())
 
@@ -223,6 +245,7 @@ networks:
             accounts_remainder = num_accounts % total_clients
 
             commands_per_validator = {}
+            client_commands = {}
             running_rate = 0
             for i, addresses in enumerate(workers_addresses):
                 primary_cmd = (
@@ -232,7 +255,6 @@ networks:
                 )
 
                 worker_cmds = []
-                client_cmds = []
 
                 for id, address in addresses:
                     w_cmd = (
@@ -273,21 +295,19 @@ networks:
                 else:
                     addrs_str = " ".join(worker_addrs)
                     rr_args = ""
-                print(f"addrs_str: {addrs_str}")
                 check_mismatch_flag = "--check-mismatch" if self.check_mismatch else ""
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args} {rr_args} {check_mismatch_flag}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
-                client_cmds.append(c_cmd)
                 running_rate += validator_rates[i]
 
                 commands_per_validator[i] = {
                     "primary": primary_cmd,
                     "workers": worker_cmds,
-                    "clients": client_cmds,
                 }
+                client_commands[i] = c_cmd
 
             assert abs(running_rate - rate) <= len(
                 workers_addresses
@@ -305,7 +325,7 @@ networks:
             self._build_image()
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips)
 
             # Start containers.
             Print.info("Starting containers...")
