@@ -17,6 +17,20 @@ if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
     tc qdisc show dev eth0
 fi
 
+if [ -n "$WAIT_PORTS" ]; then
+    sleep 1
+    for addr in $WAIT_PORTS; do
+        host="${addr%%:*}"
+        port="${addr##*:}"
+        echo "Waiting for $host:$port..."
+        for i in $(seq 1 60); do
+            (echo > /dev/tcp/$host/$port) 2>/dev/null && break
+            sleep 0.5
+        done
+    done
+    echo "All remote ports reachable."
+fi
+
 PIDS=()
 
 cleanup() {

@@ -81,7 +81,7 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips):
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports):
         """Generate docker-compose.yml programmatically."""
         services = []
         for i in range(nodes):
@@ -161,7 +161,8 @@ class DockerBench:
       - CLIENT_CMD={client_command}
       - OWN_VALIDATOR_IP={own_validator_ip}
       - TC_LATENCY={self.latency}
-      - TC_JITTER={self.jitter}"""
+      - TC_JITTER={self.jitter}
+      - WAIT_PORTS={client_wait_ports}"""
 
             services.append(service)
 # end of for loop
@@ -316,12 +317,19 @@ networks:
                     committee.remote_addresses(name)
                 )
 
+            # All worker transaction addresses across all validators (for client wait).
+            all_tx_addrs = []
+            for auth in committee.json['authorities'].values():
+                for worker in auth['workers'].values():
+                    all_tx_addrs.append(worker['transactions'])
+            client_wait_ports = " ".join(all_tx_addrs)
+
             # Build Docker image.
             Print.info("Building Docker image...")
             self._build_image()
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports)
 
             # Start containers.
             Print.info("Starting containers...")
