@@ -125,8 +125,6 @@ pub struct WorkerAddresses {
     pub worker_to_worker: SocketAddr,
     /// Address to receive messages from our primary (LAN).
     pub primary_to_worker: SocketAddr,
-    /// Address to send commit replies to the client (LAN).
-    pub client_reply: SocketAddr,
 }
 
 #[derive(Clone, Deserialize)]
@@ -137,6 +135,8 @@ pub struct Authority {
     pub primary: PrimaryAddresses,
     /// Map of workers' id and their network addresses.
     pub workers: HashMap<WorkerId, WorkerAddresses>,
+    /// Address to send commit replies to the client.
+    pub client_reply: SocketAddr,
 }
 
 #[derive(Clone, Deserialize)]
@@ -180,6 +180,14 @@ impl Committee {
         // then (N + 2) / 3 = f + 1 + k/3 = f + 1
         let total_votes: Stake = self.authorities.values().map(|x| x.stake).sum();
         (total_votes + 2) / 3
+    }
+
+    /// Returns the client reply address of the target authority.
+    pub fn client_reply(&self, to: &PublicKey) -> Result<SocketAddr, ConfigError> {
+        self.authorities
+            .get(to)
+            .map(|x| x.client_reply)
+            .ok_or_else(|| ConfigError::NotInCommittee(*to))
     }
 
     /// Returns the primary addresses of the target primary.

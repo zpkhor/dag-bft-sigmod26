@@ -93,12 +93,7 @@ class LocalBench:
             for i, addresses in enumerate(workers_addresses):
                 worker_addrs = [address for _, address in addresses]
                 num_workers = len(addresses)
-                # TODO: hack — there is one client per validator but client_reply is
-                # defined per worker in the committee. We arbitrarily use worker 0's
-                # port. Ideally client_reply should be a validator-level address, not
-                # per-worker, and exposed via a proper committee API method.
-                worker_0_info = committee.json['authorities'][names[i]]['workers'][0]
-                reply_port = int(worker_0_info['client_reply'].split(':')[1])
+                reply_port = int(committee.json['authorities'][names[i]]['client_reply'].split(':')[1])
                 cmd = CommandMaker.run_client(
                     worker_addrs,
                     self.tx_size,

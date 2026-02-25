@@ -16,6 +16,13 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
 
     echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
     tc qdisc show dev eth0
+
+    # Exempt replies to own client from latency (own client is colocated)
+    if [ -n "$OWN_CLIENT_IP" ] && [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+        tc class add dev eth0 parent 1: classid 1:20 htb rate $TC_BANDWIDTH
+        tc filter add dev eth0 parent 1: protocol ip u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:20
+        echo "tc: exempt own client $OWN_CLIENT_IP from latency"
+    fi
 fi
 
 # Apply ingress shaping on eth0 via IFB device

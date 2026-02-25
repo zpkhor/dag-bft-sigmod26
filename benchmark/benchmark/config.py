@@ -36,7 +36,8 @@ class Committee:
                         "transactions": x.x.x.x:x
                     },
                     ...
-                }
+                },
+                "client_reply": x.x.x.x:x
             },
             ...
         }
@@ -76,14 +77,16 @@ class Committee:
                     'primary_to_worker': f'{host}:{port}',
                     'transactions': f'{host}:{port + 1}',
                     'worker_to_worker': f'{host}:{port + 2}',
-                    'client_reply': f'{host}:{port + 3}',  # TODO: one client per validator, so this is only used for worker 0
                 }
+                if j == 0:
+                    client_reply_addr = f'{host}:{port + 3}'
                 port += 4
 
             self.json['authorities'][name] = {
                 'stake': 1,
                 'primary': primary_addr,
-                'workers': workers_addr
+                'workers': workers_addr,
+                'client_reply': client_reply_addr,
             }
 
     def primary_addresses(self, faults=0):
@@ -124,7 +127,8 @@ class Committee:
                 ips.add(self.ip(worker['primary_to_worker']))
                 ips.add(self.ip(worker['worker_to_worker']))
                 ips.add(self.ip(worker['transactions']))
-                ips.add(self.ip(worker['client_reply']))
+
+            ips.add(self.ip(self.json['authorities'][name]['client_reply']))
 
         return list(ips)
 
@@ -192,9 +196,10 @@ class DockerCommittee(Committee):
                 # primary_to_worker is intra-validator
                 addr = worker['primary_to_worker']
                 worker['primary_to_worker'] = f'127.0.0.1:{addr.split(":")[1]}'
-                # client_reply points to client container
-                addr = worker['client_reply']
-                worker['client_reply'] = f'{client_ip}:{addr.split(":")[1]}'
+
+            # client_reply points to client container
+            addr = auth['client_reply']
+            auth['client_reply'] = f'{client_ip}:{addr.split(":")[1]}'
 
     def remote_addresses(self, name):
         ''' Returns host:port pairs for all listening ports of other validators

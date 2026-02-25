@@ -142,12 +142,9 @@ impl Synchronizer {
                     let client_id = u64::from_be_bytes(tx[17..25].try_into().unwrap());
 
                     let validator_index = client_id / num_workers;
-                    let worker_index = client_id % num_workers;
 
                     if let Some(pubkey) = ordered_keys.get(validator_index as usize) {
-                        if let Ok(worker_addr) =
-                            self.committee.worker(pubkey, &(worker_index as u32))
-                        {
+                        if let Ok(reply_addr) = self.committee.client_reply(pubkey) {
                             let reply = CommitReply {
                                 counter,
                                 account_id,
@@ -160,8 +157,10 @@ impl Synchronizer {
                             let bytes = bincode::serialize(&reply)
                                 .expect("Failed to serialize commit reply");
                             self.network
-                                .send(worker_addr.client_reply, Bytes::from(bytes))
+                                .send(reply_addr, Bytes::from(bytes))
                                 .await;
+                        } else {
+                            panic!("Failed to get client reply address for {}", pubkey);
                         }
                     }
                 }
