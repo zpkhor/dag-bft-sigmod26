@@ -76,7 +76,7 @@ class Committee:
                     'primary_to_worker': f'{host}:{port}',
                     'transactions': f'{host}:{port + 1}',
                     'worker_to_worker': f'{host}:{port + 2}',
-                    'client_reply': f'{host}:{port + 3}',
+                    'client_reply': f'{host}:{port + 3}',  # TODO: one client per validator, so this is only used for worker 0
                 }
                 port += 4
 

@@ -253,7 +253,10 @@ networks:
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
-                # Use worker 0's reply port for the single client per validator
+                # TODO: hack — there is one client per validator but client_reply is
+                # defined per worker in the committee. We arbitrarily use worker 0's
+                # port. Ideally client_reply should be a validator-level address, not
+                # per-worker, and exposed via a proper committee API method.
                 worker_0_info = committee.json['authorities'][names[i]]['workers'][0]
                 reply_port = worker_0_info['client_reply'].split(':')[1]
                 reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
