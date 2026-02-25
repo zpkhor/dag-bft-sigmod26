@@ -32,6 +32,7 @@ class DockerBench:
         cpus_per_validator=0,
         lan_bandwidth="100gbit",
         check_mismatch=False,
+        primary_bw="500mbit",
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -45,6 +46,36 @@ class DockerBench:
         self.cpus_per_validator = cpus_per_validator
         self.lan_bandwidth = lan_bandwidth
         self.check_mismatch = check_mismatch
+
+        # QoS bandwidth allocation
+        self.primary_bw = primary_bw
+        total_mbit = self._parse_bw_mbit(bandwidth)
+        primary_mbit = self._parse_bw_mbit(primary_bw)
+        worker_mbit = total_mbit - primary_mbit
+        assert worker_mbit > 0, (
+            f"primary_bw ({primary_bw}={primary_mbit}mbit) must be less than "
+            f"bandwidth ({bandwidth}={total_mbit}mbit)"
+        )
+        self.worker_bw = self._format_bw(worker_mbit)
+
+    @staticmethod
+    def _parse_bw_mbit(bw_str):
+        """Parse a TC bandwidth string (e.g., '10gbit', '500mbit') to megabits."""
+        bw_str = bw_str.strip().lower()
+        if bw_str.endswith('gbit'):
+            return int(float(bw_str[:-4]) * 1000)
+        elif bw_str.endswith('mbit'):
+            return int(float(bw_str[:-4]))
+        elif bw_str.endswith('kbit'):
+            return max(1, int(float(bw_str[:-4]) / 1000))
+        raise ValueError(f'Cannot parse bandwidth: {bw_str}')
+
+    @staticmethod
+    def _format_bw(mbit):
+        """Format megabits as a TC bandwidth string."""
+        if mbit >= 1000 and mbit % 1000 == 0:
+            return f'{mbit // 1000}gbit'
+        return f'{mbit}mbit'
 
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
@@ -81,7 +112,7 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports):
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports, primary_ports_str):
         """Generate docker-compose.yml programmatically."""
         services = []
         for i in range(nodes):
@@ -122,10 +153,13 @@ class DockerBench:
     environment:
       - VALIDATOR_ID={i}
       - TC_BANDWIDTH={self.bandwidth}
+      - TC_PRIMARY_BW={self.primary_bw}
+      - TC_WORKER_BW={self.worker_bw}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
       - OWN_CLIENT_IP={client_ips[i]}
+      - PRIMARY_PORTS={primary_ports_str}
       - TOKIO_WORKER_THREADS={tokio_threads}
       - PRIMARY_CMD={cmds['primary']}"""
 
@@ -325,12 +359,19 @@ networks:
                     all_tx_addrs.append(worker['transactions'])
             client_wait_ports = " ".join(all_tx_addrs)
 
+            # Extract all primary_to_primary ports for QoS classification
+            primary_ports = []
+            for auth in committee.json['authorities'].values():
+                addr = auth['primary']['primary_to_primary']
+                primary_ports.append(addr.split(':')[1])
+            primary_ports_str = " ".join(primary_ports)
+
             # Build Docker image.
             Print.info("Building Docker image...")
             self._build_image()
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports, primary_ports_str)
 
             # Start containers.
             Print.info("Starting containers...")

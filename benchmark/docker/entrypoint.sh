@@ -3,26 +3,62 @@ set -e
 
 # Apply tc egress shaping on eth0 if bandwidth is specified
 if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
-    tc qdisc add dev eth0 root handle 1: htb default 10
-    tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
-    tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+    if [ -n "$PRIMARY_PORTS" ]; then
+        # QoS mode: separate HTB classes for primary, worker, and client traffic.
+        # Primary and worker get independent netem queues so worker queue overflow
+        # cannot drop primary packets.
+        tc qdisc add dev eth0 root handle 1: htb default 20
+        tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
+        tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_BANDWIDTH prio 0
+        tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_BANDWIDTH prio 1
 
-    if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
-        JITTER_ARG=""
-        if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
-            JITTER_ARG="$TC_JITTER"
+        if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+            JITTER_ARG=""
+            if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
+                JITTER_ARG="$TC_JITTER"
+            fi
+            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+            tc qdisc add dev eth0 parent 1:20 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
         fi
-        tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
-    fi
 
-    echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
-    tc qdisc show dev eth0
+        # Client class: no latency, full bandwidth ceiling
+        if [ -n "$OWN_CLIENT_IP" ]; then
+            tc class add dev eth0 parent 1:1 classid 1:30 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+            # prio 1: match client before port-based filters (prio 2)
+            tc filter add dev eth0 parent 1:0 protocol ip prio 1 u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:30
+        fi
 
-    # Exempt replies to own client from latency (own client is colocated)
-    if [ -n "$OWN_CLIENT_IP" ] && [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
-        tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
-        tc filter add dev eth0 parent 1:0 protocol ip u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:20
-        echo "tc: exempt own client $OWN_CLIENT_IP from latency"
+        # Port-based filters: classify primary_to_primary traffic into class 1:10
+        for port in $PRIMARY_PORTS; do
+            tc filter add dev eth0 parent 1:0 protocol ip prio 2 u32 match ip sport $port 0xffff flowid 1:10
+            tc filter add dev eth0 parent 1:0 protocol ip prio 2 u32 match ip dport $port 0xffff flowid 1:10
+        done
+
+        echo "tc QoS rules applied on eth0: primary_bw=$TC_PRIMARY_BW worker_bw=$TC_WORKER_BW ceil=$TC_BANDWIDTH"
+        tc qdisc show dev eth0
+    else
+        # Legacy single-class mode
+        tc qdisc add dev eth0 root handle 1: htb default 10
+        tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
+        tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+
+        if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+            JITTER_ARG=""
+            if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
+                JITTER_ARG="$TC_JITTER"
+            fi
+            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+        fi
+
+        echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
+        tc qdisc show dev eth0
+
+        # Exempt replies to own client from latency (own client is colocated)
+        if [ -n "$OWN_CLIENT_IP" ] && [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+            tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
+            tc filter add dev eth0 parent 1:0 protocol ip u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:20
+            echo "tc: exempt own client $OWN_CLIENT_IP from latency"
+        fi
     fi
 fi
 
@@ -33,9 +69,24 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     tc qdisc add dev eth0 handle ffff: ingress
     tc filter add dev eth0 parent ffff: protocol ip u32 match u32 0 0 \
         action mirred egress redirect dev ifb0
-    tc qdisc add dev ifb0 root handle 1: htb default 10
-    tc class add dev ifb0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
-    echo "ingress shaping applied via ifb0: rate=$TC_BANDWIDTH"
+
+    if [ -n "$PRIMARY_PORTS" ]; then
+        tc qdisc add dev ifb0 root handle 1: htb default 20
+        tc class add dev ifb0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
+        tc class add dev ifb0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_BANDWIDTH prio 0
+        tc class add dev ifb0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_BANDWIDTH prio 1
+
+        for port in $PRIMARY_PORTS; do
+            tc filter add dev ifb0 parent 1:0 protocol ip prio 2 u32 match ip sport $port 0xffff flowid 1:10
+            tc filter add dev ifb0 parent 1:0 protocol ip prio 2 u32 match ip dport $port 0xffff flowid 1:10
+        done
+
+        echo "ingress QoS shaping applied via ifb0: primary_bw=$TC_PRIMARY_BW worker_bw=$TC_WORKER_BW"
+    else
+        tc qdisc add dev ifb0 root handle 1: htb default 10
+        tc class add dev ifb0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
+        echo "ingress shaping applied via ifb0: rate=$TC_BANDWIDTH"
+    fi
 fi
 
 # Apply tc shaping on lo if LAN bandwidth is specified

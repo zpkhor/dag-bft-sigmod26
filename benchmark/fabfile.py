@@ -52,7 +52,7 @@ def local(ctx, debug=True):
 
 @task
 def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
-           cpus_per_validator=0, lan_bandwidth='100gbit'):
+           cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):
     ''' Run benchmarks in Docker containers with tc bandwidth shaping '''
     rate = int(os.environ.get('RATE', 50_000))
     duration = int(os.environ.get('DURATION', 20))
@@ -94,6 +94,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
             cpus_per_validator=int(cpus_per_validator),
             lan_bandwidth=lan_bandwidth,
             check_mismatch=check_mismatch,
+            primary_bw=primary_bw,
         ).run(debug)
         print(ret.result())
     except BenchError as e:
