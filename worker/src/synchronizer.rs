@@ -29,6 +29,7 @@ pub struct CommitReply {
     pub counter: u64,
     pub account_id: u64,
     pub client_id: u64,
+    pub tx_type: u8,
     pub digest: Digest,
 }
 
@@ -149,6 +150,7 @@ impl Synchronizer {
                                 counter,
                                 account_id,
                                 client_id,
+                                tx_type: tx[0],
                                 digest: digest.clone(),
                             };
                             let bytes = bincode::serialize(&reply)

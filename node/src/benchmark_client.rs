@@ -303,7 +303,10 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
                 tokio::spawn(async move {
                     let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
                     while let Some(Ok(frame)) = transport.next().await {
-                        if let Ok((counter, account_id, digest)) = parse_reply(&frame) {
+                        if let Ok((tx_type, counter, account_id, digest)) = parse_reply(&frame) {
+                            if tx_type != 0 {
+                                continue;
+                            }
                             {
                                 let mut seen_map = seen.lock().unwrap();
                                 if let Some((prev_acct, prev_digest)) = seen_map.get(&counter) {
@@ -333,7 +336,7 @@ async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u6
     }
 }
 
-fn parse_reply(data: &[u8]) -> Result<(u64, u64, Vec<u8>)> {
+fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, Vec<u8>)> {
     // Deserialize CommitReply using bincode (matches worker's serialization).
     #[derive(serde::Deserialize)]
     struct CommitReply {
@@ -341,9 +344,10 @@ fn parse_reply(data: &[u8]) -> Result<(u64, u64, Vec<u8>)> {
         account_id: u64,
         #[allow(dead_code)]
         client_id: u64,
+        tx_type: u8,
         digest: crypto::Digest,
     }
     let reply: CommitReply =
         bincode::deserialize(data).context("Failed to deserialize commit reply")?;
-    Ok((reply.counter, reply.account_id, reply.digest.to_vec()))
+    Ok((reply.tx_type, reply.counter, reply.account_id, reply.digest.to_vec()))
 }
