@@ -162,6 +162,7 @@ class DockerBench:
       - OWN_VALIDATOR_IP={own_validator_ip}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
+      - TC_BANDWIDTH={self.bandwidth}
       - WAIT_PORTS={client_wait_ports}"""
 
             services.append(service)
