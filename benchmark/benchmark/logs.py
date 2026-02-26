@@ -565,6 +565,8 @@ class LogParser:
                 row += f'{round(val_ms):>{col_w},}'
             output += row + '\n'
 
+        # Sum of per-stage p95s, not the p95 of the e2e distribution.
+        # Sum of percentiles >= percentile of sum (stages are not perfectly correlated).
         sum_row = (f'   {"Sum:":<{label_w}}'
                    + ''.join(f'{round(sums[v]):>{col_w},}' for v in validators))
         output += sum_row + '\n'
