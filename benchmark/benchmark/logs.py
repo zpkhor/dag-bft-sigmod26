@@ -281,23 +281,33 @@ class LogParser:
         tps = bps / self.size[0]
         return tps, bps, duration
 
-    def _committed_latency(self):
+    def _sent_to_seal_latency(self):
         global_sent = {}
         for sent in self.sent_samples:
             global_sent.update(sent)
 
-        global_received = {}
-        for received in self.received_samples:
-            global_received.update(received)
-
         latency = []
-        for key, batch_id in global_received.items():
-            if batch_id in self.commits:
-                assert key in global_sent  # We receive txs that we sent.
-                start = global_sent[key]
-                if start < self.effective_start:
+        for received in self.received_samples:
+            for key, batch_id in received.items():
+                if batch_id not in self.commits:
                     continue
-                latency.append(self.commits[batch_id] - start)
+                sent = global_sent.get(key)
+                seal = self.seal_times.get(batch_id)
+                if sent < self.effective_start:
+                    continue
+                assert sent is not None and seal is not None, "Committed txs must have been sent and sealed"
+                latency.append(seal - sent)
+        return self._calculate_latency_metrics(latency)
+
+    def _seal_to_quorum_latency(self):
+        latency = []
+        for batch_id in self.commits:
+            seal = self.seal_times.get(batch_id)
+            quorum = self.quorum_times.get(batch_id)
+            if seal < self.effective_start:
+                continue
+            assert seal is not None and quorum is not None, "Committed batches must have seal and quorum times"
+            latency.append(quorum - seal)
         return self._calculate_latency_metrics(latency)
 
     def _e2e_committed_latency(self):
@@ -460,9 +470,12 @@ class LogParser:
         consensus_p95 = consensus_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
         committed_tps, committed_bps, commit_duration = self._committed_throughput()
-        committed_metrics = self._committed_latency()
-        committed_latency = committed_metrics['mean'] * 1_000
-        e2e_p95 = committed_metrics['p95'] * 1_000
+        s2s_metrics = self._sent_to_seal_latency()
+        s2s_latency = s2s_metrics['mean'] * 1_000
+        s2s_p95 = s2s_metrics['p95'] * 1_000
+        s2q_metrics = self._seal_to_quorum_latency()
+        s2q_latency = s2q_metrics['mean'] * 1_000
+        s2q_p95 = s2q_metrics['p95'] * 1_000
         e2e_reply_metrics = self._e2e_committed_latency()
         e2e_reply_latency = e2e_reply_metrics['mean'] * 1_000
         e2e_reply_p95 = e2e_reply_metrics['p95'] * 1_000
@@ -474,7 +487,6 @@ class LogParser:
             warnings.append('Consensus stalled the system')
         if (commit_duration / effective_bench_duration) < 0.9:
             warnings.append('Commit stalled the system')
-        assert consensus_latency <= committed_latency, f"Consensus latency {consensus_latency} ms should be less than or equal to committed latency {committed_latency} ms"
 
         warnings_str = ''
         if warnings:
@@ -508,17 +520,19 @@ class LogParser:
             f' Max batch delay: {max_batch_delay:,} ms\n'
             '\n'
             ' + RESULTS:\n'
-            f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
-            f' Consensus BPS: {round(consensus_bps):,} B/s\n'
+            f' Sent to seal latency (mean): {round(s2s_latency):,} ms\n'
+            f' Sent to seal latency (p95): {round(s2s_p95):,} ms\n'
+            f' Seal to quorum latency (mean): {round(s2q_latency):,} ms\n'
+            f' Seal to quorum latency (p95): {round(s2q_p95):,} ms\n'
             f' Consensus latency (mean): {round(consensus_latency):,} ms\n'
             f' Consensus latency (p95): {round(consensus_p95):,} ms\n'
-            '\n'
-            f' Committed TPS: {round(committed_tps):,} tx/s\n'
-            f' Committed BPS: {round(committed_bps):,} B/s\n'
-            f' Committed latency (mean): {round(committed_latency):,} ms\n'
-            f' Committed latency (p95): {round(e2e_p95):,} ms\n'
             f' E2E latency f+1 replies (mean): {round(e2e_reply_latency):,} ms\n'
             f' E2E latency f+1 replies (p95): {round(e2e_reply_p95):,} ms\n'
+            '\n'
+            f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
+            f' Consensus BPS: {round(consensus_bps):,} B/s\n'
+            f' Committed TPS: {round(committed_tps):,} tx/s\n'
+            f' Committed BPS: {round(committed_bps):,} B/s\n'
         )
         if self.reply_mismatches > 0:
             output += f' Reply mismatches: {self.reply_mismatches:,}\n'
