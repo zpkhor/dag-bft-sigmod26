@@ -270,6 +270,9 @@ impl MessageHandler for TxReceiverHandler {
             .send(message.to_vec())
             .await
             .expect("Failed to send transaction");
+
+        // Give the change to schedule other tasks.
+        tokio::task::yield_now().await;
         Ok(())
     }
 }
