@@ -211,6 +211,6 @@ def kill(ctx):
 def logs(ctx):
     ''' Print a summary of the logs '''
     try:
-        print(LogParser.process('./logs', faults='?').result())
+        print(LogParser.process('./logs', faults='?', duration=60, warmup=5, verbose=True).result())
     except ParseError as e:
         Print.error(BenchError('Failed to parse logs', e))

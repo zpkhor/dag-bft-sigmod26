@@ -2,16 +2,14 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(4000 9000)
-RRS=(0 1)
-RETRIES=1
-DURATION=${DURATION:-60}
-WARMUP=${WARMUP:-5}
-TOKIO_THREADS=${TOKIO_THREADS:-16}
-
+RATES=(6000)
+RRS=(0)
+RETRIES=3
+DURATION=${DURATION:-120}
+WARMUP=${WARMUP:-10}
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal/benchmark/results/phase1_20260226_154605
 
 cd "$(dirname "$0")"
 
@@ -30,8 +28,8 @@ for RR in "${RRS[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Run: $RETRY/$RETRIES ---"
 
-            echo "CMD: RR=$RR OPEN_LOOP=1 TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=32 --bandwidth=100mbit --latency=50ms --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(RR=$RR OPEN_LOOP=1 TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=32 --bandwidth=100mbit --latency=50ms --primary-bw=10mbit 2>&1) || true
+            echo "CMD: RR=$RR OPEN_LOOP=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(RR=$RR OPEN_LOOP=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run

@@ -10,8 +10,6 @@ RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1") # /home/zpkhor/narwhal/benchma
 RETRIES=1
 DURATION=${DURATION:-60}
 WARMUP=${WARMUP:-5}
-TOKIO_THREADS=${TOKIO_THREADS:-8}
-
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
@@ -35,7 +33,7 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            OUTPUT=$(TOKIO_THREADS=$TOKIO_THREADS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=32 --bandwidth=100mbit 2>&1) || true
+            OUTPUT=$(RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
