@@ -17,7 +17,7 @@ class ParseError(Exception):
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
-                 duration=None, warmup=0):
+                 duration=None, warmup=0, verbose=False):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
@@ -56,6 +56,7 @@ class LogParser:
 
         # Warmup trimming: discard commits/proposals in the warmup window.
         self.warmup = warmup
+        self.verbose = verbose
         if warmup and self.start:
             cutoff = min(self.start) + warmup
             self.commits = {d: t for d, t in self.commits.items() if t >= cutoff}
@@ -68,7 +69,7 @@ class LogParser:
                 results = p.map(self._parse_workers, workers)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse workers\' logs: {e}')
-        sizes, self.received_samples, workers_ips, \
+        sizes, self.sample_to_batch, workers_ips, \
             arrival_times_list, seal_times_list, quorum_times_list, processed_times_list \
             = zip(*results)
         self.sizes = {
@@ -86,7 +87,7 @@ class LogParser:
 
         # Parse per-validator data if available.
         self.sizes_by_validator = {}
-        self.received_samples_by_validator = {}
+        self.sample_to_batch_by_validator = {}
         self.sent_samples_by_validator = {}
         self.misses_by_validator = {}
         if workers_by_validator:
@@ -98,7 +99,7 @@ class LogParser:
                     v_sizes.update(s)
                     v_received_list.append(r)
                 self.sizes_by_validator[v] = v_sizes
-                self.received_samples_by_validator[v] = v_received_list
+                self.sample_to_batch_by_validator[v] = v_received_list
         if clients_by_validator:
             for v, logs in clients_by_validator.items():
                 v_sent_list = []
@@ -239,21 +240,23 @@ class LogParser:
         return datetime.timestamp(x)
 
     def _calculate_latency_metrics(self, latency_list):
-        """Calculate mean and p95 latency from a list of latencies."""
+        """Calculate mean, p50, p95, and p99 latency from a list of latencies."""
         if not latency_list:
-            return {'mean': 0, 'p95': 0}
+            return {'mean': 0, 'p50': 0, 'p95': 0, 'p99': 0}
 
         result = {'mean': mean(latency_list)}
 
-        # Calculate p95 if we have enough samples
         if len(latency_list) >= 20:
-            # quantiles(data, n=20) gives 19 cut points
-            # Index 18 is the 95th percentile (19/20 = 0.95)
-            q = quantiles(latency_list, n=20)
-            result['p95'] = q[18]
+            # quantiles(data, n=100) gives 99 cut points at 1st through 99th percentile
+            q = quantiles(latency_list, n=100)
+            result['p50'] = q[49]
+            result['p95'] = q[94]
+            result['p99'] = q[98]
         else:
-            # For small samples, use max as p95 approximation
+            sorted_list = sorted(latency_list)
+            result['p50'] = sorted_list[len(sorted_list) // 2]
             result['p95'] = max(latency_list)
+            result['p99'] = max(latency_list)
 
         return result
 
@@ -287,7 +290,7 @@ class LogParser:
             global_sent.update(sent)
 
         latency = []
-        for received in self.received_samples:
+        for received in self.sample_to_batch:
             for key, batch_id in received.items():
                 if batch_id not in self.commits:
                     continue
@@ -373,7 +376,7 @@ class LogParser:
 
         result = {}
         for v in sorted(self.sizes_by_validator.keys()):
-            v_received_list = self.received_samples_by_validator.get(v, [])
+            v_received_list = self.sample_to_batch_by_validator.get(v, [])
             latencies = []
             for received in v_received_list:
                 for key, batch_id in received.items():
@@ -387,44 +390,37 @@ class LogParser:
                 result[v] = self._calculate_latency_metrics(latencies)
         return result
 
-    def _per_stage_latency_breakdown(self):
+    def _global_stage_latency_breakdown(self):
         global_sent = {}
         for sent in self.sent_samples:
             global_sent.update(sent)
 
-        global_received = {}
-        for received in self.received_samples:
-            global_received.update(received)
+        stage_labels = [
+            'Client -> Worker',
+            'Worker -> Batch seal',
+            'Batch seal -> Quorum',
+            'Quorum -> Processed',
+            'Processed -> Header',
+            'Header -> Committed',
+        ]
+        stages = {label: [] for label in stage_labels}
 
-        stages = {
-            'Client -> Worker': [],
-            'Worker -> Batch seal': [],
-            'Batch seal -> Quorum': [],
-            'Quorum -> Processed': [],
-            'Processed -> Header': [],
-            'Header -> Committed': [],
-        }
+        for received in self.sample_to_batch:
+            for key, batch_id in received.items():
+                if batch_id not in self.commits:
+                    continue
+                send_time = global_sent.get(key)
+                if send_time is None or send_time < self.effective_start:
+                    continue
 
-        # Stages 1-2: keyed by sample tx (client_id, counter, account_id)
-        for key in global_received:
-            batch_id = global_received[key]
-            if batch_id not in self.commits:
-                continue
-            send_time = global_sent.get(key)
-            if send_time is None or send_time < self.effective_start:
-                continue
+                arrival = self.arrival_times.get(key)
+                if arrival is not None:
+                    stages['Client -> Worker'].append(arrival - send_time)
 
-            # Stage 1: Client send -> Worker arrival
-            arrival = self.arrival_times.get(key)
-            if arrival is not None:
-                stages['Client -> Worker'].append(arrival - send_time)
+                seal = self.seal_times.get(batch_id)
+                if arrival is not None and seal is not None:
+                    stages['Worker -> Batch seal'].append(seal - arrival)
 
-            # Stage 2: Worker arrival -> Batch seal
-            seal = self.seal_times.get(batch_id)
-            if arrival is not None and seal is not None:
-                stages['Worker -> Batch seal'].append(seal - arrival)
-
-        # Stages 3-6: keyed by batch digest
         for batch_id in self.commits:
             seal = self.seal_times.get(batch_id)
             quorum = self.quorum_times.get(batch_id)
@@ -432,29 +428,156 @@ class LogParser:
             proposed = self.proposals.get(batch_id)
             committed = self.commits[batch_id]
 
-            # Stage 3: Batch seal -> Quorum
             if seal is not None and quorum is not None:
                 stages['Batch seal -> Quorum'].append(quorum - seal)
 
-            # Stage 4: Quorum -> Processed
             if quorum is not None and processed is not None:
                 stages['Quorum -> Processed'].append(processed - quorum)
 
-            # Stage 5: Processed -> Header created
             if processed is not None and proposed is not None:
                 stages['Processed -> Header'].append(proposed - processed)
 
-            # Stage 6: Header created -> Committed
             if proposed is not None:
                 stages['Header -> Committed'].append(committed - proposed)
 
         result = {}
         for label, latencies in stages.items():
             if latencies:
-                result[label] = {'mean': mean(latencies) * 1_000, 'count': len(latencies)}
+                metrics = self._calculate_latency_metrics(latencies)
+                result[label] = {
+                    'mean': metrics['mean'],
+                    'p50': metrics['p50'],
+                    'p95': metrics['p95'],
+                    'p99': metrics['p99'],
+                    'count': len(latencies),
+                }
             else:
-                result[label] = {'mean': 0, 'count': 0}
+                result[label] = {'mean': 0, 'p50': 0, 'p95': 0, 'p99': 0, 'count': 0}
+        return {'all': result}
+
+    def _per_validator_stage_latency_breakdown(self):
+        global_sent = {}
+        for sent in self.sent_samples:
+            global_sent.update(sent)
+
+        stage_labels = [
+            'Client -> Worker',
+            'Worker -> Batch seal',
+            'Batch seal -> Quorum',
+            'Quorum -> Processed',
+            'Processed -> Header',
+            'Header -> Committed',
+        ]
+
+        if self.sizes_by_validator:
+            validators = sorted(self.sizes_by_validator.keys())
+        else:
+            validators = ['all']
+
+        result = {}
+        for v in validators:
+            stages = {label: [] for label in stage_labels}
+
+            if v == 'all':
+                v_committed_batches = set(self.commits.keys())
+                v_received_list = self.sample_to_batch
+            else:
+                v_committed_batches = {
+                    d for d in self.sizes_by_validator[v] if d in self.commits
+                }
+                v_received_list = self.sample_to_batch_by_validator.get(v, [])
+
+            # Stages 1-2: keyed by sample tx
+            for received in v_received_list:
+                for key, batch_id in received.items():
+                    if batch_id not in self.commits:
+                        continue
+                    send_time = global_sent[key]
+                    if send_time < self.effective_start:
+                        continue
+
+                    arrival = self.arrival_times[key]
+                    stages['Client -> Worker'].append(arrival - send_time)
+
+                    seal = self.seal_times[batch_id]
+                    stages['Worker -> Batch seal'].append(seal - arrival)
+
+            # Stages 3-6: keyed by batch digest
+            for batch_id in v_committed_batches:
+                seal = self.seal_times[batch_id]
+                quorum = self.quorum_times[batch_id]
+                processed = self.processed_times[batch_id]
+                proposed = self.proposals[batch_id]
+                committed = self.commits[batch_id]
+
+                if seal is not None and quorum is not None:
+                    stages['Batch seal -> Quorum'].append(quorum - seal)
+
+                if quorum is not None and processed is not None:
+                    stages['Quorum -> Processed'].append(processed - quorum)
+
+                if processed is not None and proposed is not None:
+                    stages['Processed -> Header'].append(proposed - processed)
+
+                if proposed is not None:
+                    stages['Header -> Committed'].append(committed - proposed)
+
+            v_result = {}
+            for label, latencies in stages.items():
+                if latencies:
+                    metrics = self._calculate_latency_metrics(latencies)
+                    v_result[label] = {
+                        'mean': metrics['mean'],
+                        'p50': metrics['p50'],
+                        'p95': metrics['p95'],
+                        'p99': metrics['p99'],
+                        'count': len(latencies),
+                    }
+                else:
+                    v_result[label] = {'mean': 0, 'p50': 0, 'p95': 0, 'p99': 0, 'count': 0}
+            result[v] = v_result
+
         return result
+
+    def _format_stage_matrix(self, title, metric_key, stage_data):
+        validators = sorted(stage_data.keys())
+        stage_labels = [
+            'Client -> Worker',
+            'Worker -> Batch seal',
+            'Batch seal -> Quorum',
+            'Quorum -> Processed',
+            'Processed -> Header',
+            'Header -> Committed',
+        ]
+        col_w = 8
+        label_w = 28
+
+        v_headers = [f'V{v}' if v != 'all' else 'All' for v in validators]
+        header_row = f'   {"Stage":<{label_w}}' + ''.join(f'{h:>{col_w}}' for h in v_headers)
+        output = f'\n + {title}:\n{header_row}\n'
+
+        sums = {v: 0.0 for v in validators}
+        for label in stage_labels:
+            row = f'   {label + ":":<{label_w}}'
+            for v in validators:
+                val_ms = stage_data[v][label][metric_key] * 1000
+                sums[v] += val_ms
+                row += f'{round(val_ms):>{col_w},}'
+            output += row + '\n'
+
+        sum_row = (f'   {"Sum:":<{label_w}}'
+                   + ''.join(f'{round(sums[v]):>{col_w},}' for v in validators))
+        output += sum_row + '\n'
+
+        count_row = f'   {"(n=)":<{label_w}}'
+        for v in validators:
+            count = stage_data[v]['Client -> Worker']['count']
+            if count == 0:
+                count = stage_data[v]['Batch seal -> Quorum']['count']
+            count_row += f'{count:>{col_w},}'
+        output += count_row + '\n'
+
+        return output
 
     def result(self):
         header_size = self.configs[0]['header_size']
@@ -465,17 +588,8 @@ class LogParser:
         batch_size = self.configs[0]['batch_size']
         max_batch_delay = self.configs[0]['max_batch_delay']
 
-        consensus_metrics = self._consensus_latency()
-        consensus_latency = consensus_metrics['mean'] * 1_000
-        consensus_p95 = consensus_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
         committed_tps, committed_bps, commit_duration = self._committed_throughput()
-        s2s_metrics = self._sent_to_seal_latency()
-        s2s_latency = s2s_metrics['mean'] * 1_000
-        s2s_p95 = s2s_metrics['p95'] * 1_000
-        s2q_metrics = self._seal_to_quorum_latency()
-        s2q_latency = s2q_metrics['mean'] * 1_000
-        s2q_p95 = s2q_metrics['p95'] * 1_000
         e2e_reply_metrics = self._e2e_committed_latency()
         e2e_reply_latency = e2e_reply_metrics['mean'] * 1_000
         e2e_reply_p95 = e2e_reply_metrics['p95'] * 1_000
@@ -520,12 +634,6 @@ class LogParser:
             f' Max batch delay: {max_batch_delay:,} ms\n'
             '\n'
             ' + RESULTS:\n'
-            f' Sent to seal latency (mean): {round(s2s_latency):,} ms\n'
-            f' Sent to seal latency (p95): {round(s2s_p95):,} ms\n'
-            f' Seal to quorum latency (mean): {round(s2q_latency):,} ms\n'
-            f' Seal to quorum latency (p95): {round(s2q_p95):,} ms\n'
-            f' Consensus latency (mean): {round(consensus_latency):,} ms\n'
-            f' Consensus latency (p95): {round(consensus_p95):,} ms\n'
             f' E2E latency f+1 replies (mean): {round(e2e_reply_latency):,} ms\n'
             f' E2E latency f+1 replies (p95): {round(e2e_reply_p95):,} ms\n'
             '\n'
@@ -596,19 +704,31 @@ class LogParser:
                     f' Overall (weighted): {round(weighted_p95 * 1_000):,} ms\n'
                 )
 
-        # Per-stage latency breakdown
-        stage_data = self._per_stage_latency_breakdown()
-        has_stage_data = any(v['count'] > 0 for v in stage_data.values())
+        # Global and per-validator per-stage latency breakdown
+        global_stage_data = self._global_stage_latency_breakdown()
+        stage_data = self._per_validator_stage_latency_breakdown()
+        has_stage_data = any(
+            stage_data[v][label]['count'] > 0
+            for v in stage_data
+            for label in stage_data[v]
+        )
         if has_stage_data:
-            output += (
-                '\n'
-                ' + PER-STAGE LATENCY BREAKDOWN (mean, ms):\n'
+            output += self._format_stage_matrix(
+                'PER-STAGE LATENCY BREAKDOWN (mean, ms)', 'mean', global_stage_data
             )
-            stage_sum = 0
-            for label, data in stage_data.items():
-                output += f'   {label + ":":<28} {round(data["mean"]):,} ms  (n={data["count"]})\n'
-                stage_sum += data['mean']
-            output += f'   {"Sum:":<28} {round(stage_sum):,} ms\n'
+            output += self._format_stage_matrix(
+                'PER-VALIDATOR PER-STAGE LATENCY BREAKDOWN (mean, ms)', 'mean', stage_data
+            )
+            output += self._format_stage_matrix(
+                'PER-VALIDATOR PER-STAGE TAIL LATENCY (p95, ms)', 'p95', stage_data
+            )
+            if self.verbose:
+                output += self._format_stage_matrix(
+                    'PER-VALIDATOR PER-STAGE LATENCY (p50, ms)', 'p50', stage_data
+                )
+                output += self._format_stage_matrix(
+                    'PER-VALIDATOR PER-STAGE TAIL LATENCY (p99, ms)', 'p99', stage_data
+                )
 
         if warnings_str:
             output += warnings_str
@@ -622,7 +742,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0, duration=None, warmup=0):
+    def process(cls, directory, faults=0, duration=None, warmup=0, verbose=False):
         assert isinstance(directory, str)
 
         clients = []
@@ -656,4 +776,5 @@ class LogParser:
             clients_by_validator=dict(clients_by_validator),
             duration=duration,
             warmup=warmup,
+            verbose=verbose,
         )

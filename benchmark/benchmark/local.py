@@ -142,7 +142,7 @@ class LocalBench:
             sleep(1)  # Wait for logs to be flushed.
             # Parse logs and return the parser.
             Print.info("Parsing logs...")
-            return LogParser.process(PathMaker.logs_path(), faults=self.faults, duration=self.duration, warmup=self.warmup)
+            return LogParser.process(PathMaker.logs_path(), faults=self.faults, duration=self.duration, warmup=self.warmup, verbose=debug)
 
         except (subprocess.SubprocessError, ParseError) as e:
             self._kill_nodes()

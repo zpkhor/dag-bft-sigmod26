@@ -407,6 +407,7 @@ networks:
                 faults=self.faults,
                 duration=self.duration,
                 warmup=self.warmup,
+                verbose=debug,
             )
 
         except (subprocess.SubprocessError, ParseError) as e:
