@@ -121,11 +121,15 @@ class DockerBench:
 
             cpuset = ""
             if self.cpus_per_validator > 0:
-                start = i * self.cpus_per_validator
+                slot = self.cpus_per_validator + 4
+                start = i * slot
                 end = start + self.cpus_per_validator - 1
                 cpuset = f'\n    cpuset: "{start}-{end}"'
 
-            tokio_threads = self.node_parameters.json.get("tokio_threads", 0)
+            if self.cpus_per_validator > 0:
+                tokio_threads = self.cpus_per_validator // (1 + self.workers)
+            else:
+                tokio_threads = 0
 
             service = f"""  validator-{i}:
     image: {self.IMAGE_NAME}
@@ -178,12 +182,19 @@ class DockerBench:
             client_ip = client_ips[i]
             client_command = client_commands[i]
             own_validator_ip = container_ips[i]
+
+            client_cpuset = ""
+            if self.cpus_per_validator > 0:
+                slot = self.cpus_per_validator + 4
+                c_start = i * slot + self.cpus_per_validator
+                client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 3}"'
+
             service = f"""  client-{i}:
     image: {self.IMAGE_NAME}
     container_name: narwhal-client-{i}
     working_dir: /app
     cap_add:
-      - NET_ADMIN
+      - NET_ADMIN{client_cpuset}
     entrypoint: ["/client-entrypoint.sh"]
     networks:
       {self.NETWORK_NAME}:

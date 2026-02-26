@@ -2,10 +2,10 @@
 `source activate narwhal39 && cargo build --release --features benchmark`: Compile
 
 # Architecture
-- Narwhal is a BFT system with a **three-tier process architecture**:
+- Narwhal is a BFT system with a **two-tier process architecture**:
   - **Tier 1 (Primary)**: One per validator (handles consensus)
-  - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and routing)
-- There is one client per validator (colocated in the same container); the client connects to all of that validator's workers (or all validators' workers in round-robin mode)
+  - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and receival of batch from others)
+- There is one client per validator that connects to all of that validator's workers (or all validators' workers in round-robin mode). In docker mode, the client runs in its own dedicated container with 4 pinned CPUs adjacent (directly after) its validator's CPU range, with 0ms tc latency to the validator.
 - The client sends at a fixed rate. When overloaded, backpressure from TCP / tx_batch_maker mpsc channel blocks the client's send() call. The signal for overload is client misses, not latency increase
 - Local bench runs all processes on one machine, clock drift is not an issue
 
