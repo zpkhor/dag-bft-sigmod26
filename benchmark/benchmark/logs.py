@@ -721,15 +721,16 @@ class LogParser:
             output += self._format_stage_matrix(
                 'PER-VALIDATOR PER-STAGE LATENCY BREAKDOWN (mean, ms)', 'mean', stage_data
             )
+            if self.verbose:
+                output += self._format_stage_matrix(
+                    'PER-VALIDATOR PER-STAGE LATENCY BREAKDOWN (p50, ms)', 'p50', stage_data
+                )
             output += self._format_stage_matrix(
-                'PER-VALIDATOR PER-STAGE TAIL LATENCY (p95, ms)', 'p95', stage_data
+                'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p95, ms)', 'p95', stage_data
             )
             if self.verbose:
                 output += self._format_stage_matrix(
-                    'PER-VALIDATOR PER-STAGE LATENCY (p50, ms)', 'p50', stage_data
-                )
-                output += self._format_stage_matrix(
-                    'PER-VALIDATOR PER-STAGE TAIL LATENCY (p99, ms)', 'p99', stage_data
+                    'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p99, ms)', 'p99', stage_data
                 )
 
         if warnings_str:
