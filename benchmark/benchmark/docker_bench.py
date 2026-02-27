@@ -83,7 +83,8 @@ class DockerBench:
     def _container_ip(self, i):
         return f"172.20.0.{10 + i}"
 
-    def _docker_down(self):
+    @staticmethod
+    def _docker_down():
         try:
             subprocess.run(
                 [

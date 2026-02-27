@@ -100,6 +100,12 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
 
 
 @task
+def docker_down(ctx):
+    ''' Tear down Docker containers from a previous docker benchmark run '''
+    DockerBench._docker_down()
+
+
+@task
 def create(ctx, nodes=2):
     ''' Create a testbed'''
     try:
