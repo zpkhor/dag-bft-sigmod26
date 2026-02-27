@@ -10,7 +10,7 @@ DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-10}
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal/benchmark/results/phase1_20260226_154605
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal/benchmark/results/phase1_20260227_100241/merged_output.log
 
 cd "$(dirname "$0")"
 
