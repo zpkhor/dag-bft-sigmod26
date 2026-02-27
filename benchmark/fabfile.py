@@ -1,4 +1,5 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+import json
 import os
 from fabric import task
 
@@ -217,6 +218,13 @@ def kill(ctx):
 def logs(ctx):
     ''' Print a summary of the logs '''
     try:
-        print(LogParser.process('./logs', faults='?', duration=60, warmup=5, verbose=True).result())
+        params_file = os.path.join('logs', 'bench-params.json')
+        if os.path.exists(params_file):
+            with open(params_file) as f:
+                p = json.load(f)
+            duration, warmup, faults = p['duration'], p['warmup'], p['faults']
+        else:
+            duration, warmup, faults = 60, 5, '?'
+        print(LogParser.process('./logs', faults=faults, duration=duration, warmup=warmup, verbose=True).result())
     except ParseError as e:
         Print.error(BenchError('Failed to parse logs', e))

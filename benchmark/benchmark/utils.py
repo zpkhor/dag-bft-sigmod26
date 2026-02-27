@@ -44,6 +44,10 @@ class PathMaker:
         return 'logs'
 
     @staticmethod
+    def bench_params_file():
+        return join(PathMaker.logs_path(), 'bench-params.json')
+
+    @staticmethod
     def primary_log_file(i):
         assert isinstance(i, int) and i >= 0
         return join(PathMaker.logs_path(), f'primary-{i}.log')

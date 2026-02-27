@@ -1,4 +1,5 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+import json
 import subprocess
 from math import ceil
 from os.path import basename, splitext
@@ -134,6 +135,9 @@ class LocalBench:
                     )
                     log_file = PathMaker.worker_log_file(i, id)
                     self._background_run(cmd, log_file, env_prefix)
+
+            with open(PathMaker.bench_params_file(), 'w') as f:
+                json.dump({'duration': self.duration, 'warmup': self.warmup, 'faults': self.faults}, f)
 
             # Wait for all transactions to be processed.
             Print.info(f"Running benchmark ({self.duration} sec)...")

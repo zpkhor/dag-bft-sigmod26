@@ -1,4 +1,5 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
+import json
 import subprocess
 from math import ceil
 from time import sleep
@@ -391,6 +392,9 @@ networks:
                 ["docker", "compose", "-f", "docker-compose.yml", "up", "-d"],
                 check=True,
             )
+
+            with open(PathMaker.bench_params_file(), 'w') as f:
+                json.dump({'duration': self.duration, 'warmup': self.warmup, 'faults': self.faults}, f)
 
             # Wait for benchmark duration.
             Print.info(f"Running benchmark ({self.duration} sec)...")
