@@ -62,6 +62,8 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
+    bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
+    bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
     open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     rr = os.environ.get('RR', 'false').lower() in ('true', '1', 'yes')
@@ -97,6 +99,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
             lan_bandwidth=lan_bandwidth,
             check_mismatch=check_mismatch,
             primary_bw=primary_bw,
+            bandwidths=bandwidths,
         ).run(debug)
         print(ret.result())
     except BenchError as e:

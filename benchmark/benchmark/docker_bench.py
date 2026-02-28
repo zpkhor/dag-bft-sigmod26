@@ -34,6 +34,7 @@ class DockerBench:
         lan_bandwidth="100gbit",
         check_mismatch=False,
         primary_bw="500mbit",
+        bandwidths=None,
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -41,7 +42,6 @@ class DockerBench:
         except ConfigError as e:
             raise BenchError("Invalid nodes or bench parameters", e)
 
-        self.bandwidth = bandwidth
         self.latency = latency
         self.jitter = jitter
         self.cpus_per_validator = cpus_per_validator
@@ -49,15 +49,26 @@ class DockerBench:
         self.check_mismatch = check_mismatch
 
         # QoS bandwidth allocation
+        nodes = self.bench_parameters.nodes[0]
+        if bandwidths is not None:
+            assert len(bandwidths) == nodes, (
+                f"BANDWIDTHS_MBPS has {len(bandwidths)} entries but nodes={nodes}"
+            )
+            self.bandwidths = bandwidths
+        else:
+            self.bandwidths = [bandwidth] * nodes
+
         self.primary_bw = primary_bw
-        total_mbit = self._parse_bw_mbit(bandwidth)
         primary_mbit = self._parse_bw_mbit(primary_bw)
-        worker_mbit = total_mbit - primary_mbit
-        assert worker_mbit > 0, (
-            f"primary_bw ({primary_bw}={primary_mbit}mbit) must be less than "
-            f"bandwidth ({bandwidth}={total_mbit}mbit)"
-        )
-        self.worker_bw = self._format_bw(worker_mbit)
+        self.worker_bws = []
+        for i, bw in enumerate(self.bandwidths):
+            total_mbit = self._parse_bw_mbit(bw)
+            worker_mbit = total_mbit - primary_mbit
+            assert worker_mbit > 0, (
+                f"primary_bw ({primary_bw}={primary_mbit}mbit) must be less than "
+                f"bandwidth for validator {i} ({bw}={total_mbit}mbit)"
+            )
+            self.worker_bws.append(self._format_bw(worker_mbit))
 
     @staticmethod
     def _parse_bw_mbit(bw_str):
@@ -158,9 +169,9 @@ class DockerBench:
             service += f"""
     environment:
       - VALIDATOR_ID={i}
-      - TC_BANDWIDTH={self.bandwidth}
+      - TC_BANDWIDTH={self.bandwidths[i]}
       - TC_PRIMARY_BW={self.primary_bw}
-      - TC_WORKER_BW={self.worker_bw}
+      - TC_WORKER_BW={self.worker_bws[i]}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
@@ -209,7 +220,7 @@ class DockerBench:
       - OWN_VALIDATOR_IP={own_validator_ip}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
-      - TC_BANDWIDTH={self.bandwidth}
+      - TC_BANDWIDTH={self.bandwidths[i]}
       - WAIT_PORTS={client_wait_ports}"""
 
             services.append(service)
