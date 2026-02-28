@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
     info!("Transactions rate: {} tx/s", rate);
 
     info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
+    info!("Account range: {} to {} ({} accounts)", account_start, account_start + num_accounts - 1, num_accounts);
 
     // Spawn reply listener if reply_port is set.
     let seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>> =

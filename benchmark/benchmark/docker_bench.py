@@ -291,8 +291,17 @@ networks:
 
             num_accounts = self.bench_parameters.num_accounts
             total_clients = nodes
-            accounts_base = num_accounts // total_clients
-            accounts_remainder = num_accounts % total_clients
+            account_weights = self.bench_parameters.account_weights or [1] * total_clients
+            total_aw = sum(account_weights)
+            acct_counts = [num_accounts * w // total_aw for w in account_weights]
+            remainder = num_accounts - sum(acct_counts)
+            for k in range(remainder):
+                acct_counts[k] += 1
+            acct_starts = []
+            s = 0
+            for c in acct_counts:
+                acct_starts.append(s)
+                s += c
 
             commands_per_validator = {}
             client_commands = {}
@@ -318,8 +327,8 @@ networks:
                 nodes_arg = " ".join(worker_addrs)
                 open_loop_flag = "--open-loop" if self.open_loop else ""
 
-                acct_start = i * accounts_base + min(i, accounts_remainder)
-                acct_count = accounts_base + (1 if i < accounts_remainder else 0)
+                acct_start = acct_starts[i]
+                acct_count = acct_counts[i]
                 account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
 
                 num_workers = len(addresses)

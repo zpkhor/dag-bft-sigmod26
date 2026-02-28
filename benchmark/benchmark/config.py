@@ -283,6 +283,13 @@ class BenchParameters:
                         f'rate_weights length ({len(self.rate_weights)}) '
                         f'must match nodes ({self.nodes[0]})'
                     )
+            self.account_weights = json.get('account_weights', None)
+            if self.account_weights is not None:
+                if len(self.account_weights) != self.nodes[0]:
+                    raise ConfigError(
+                        f'account_weights length ({len(self.account_weights)}) '
+                        f'must match nodes ({self.nodes[0]})'
+                    )
             self.warmup = int(json.get('warmup', 0))
             self.open_loop = bool(json.get('open_loop', False))
             self.num_accounts = int(json.get('num_accounts', 1_000_000))
