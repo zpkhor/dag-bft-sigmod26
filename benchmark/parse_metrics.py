@@ -68,20 +68,21 @@ HEADER = [
 
 EXCLUDE_HEADER = [
     'rr',
-    # 'open_loop',
+    'open_loop',
     'cpus_per_validator',
     'latency',
     'bandwidth',
     'primary_bw',
     'tx_size_B',
-    # 'duration',
+    'duration',
     'warmup',
+    'consensus_tps', 'consensus_bps',
     'committee_size',
     # 'tx_size_B',
     # 'consensus_tps',
     # 'consensus_bps',
     # 'committed_bps',
-    # 'cmd',
+    'cmd',
 ]
 
 

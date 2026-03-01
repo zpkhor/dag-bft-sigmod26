@@ -2,7 +2,7 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(11000)
+RATES=(6000)
 RRS=(0)
 OPEN_LOOPS=(1)
 BANDWIDTHS_MBPS_LIST=("50,50,50,50" "50,50,50,30" "50,50,30,30" "50,30,30,30")
@@ -11,7 +11,8 @@ DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-10}
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal/benchmark/results/phase1_20260228_140003/merged_output.log
+# last BWs doesn't cause committed_tps to drop anymore. Perhaps due to the bottleneck is consensus round
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal/benchmark/results/phase1_20260301_111538/merged_output.log
 
 cd "$(dirname "$0")"
 
@@ -37,8 +38,8 @@ for RR in "${RRS[@]}"; do
 
                     # echo "CMD: RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16  --bandwidth=50mbit --latency=100ms --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
                     # OUTPUT=$(RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16  --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
-                    echo "CMD: RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP BANDWIDTHS_MBPS=$BW fab docker --cpus-per-validator=16 --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
-                    OUTPUT=$(RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP BANDWIDTHS_MBPS=$BW fab docker --cpus-per-validator=16 --primary-bw=10mbit 2>&1) || true
+                    echo "CMD: RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP BANDWIDTHS_MBPS=$BW fab docker --cpus-per-validator=16 --primary-bw=10mbit --latency=100ms" | tee -a "$OUTPUT_LOG"
+                    OUTPUT=$(RR=$RR OPEN_LOOP=$OPEN_LOOP RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP BANDWIDTHS_MBPS=$BW fab docker --cpus-per-validator=16 --primary-bw=10mbit --latency=100ms 2>&1) || true
                     echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
                     # Copy logs for this run
