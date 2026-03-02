@@ -37,10 +37,10 @@ async fn send_to_executor(
 }
 
 /// The `WritebackRouter` receives Execute commands from the Primary, partitions
-/// transactions by account ownership, and routes them to the appropriate executor.
+/// transactions by account ownership, and routes them to the executor that owns the account.
 ///
 /// Key difference from HEAD's Router: this router does per-transaction partitioning
-/// (only sends each executor its relevant transactions), whereas HEAD's Router
+/// (only sends each executor its relevant transactions), whereas Router
 /// broadcasts the full batch to all executors.
 ///
 /// For distributed SendPayment (src and dest on different executors), the transaction
@@ -144,7 +144,8 @@ impl WritebackRouter {
         let partition = self.states_partition_cache.read().unwrap().clone();
 
         // Pre-populate HashMap with all executor IDs so every executor gets a message
-        // (even empty ones for sequence synchronization).
+        // O(W²) behavior: ALL workers must receive messages (even empty) for synchronization.
+        // This ensures strict sequence ordering across all workers within the validator.
         let mut txs_by_executors: HashMap<ExecutorId, Vec<Vec<u8>>> = HashMap::new();
         for executor_id in self.executor_addresses.keys() {
             txs_by_executors.insert(*executor_id, Vec::new());
