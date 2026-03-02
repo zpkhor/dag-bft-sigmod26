@@ -43,6 +43,26 @@
    - PrimaryConnector (sends batch digests to our primary)
 3. **Handle messages from other workers**: Receiver → Processor + Helper (replies to batch requests)
 
+## Execution Flow
+
+1. **Consensus** commits certificate → sends to GarbageCollector
+2. **BatchDispatcher** (Primary) assigns monotonic sequence numbers per batch
+   - Example: Cert with 3 batches → sequences [N, N+1, N+2]
+   - Sends Execute(digest, worker_id, seq) to workers
+3. **Router** (Worker) retrieves batch from storage, routes to executor(s)
+   - Default (data fusion): Router broadcasts full batch to ALL executors
+   - Writeback mode (`WRITEBACK_EXECUTOR=1 fab`): WritebackRouter partitions transactions per-executor by account ownership
+   - Routes via TCP network to executor processes
+4. **Executor** — two modes selectable via `use_writeback_executor` config:
+   - **Data fusion (default, `BatchExecutor`)**: One-way state migration on cross-executor transactions. Dynamic state partition
+   - **Writeback (`DistributedTxExecutor`)**: Bidirectional state movement, transfer + writeback. Accounts stay with original owner, static state partition
+   - Both: buffer out-of-order batches, execute in sequence, send client replies
+5. **ClientReplier** (Executor process) sends signed replies to clients
+
+## BatchExecutor Threading & Migration
+- **Single-threaded**: `run()` is a sequential recv loop — no concurrent access to `pending_queues` or `drained_incoming_transfers`. Only `incoming_transfers` is shared with StateHelper via Mutex. Many apparent race conditions are false positives.
+- **`process_incoming_transfers` only runs at batch boundaries** (end of `execute_batch`), not event-driven by transfer arrival. MigrateIn txs whose transfers arrive between batches must wait for the next batch.
+- **`drain_pending_queues` skips MigrateIn** — only `process_incoming_transfers` handles MigrateIn execution.
 
 # Rust common pitfalls
 - Client writes transactions using BytesMut.put_u64() which is BIG-ENDIAN. Reading raw transactions bytes should then use from_be_bytes()
