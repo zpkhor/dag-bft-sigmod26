@@ -3,7 +3,7 @@ use crate::workload::AccountState;
 use bytes::Bytes;
 use config::{Committee, ExecutorId};
 use crypto::PublicKey;
-use log::{debug, info, warn};
+use log::{debug, info};
 use network::{SimpleSender, LAN_BANDWIDTH};
 use primary::ExecutorPrimaryMessage;
 use serde::{Deserialize, Serialize};
@@ -199,7 +199,7 @@ impl StateHelper {
                 }
             }
             ExecutorToExecutorMessage::StateWriteback { .. } => {
-                panic!("StateHelper (data-fusion mode) received unexpected StateWriteback");
+                panic!("StateHelper (data-fusion mode) received unexpected StateWriteback, ignoring");
             }
         }
     }
