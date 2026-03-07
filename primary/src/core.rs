@@ -46,7 +46,7 @@ pub struct Core {
     /// Receives our newly created headers from the `Proposer`.
     rx_proposer: Receiver<Header>,
     /// Output all certificates to the consensus layer.
-    tx_consensus: Sender<Certificate>,
+    tx_new_certificates: Sender<Certificate>,
     /// Send valid a quorum of certificates' ids to the `Proposer` (along with their round).
     tx_proposer: Sender<(Vec<Digest>, Round)>,
 
@@ -82,7 +82,7 @@ impl Core {
         rx_header_waiter: Receiver<Header>,
         rx_certificate_waiter: Receiver<Certificate>,
         rx_proposer: Receiver<Header>,
-        tx_consensus: Sender<Certificate>,
+        tx_new_certificates: Sender<Certificate>,
         tx_proposer: Sender<(Vec<Digest>, Round)>,
     ) {
         tokio::spawn(async move {
@@ -98,7 +98,7 @@ impl Core {
                 rx_header_waiter,
                 rx_certificate_waiter,
                 rx_proposer,
-                tx_consensus,
+                tx_new_certificates,
                 tx_proposer,
                 gc_round: 0,
                 last_voted: HashMap::with_capacity(2 * gc_depth as usize),
@@ -294,7 +294,7 @@ impl Core {
 
         // Send it to the consensus layer.
         let id = certificate.header.id.clone();
-        if let Err(e) = self.tx_consensus.send(certificate).await {
+        if let Err(e) = self.tx_new_certificates.send(certificate).await {
             warn!(
                 "Failed to deliver certificate {} to the consensus: {}",
                 id, e

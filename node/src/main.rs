@@ -107,15 +107,15 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 committee.clone(),
                 parameters.clone(),
                 store,
-                /* tx_consensus */ tx_new_certificates,
-                /* rx_consensus */ rx_feedback,
+                tx_new_certificates,
+                rx_feedback,
             );
             let analyze_committee = committee.clone();
             Consensus::spawn(
                 committee,
                 parameters.gc_depth,
-                /* rx_primary */ rx_new_certificates,
-                /* tx_primary */ tx_feedback,
+                rx_new_certificates,
+                tx_feedback,
                 tx_output,
             );
             analyze(rx_output, analyze_committee, name).await;

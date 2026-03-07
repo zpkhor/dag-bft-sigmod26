@@ -97,16 +97,16 @@ async fn commit_one() {
 
     // Spawn the consensus engine and sink the primary channel.
     let (tx_waiter, rx_waiter) = channel(1);
-    let (tx_primary, mut rx_primary) = channel(1);
+    let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
-        tx_primary,
+        tx_feedback,
         tx_output,
     );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_feedback.recv().await.is_some() {} });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
@@ -142,16 +142,16 @@ async fn dead_node() {
 
     // Spawn the consensus engine and sink the primary channel.
     let (tx_waiter, rx_waiter) = channel(1);
-    let (tx_primary, mut rx_primary) = channel(1);
+    let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
-        tx_primary,
+        tx_feedback,
         tx_output,
     );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_feedback.recv().await.is_some() {} });
 
     // Feed all certificates to the consensus.
     tokio::spawn(async move {
@@ -230,16 +230,16 @@ async fn not_enough_support() {
 
     // Spawn the consensus engine and sink the primary channel.
     let (tx_waiter, rx_waiter) = channel(1);
-    let (tx_primary, mut rx_primary) = channel(1);
+    let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
-        tx_primary,
+        tx_feedback,
         tx_output,
     );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_feedback.recv().await.is_some() {} });
 
     // Feed all certificates to the consensus. Only the last certificate should trigger
     // commits, so the task should not block.
@@ -293,16 +293,16 @@ async fn missing_leader() {
 
     // Spawn the consensus engine and sink the primary channel.
     let (tx_waiter, rx_waiter) = channel(1);
-    let (tx_primary, mut rx_primary) = channel(1);
+    let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
-        tx_primary,
+        tx_feedback,
         tx_output,
     );
-    tokio::spawn(async move { while rx_primary.recv().await.is_some() {} });
+    tokio::spawn(async move { while rx_feedback.recv().await.is_some() {} });
 
     // Feed all certificates to the consensus. We should only commit upon receiving the last
     // certificate, so calls below should not block the task.

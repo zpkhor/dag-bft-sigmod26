@@ -65,8 +65,8 @@ impl Primary {
         committee: Committee,
         parameters: Parameters,
         store: Store,
-        tx_consensus: Sender<Certificate>,
-        rx_consensus: Receiver<Certificate>,
+        tx_new_certificates: Sender<Certificate>,
+        rx_feedback: Receiver<Certificate>,
     ) {
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
         let (tx_our_digests, rx_our_digests) = channel(CHANNEL_CAPACITY);
@@ -153,12 +153,12 @@ impl Primary {
             /* rx_header_waiter */ rx_headers_loopback,
             /* rx_certificate_waiter */ rx_certificates_loopback,
             /* rx_proposer */ rx_headers,
-            tx_consensus,
+            tx_new_certificates,
             /* tx_proposer */ tx_parents,
         );
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their internal state
-        GarbageCollector::spawn(&name, &committee, consensus_round.clone(), rx_consensus);
+        GarbageCollector::spawn(&name, &committee, consensus_round.clone(), rx_feedback);
 
         // Receives batch digests from other workers. They are only used to validate headers.
         PayloadReceiver::spawn(store.clone(), /* rx_workers */ rx_others_digests);

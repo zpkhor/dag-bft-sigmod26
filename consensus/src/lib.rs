@@ -70,9 +70,9 @@ pub struct Consensus {
 
     /// Receives new certificates from the primary. The primary should send us new certificates only
     /// if it already sent us its whole history.
-    rx_primary: Receiver<Certificate>,
+    rx_new_certificates: Receiver<Certificate>,
     /// Outputs the sequence of ordered certificates to the primary (for cleanup and feedback).
-    tx_primary: Sender<Certificate>,
+    tx_feedback: Sender<Certificate>,
     /// Outputs the sequence of ordered certificates to the application layer.
     tx_output: Sender<Certificate>,
 
@@ -84,16 +84,16 @@ impl Consensus {
     pub fn spawn(
         committee: Committee,
         gc_depth: Round,
-        rx_primary: Receiver<Certificate>,
-        tx_primary: Sender<Certificate>,
+        rx_new_certificates: Receiver<Certificate>,
+        tx_feedback: Sender<Certificate>,
         tx_output: Sender<Certificate>,
     ) {
         tokio::spawn(async move {
             Self {
                 committee: committee.clone(),
                 gc_depth,
-                rx_primary,
-                tx_primary,
+                rx_new_certificates,
+                tx_feedback,
                 tx_output,
                 genesis: Certificate::genesis(&committee),
             }
@@ -107,7 +107,7 @@ impl Consensus {
         let mut state = State::new(self.genesis.clone());
 
         // Listen to incoming certificates.
-        while let Some(certificate) = self.rx_primary.recv().await {
+        while let Some(certificate) = self.rx_new_certificates.recv().await {
             debug!("Processing {:?}", certificate);
             let round = certificate.round();
 
@@ -188,7 +188,7 @@ impl Consensus {
                     info!("Committed {} -> {:?}", certificate.header, digest);
                 }
 
-                self.tx_primary
+                self.tx_feedback
                     .send(certificate.clone())
                     .await
                     .expect("Failed to send certificate to primary");
