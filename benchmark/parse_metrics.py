@@ -30,8 +30,8 @@ def parse_block(block):
     input_rate = find(r'Input rate:\s*([\d,]+)\s*tx/s', block)
     tx_size_B = find(r'Transaction size:\s*([\d,]+)\s*B', block)
     bench_duration_s = find(r'Benchmark duration:\s*([\d,.]+)\s*s', block)
-    e2e_lat_mean_ms = find(r'E2E latency f\+1 replies \(mean\):\s*([\d,]+)\s*ms', block)
-    e2e_lat_p95_ms = find(r'E2E latency f\+1 replies \(p95\):\s*([\d,]+)\s*ms', block)
+    commit_lat_mean_ms = find(r'f\+1 Commit latency \(workers\) \(mean\):\s*([\d,]+)\s*ms', block)
+    commit_lat_p95_ms = find(r'f\+1 Commit latency \(workers\) \(p95\):\s*([\d,]+)\s*ms', block)
     consensus_tps = find(r'Consensus TPS:\s*([\d,]+)\s*tx/s', block)
     consensus_bps = find(r'Consensus BPS:\s*([\d,]+)\s*B/s', block)
     committed_tps = find(r'Committed TPS:\s*([\d,]+)\s*tx/s', block)
@@ -47,7 +47,7 @@ def parse_block(block):
         rr, duration, open_loop, warmup,
         cpus_per_validator, bandwidth, bandwidths_mbps, latency, primary_bw,
         committee_size, input_rate, tx_size_B, 
-        e2e_lat_mean_ms, e2e_lat_p95_ms,
+        commit_lat_mean_ms, commit_lat_p95_ms,
         consensus_tps, consensus_bps,
         committed_tps, committed_bps,
         batch_seal_to_quorum_mean_ms,
@@ -59,7 +59,7 @@ HEADER = [
     'rr', 'duration', 'open_loop', 'warmup',
     'cpus_per_validator', 'bandwidth', 'bandwidths_mbps', 'latency', 'primary_bw',
     'committee_size', 'input_rate', 'tx_size_B', 
-    'e2e_lat_mean_ms', 'e2e_lat_p95_ms',
+    'commit_lat_mean_ms', 'commit_lat_p95_ms',
     'consensus_tps', 'consensus_bps',
     'committed_tps', 'committed_bps',
     'batch_seal_to_quorum_mean_ms',
@@ -72,6 +72,7 @@ EXCLUDE_HEADER = [
     'cpus_per_validator',
     'latency',
     'bandwidth',
+    'bandwidths_mbps',
     'primary_bw',
     'tx_size_B',
     'duration',
