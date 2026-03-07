@@ -138,6 +138,8 @@ impl Consensus {
                 None => continue,
             };
 
+            debug!("Elected leader counts {:?} for round {}", leader.header.account_counts, leader_round);
+
             // Check if the leader has f+1 support from its children (ie. round r-1).
             let stake: Stake = state
                 .dag

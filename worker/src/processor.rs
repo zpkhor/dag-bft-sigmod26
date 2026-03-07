@@ -39,6 +39,16 @@ impl Processor {
                 // Hash the batch.
                 let digest = Digest(Sha512::digest(&batch).as_ref()[..32].try_into().unwrap());
 
+                // Extract account_counts before moving batch into store.
+                let account_counts = if own_digest {
+                    match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
+                        Ok(crate::worker::WorkerMessage::Batch((_, counts))) => counts,
+                        _ => std::collections::BTreeMap::new(),
+                    }
+                } else {
+                    std::collections::BTreeMap::new()
+                };
+
                 // Store the batch.
                 store.write(digest.to_vec(), batch).await;
 
@@ -49,7 +59,7 @@ impl Processor {
 
                 // Deliver the batch's digest.
                 let message = match own_digest {
-                    true => WorkerPrimaryMessage::OurBatch(digest, id),
+                    true => WorkerPrimaryMessage::OurBatch(digest, id, account_counts),
                     false => WorkerPrimaryMessage::OthersBatch(digest, id),
                 };
                 let message = bincode::serialize(&message)

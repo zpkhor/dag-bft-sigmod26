@@ -16,6 +16,7 @@ pub struct Header {
     pub round: Round,
     pub payload: BTreeMap<Digest, WorkerId>,
     pub parents: BTreeSet<Digest>,
+    pub account_counts: BTreeMap<u64, u64>,
     pub id: Digest,
     pub signature: Signature,
 }
@@ -26,6 +27,7 @@ impl Header {
         round: Round,
         payload: BTreeMap<Digest, WorkerId>,
         parents: BTreeSet<Digest>,
+        account_counts: BTreeMap<u64, u64>,
         signature_service: &mut SignatureService,
     ) -> Self {
         let header = Self {
@@ -33,6 +35,7 @@ impl Header {
             round,
             payload,
             parents,
+            account_counts,
             id: Digest::default(),
             signature: Signature::default(),
         };
@@ -78,6 +81,11 @@ impl Hash for Header {
         }
         for x in &self.parents {
             hasher.update(x);
+        }
+        // TODO: we can use bytes.len() of per-account in batch instead of trusting other validator on this
+        for (acc, cnt) in &self.account_counts {
+            hasher.update(acc.to_le_bytes());
+            hasher.update(cnt.to_le_bytes());
         }
         Digest(hasher.finalize().as_ref()[..32].try_into().unwrap())
     }

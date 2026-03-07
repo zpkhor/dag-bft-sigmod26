@@ -17,6 +17,7 @@ use futures::sink::SinkExt as _;
 use log::info;
 use network::{MessageHandler, Receiver as NetworkReceiver, Writer};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::error::Error;
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
@@ -52,7 +53,7 @@ pub enum PrimaryWorkerMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerPrimaryMessage {
     /// The worker indicates it sealed a new batch.
-    OurBatch(Digest, WorkerId),
+    OurBatch(Digest, WorkerId, BTreeMap<u64, u64>),
     /// The worker indicates it received a batch's digest from another authority.
     OthersBatch(Digest, WorkerId),
 }
@@ -69,7 +70,7 @@ impl Primary {
         rx_feedback: Receiver<Certificate>,
     ) {
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
-        let (tx_our_digests, rx_our_digests) = channel(CHANNEL_CAPACITY);
+        let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>, _) = channel(CHANNEL_CAPACITY);
         let (tx_parents, rx_parents) = channel(CHANNEL_CAPACITY);
         let (tx_headers, rx_headers) = channel(CHANNEL_CAPACITY);
         let (tx_sync_headers, rx_sync_headers) = channel(CHANNEL_CAPACITY);
@@ -248,7 +249,7 @@ impl MessageHandler for PrimaryReceiverHandler {
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 struct WorkerReceiverHandler {
-    tx_our_digests: Sender<(Digest, WorkerId)>,
+    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
     tx_others_digests: Sender<(Digest, WorkerId)>,
 }
 
@@ -261,9 +262,9 @@ impl MessageHandler for WorkerReceiverHandler {
     ) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(DagError::SerializationError)? {
-            WorkerPrimaryMessage::OurBatch(digest, worker_id) => self
+            WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts) => self
                 .tx_our_digests
-                .send((digest, worker_id))
+                .send((digest, worker_id, account_counts))
                 .await
                 .expect("Failed to send workers' digests"),
             WorkerPrimaryMessage::OthersBatch(digest, worker_id) => self

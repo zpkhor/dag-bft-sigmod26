@@ -37,7 +37,7 @@ async fn hash_and_store() {
             .try_into()
             .unwrap(),
     );
-    let expected = bincode::serialize(&WorkerPrimaryMessage::OurBatch(digest.clone(), id)).unwrap();
+    let expected = bincode::serialize(&WorkerPrimaryMessage::OurBatch(digest.clone(), id, std::collections::BTreeMap::new())).unwrap();
     assert_eq!(output, expected);
 
     // Ensure the `Processor` correctly stored the batch.

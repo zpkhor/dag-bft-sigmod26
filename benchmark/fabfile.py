@@ -80,7 +80,7 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     }
     node_params = {
         'header_size': 1_000,
-        'max_header_delay': 200,
+        'max_header_delay': 600,
         'gc_depth': 50,
         'sync_retry_delay': 10_000,
         'sync_retry_nodes': 3,

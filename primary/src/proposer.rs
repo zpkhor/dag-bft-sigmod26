@@ -4,6 +4,7 @@ use crate::primary::Round;
 use config::{Committee, WorkerId};
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, SignatureService};
+use std::collections::BTreeMap;
 use log::debug;
 #[cfg(feature = "benchmark")]
 use log::info;
@@ -28,7 +29,7 @@ pub struct Proposer {
     /// Receives the parents to include in the next header (along with their round number).
     rx_core: Receiver<(Vec<Digest>, Round)>,
     /// Receives the batches' digests from our workers.
-    rx_workers: Receiver<(Digest, WorkerId)>,
+    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -40,6 +41,8 @@ pub struct Proposer {
     digests: Vec<(Digest, WorkerId)>,
     /// Keeps track of the size (in bytes) of batches' digests that we received so far.
     payload_size: usize,
+    /// Aggregated account tx counts across batches pending in the next header.
+    account_counts: BTreeMap<u64, u64>,
 }
 
 impl Proposer {
@@ -51,7 +54,7 @@ impl Proposer {
         header_size: usize,
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
-        rx_workers: Receiver<(Digest, WorkerId)>,
+        rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)
@@ -72,6 +75,7 @@ impl Proposer {
                 last_parents: genesis,
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
+                account_counts: BTreeMap::new(),
             }
             .run()
             .await;
@@ -80,11 +84,13 @@ impl Proposer {
 
     async fn make_header(&mut self) {
         // Make a new header.
+        let account_counts = std::mem::take(&mut self.account_counts);
         let header = Header::new(
             self.name,
             self.round,
             self.digests.drain(..).collect(),
             self.last_parents.drain(..).collect(),
+            account_counts,
             &mut self.signature_service,
         )
         .await;
@@ -122,6 +128,11 @@ impl Proposer {
             if (timer_expired || enough_digests) && enough_parents {
                 // Make a new header.
                 self.make_header().await;
+                if timer_expired {
+                    debug!("Proposed a header after waiting for the maximum delay");
+                } else {
+                    debug!("Proposed a header after receiving enough digests");
+                }
                 self.payload_size = 0;
 
                 // Reschedule the timer.
@@ -142,9 +153,12 @@ impl Proposer {
                     // Signal that we have enough parent certificates to propose a new header.
                     self.last_parents = parents;
                 }
-                Some((digest, worker_id)) = self.rx_workers.recv() => {
+                Some((digest, worker_id, counts)) = self.rx_workers.recv() => {
                     self.payload_size += digest.size();
                     self.digests.push((digest, worker_id));
+                    for (acc, cnt) in counts {
+                        *self.account_counts.entry(acc).or_insert(0) += cnt;
+                    }
                 }
                 () = &mut timer => {
                     // Nothing to do.
