@@ -160,7 +160,8 @@ impl Client {
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0u64;
-        let mut r = rand::thread_rng().gen();
+        let mut rng = rand::thread_rng();
+        let mut r = rng.gen();
         let mut worker_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
@@ -173,7 +174,7 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
-                let account_id = self.account_start + (counter % self.num_accounts);
+                let account_id = self.account_start + rng.gen_range(0, self.num_accounts);
                 let w_idx = {
                     let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
