@@ -128,11 +128,11 @@ impl Proposer {
             if (timer_expired || enough_digests) && enough_parents {
                 // Make a new header.
                 self.make_header().await;
-                if timer_expired {
-                    debug!("Proposed a header after waiting for the maximum delay");
-                } else {
-                    debug!("Proposed a header after receiving enough digests");
-                }
+                // if timer_expired {
+                //     debug!("Proposed a header after waiting for the maximum delay");
+                // } else {
+                //     debug!("Proposed a header after receiving enough digests");
+                // }
                 self.payload_size = 0;
 
                 // Reschedule the timer.

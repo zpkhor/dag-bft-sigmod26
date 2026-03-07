@@ -116,7 +116,7 @@ impl Core {
 
     async fn process_own_header(&mut self, header: Header) -> DagResult<()> {
         // Reset the votes aggregator.
-        debug!("Header account_counts: {:?}", header.account_counts);
+        // debug!("Header account_counts: {:?}", header.account_counts);
         self.current_header = header.clone();
         self.votes_aggregator = VotesAggregator::new();
 
