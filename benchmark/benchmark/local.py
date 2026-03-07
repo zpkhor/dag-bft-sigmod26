@@ -100,7 +100,6 @@ class LocalBench:
                     self.tx_size,
                     validator_rates[i],
                     [x for y in workers_addresses for _, x in y],
-                    self.open_loop,
                     client_id=i * num_workers,
                     reply_port=reply_port,
                     check_mismatch=self.check_mismatch,

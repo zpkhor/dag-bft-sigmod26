@@ -21,7 +21,6 @@ def local(ctx, debug=True):
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
-    open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
         'faults': 0,
@@ -32,7 +31,6 @@ def local(ctx, debug=True):
         'duration': duration,
         'rate_weights': rate_weights,
         'warmup': warmup,
-        'open_loop': open_loop,
     }
     node_params = {
         'header_size': 1_000,  # bytes
@@ -64,7 +62,6 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
     bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
-    open_loop = os.environ.get('OPEN_LOOP', 'false').lower() in ('true', '1', 'yes')
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     rr = os.environ.get('RR', 'false').lower() in ('true', '1', 'yes')
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
@@ -78,7 +75,6 @@ def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
         'rate_weights': rate_weights,
         'account_weights': account_weights,
         'warmup': warmup,
-        'open_loop': open_loop,
         'num_accounts': num_accounts,
         'rr': rr,
     }

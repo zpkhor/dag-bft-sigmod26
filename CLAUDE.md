@@ -57,8 +57,7 @@
 - This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility. We are mainly using docker in benchmark/fabfile.py
 - When editing existing code, don't "improve" adjacent code, comments, or formatting. If you notice unrelated dead code, mention it - don't delete it.
 - Don't remove any TODO when editing files
-
-Think Before Coding
+- `benchmark/fabfile.py` is the entrypoint and contains environ var to control the behavior of program, when making any edit always check if it needs to be updated
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 

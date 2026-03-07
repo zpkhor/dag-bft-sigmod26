@@ -291,7 +291,6 @@ class BenchParameters:
                         f'must match nodes ({self.nodes[0]})'
                     )
             self.warmup = int(json.get('warmup', 0))
-            self.open_loop = bool(json.get('open_loop', False))
             self.num_accounts = int(json.get('num_accounts', 1_000_000))
             self.rr = bool(json.get('rr', False))
         except KeyError as e:

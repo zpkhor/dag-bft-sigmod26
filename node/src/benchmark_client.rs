@@ -25,7 +25,6 @@ async fn main() -> Result<()> {
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
-        .args_from_usage("--open-loop 'Use open-loop mode (no TCP backpressure)'")
         .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
         .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (default 1000000)'")
         .args_from_usage("--client-id=[INT] 'Unique client identifier (validator_index * num_workers + worker_index)'")
@@ -59,7 +58,6 @@ async fn main() -> Result<()> {
         .map(|x| x.parse::<SocketAddr>())
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
-    let open_loop = matches.is_present("open-loop");
     let account_start = matches
         .value_of("account-start")
         .unwrap_or("0")
@@ -84,7 +82,6 @@ async fn main() -> Result<()> {
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {} tx/s", rate);
 
-    info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
     info!("Account range: {} to {} ({} accounts)", account_start, account_start + num_accounts - 1, num_accounts);
 
     let client = Client {
@@ -92,7 +89,6 @@ async fn main() -> Result<()> {
         size,
         rate,
         nodes,
-        open_loop,
         account_start,
         num_accounts,
         client_id,
@@ -110,7 +106,6 @@ struct Client {
     size: usize,
     rate: u64,
     nodes: Vec<SocketAddr>,
-    open_loop: bool,
     account_start: u64,
     num_accounts: u64,
     client_id: u64,
@@ -138,14 +133,10 @@ impl Client {
             transports.push(Framed::new(stream, LengthDelimitedCodec::new()));
         }
 
-        if self.open_loop {
-            self.send_open_loop(transports).await
-        } else {
-            self.send_closed_loop(transports).await
-        }
+        self.send_without_tcp_backpressure(transports).await
     }
 
-    async fn send_open_loop(&self, transports: Vec<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<()> {
+    async fn send_without_tcp_backpressure(&self, transports: Vec<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<()> {
         const PRECISION: u64 = 20;
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
@@ -182,7 +173,7 @@ impl Client {
             let now = Instant::now();
 
             for x in 0..burst {
-                let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
+                let account_id = self.account_start + (counter % self.num_accounts);
                 let w_idx = {
                     let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
@@ -217,61 +208,6 @@ impl Client {
             counter += 1;
         }
         Ok(())
-    }
-
-    async fn send_closed_loop(&self, mut transports: Vec<Framed<TcpStream, LengthDelimitedCodec>>) -> Result<()> {
-        const PRECISION: u64 = 20;
-        const BURST_DURATION: u64 = 1000 / PRECISION;
-
-        let num_workers = transports.len();
-        let burst = self.rate / PRECISION;
-        let mut tx = BytesMut::with_capacity(self.size);
-        let mut counter = 0u64;
-        let mut r = rand::thread_rng().gen();
-        let mut worker_rr: HashMap<u64, usize> = HashMap::new();
-        let interval = interval(Duration::from_millis(BURST_DURATION));
-        tokio::pin!(interval);
-
-        info!("Start sending transactions");
-
-        loop {
-            interval.as_mut().tick().await;
-            let now = Instant::now();
-
-            for x in 0..burst {
-                let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
-                let w_idx = {
-                    let entry = worker_rr.entry(account_id).or_insert(0usize);
-                    let w = *entry;
-                    *entry = (w + 1) % num_workers;
-                    w
-                };
-
-                tx.put_u64(account_id); // bytes 0-7: account_id prefix
-                if x == counter % burst {
-                    // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
-
-                    tx.put_u8(0u8); // Sample txs start with 0.
-                    tx.put_u64(counter); // This counter identifies the tx.
-                } else {
-                    r += 1;
-                    tx.put_u8(1u8); // Standard txs start with 1.
-                    tx.put_u64(r); // Ensures all clients send different txs.
-                };
-
-                tx.resize(self.size, 0u8);
-                let bytes = tx.split().freeze();
-                if let Err(e) = transports[w_idx].send(bytes).await {
-                    warn!("Failed to send transaction: {}", e);
-                    break;
-                }
-            }
-            if now.elapsed().as_millis() > BURST_DURATION as u128 {
-                warn!("Transaction rate too high for this client");
-            }
-            counter += 1;
-        }
     }
 
     pub async fn wait(&self) {

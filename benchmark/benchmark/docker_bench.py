@@ -336,7 +336,6 @@ networks:
 
                 worker_addrs = [addr for _, addr in addresses]
                 nodes_arg = " ".join(worker_addrs)
-                open_loop_flag = "--open-loop" if self.open_loop else ""
 
                 acct_start = acct_starts[i]
                 acct_count = acct_counts[i]
@@ -347,7 +346,7 @@ networks:
                 addrs_str = " ".join(worker_addrs)
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
-                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} "
+                    f"--rate {validator_rates[i]} --nodes {nodes_arg} "
                     f"{account_args} --client-id {client_id_val}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"

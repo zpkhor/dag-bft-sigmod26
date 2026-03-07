@@ -46,15 +46,13 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
-    def run_client(addresses, size, rate, nodes, open_loop=False, account_start=None, num_accounts=None, client_id=None, reply_port=None, num_validators=None, rr=False, check_mismatch=False):
+    def run_client(addresses, size, rate, nodes, account_start=None, num_accounts=None, client_id=None, reply_port=None, num_validators=None, rr=False, check_mismatch=False):
         assert isinstance(addresses, list) and all(isinstance(x, str) for x in addresses)
         assert isinstance(size, int) and size > 0
         assert isinstance(rate, int) and rate >= 0
         assert isinstance(nodes, list)
         assert all(isinstance(x, str) for x in nodes)
-        assert isinstance(open_loop, bool)
         nodes = f'--nodes {" ".join(nodes)}' if nodes else ''
-        open_loop_flag = '--open-loop' if open_loop else ''
         account_args = ''
         if account_start is not None and num_accounts is not None:
             account_args = f'--account-start {account_start} --num-accounts {num_accounts}'
@@ -65,7 +63,7 @@ class CommandMaker:
         if rr and num_validators is not None:
             rr_args = f'--rr --num-validators {num_validators}'
         check_mismatch_flag = '--check-mismatch' if check_mismatch else ''
-        return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {open_loop_flag} {account_args} {reply_args} {rr_args} {check_mismatch_flag}'
+        return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {reply_args} {rr_args} {check_mismatch_flag}'
 
     @staticmethod
     def kill():
