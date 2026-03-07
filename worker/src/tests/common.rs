@@ -1,6 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::batch_maker::{Batch, Transaction};
 use crate::worker::WorkerMessage;
+use std::collections::BTreeMap;
 use bytes::Bytes;
 use config::{Authority, Committee, PrimaryAddresses, WorkerAddresses};
 use crypto::{generate_keypair, Digest, PublicKey, SecretKey};
@@ -90,7 +91,7 @@ pub fn transaction() -> Transaction {
 
 // Fixture
 pub fn batch() -> Batch {
-    vec![transaction(), transaction()]
+    (vec![transaction(), transaction()], BTreeMap::new())
 }
 
 // Fixture

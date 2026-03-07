@@ -244,30 +244,32 @@ impl Worker {
 /// Defines how the network receiver handles incoming transactions.
 #[derive(Clone)]
 struct TxReceiverHandler {
-    tx_batch_maker: Sender<Transaction>,
+    tx_batch_maker: Sender<(u64, Transaction)>,
 }
 
 #[async_trait]
 impl MessageHandler for TxReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        // Send the transaction to the batch maker.
+        if message.len() < 8 {
+            panic!("Received transaction frame too short ({} bytes), dropping", message.len());
+        }
+        let account_id = u64::from_be_bytes(message[0..8].try_into().unwrap());
+        let payload = message[8..].to_vec();
+
         #[cfg(feature = "benchmark")]
         {
-            if message.len() > 24 && message[0] == 0u8 {
-                if let (Ok(id), Ok(account), Ok(client_id)) = (
-                    message[1..9].try_into().map(u64::from_be_bytes),
-                    message[9..17].try_into().map(u64::from_be_bytes),
-                    message[17..25].try_into().map(u64::from_be_bytes),
-                ) {
+            if payload.len() > 8 && payload[0] == 0u8 {
+                if let Ok(id) = payload[1..9].try_into().map(u64::from_be_bytes) {
                     info!(
-                        "Worker received sample tx {} account {} client {}",
-                        id, account, client_id
+                        "Worker received sample tx {} account {}",
+                        id, account_id
                     );
                 }
             }
         }
+
         self.tx_batch_maker
-            .send(message.to_vec())
+            .send((account_id, payload))
             .await
             .expect("Failed to send transaction");
 

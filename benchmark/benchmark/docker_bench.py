@@ -344,26 +344,11 @@ networks:
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
-                reply_port = committee.json['authorities'][names[i]]['client_reply'].split(':')[1]
-                reply_args = f"--client-id {client_id_val} --reply-port {reply_port}"
-
-                rr = self.bench_parameters.rr
-                if rr:
-                    all_worker_addrs = []
-                    for v_idx, addrs in enumerate(workers_addresses):
-                        cip = container_ips[v_idx]
-                        for _, addr in addrs:
-                            port = addr.split(':')[1]
-                            all_worker_addrs.append(f'{cip}:{port}')
-                    addrs_str = " ".join(all_worker_addrs)
-                    rr_args = f"--rr --num-validators {nodes}"
-                else:
-                    addrs_str = " ".join(worker_addrs)
-                    rr_args = ""
-                check_mismatch_flag = "--check-mismatch" if self.check_mismatch else ""
+                addrs_str = " ".join(worker_addrs)
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
-                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} {account_args} {reply_args} {rr_args} {check_mismatch_flag}"
+                    f"--rate {validator_rates[i]} --nodes {nodes_arg} {open_loop_flag} "
+                    f"{account_args} --client-id {client_id_val}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 running_rate += validator_rates[i]

@@ -5,10 +5,9 @@ use config::{Committee, WorkerId};
 use crypto::{Digest, PublicKey};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
-use log::{debug, error};
+use log::{debug, error, info};
 use network::SimpleSender;
 use primary::PrimaryWorkerMessage;
-use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::convert::TryInto;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -22,18 +21,6 @@ pub mod synchronizer_tests;
 
 /// Resolution of the timer managing retrials of sync requests (in ms).
 const TIMER_RESOLUTION: u64 = 1_000;
-
-/// Reply sent from worker to client when a batch is committed.
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CommitReply {
-    pub counter: u64,
-    pub account_id: u64,
-    pub client_id: u64,
-    pub tx_type: u8,
-    pub digest: Digest,
-    pub name: PublicKey,
-    pub worker_id: WorkerId,
-}
 
 // The `Synchronizer` is responsible to keep the worker in sync with the others.
 pub struct Synchronizer {
@@ -111,17 +98,8 @@ impl Synchronizer {
         }
     }
 
-    /// Handle committed batches: wait for each batch to be available, extract sample txs, send replies to clients.
+    /// Handle committed batches: wait for each batch to be available and log sample txs.
     async fn handle_committed_batches(&mut self, digests: Vec<Digest>) {
-        let ordered_keys: Vec<PublicKey> = self.committee.authorities.keys().cloned().collect();
-        let num_workers = self
-            .committee
-            .authorities
-            .values()
-            .next()
-            .map(|a| a.workers.len() as u64)
-            .unwrap_or(1);
-
         for digest in digests {
             let batch_data = self.store
                 .notify_read(digest.to_vec())
@@ -129,40 +107,16 @@ impl Synchronizer {
                 .expect("Failed to read committed batch from store");
 
             let txs = match bincode::deserialize::<WorkerMessage>(&batch_data) {
-                Ok(WorkerMessage::Batch(txs)) => txs,
+                Ok(WorkerMessage::Batch((txs, _counts))) => txs,
                 _ => {
                     panic!("Failed to read committed batch {}", digest);
                 }
             };
 
             for tx in &txs {
-                if tx.len() > 24 && tx[0] == 0u8 {
+                if tx.len() > 8 && tx[0] == 0u8 {
                     let counter = u64::from_be_bytes(tx[1..9].try_into().unwrap());
-                    let account_id = u64::from_be_bytes(tx[9..17].try_into().unwrap());
-                    let client_id = u64::from_be_bytes(tx[17..25].try_into().unwrap());
-
-                    let validator_index = client_id / num_workers;
-
-                    if let Some(pubkey) = ordered_keys.get(validator_index as usize) {
-                        if let Ok(reply_addr) = self.committee.client_reply(pubkey) {
-                            let reply = CommitReply {
-                                counter,
-                                account_id,
-                                client_id,
-                                tx_type: tx[0],
-                                digest: digest.clone(),
-                                name: self.name,
-                                worker_id: self.id,
-                            };
-                            let bytes = bincode::serialize(&reply)
-                                .expect("Failed to serialize commit reply");
-                            self.network
-                                .send(reply_addr, Bytes::from(bytes))
-                                .await;
-                        } else {
-                            panic!("Failed to get client reply address for {}", pubkey);
-                        }
-                    }
+                    info!("Committed sample tx {} from batch {:?}", counter, digest);
                 }
             }
         }

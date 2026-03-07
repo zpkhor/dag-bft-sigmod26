@@ -10,6 +10,7 @@ use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
+use std::collections::BTreeMap;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
@@ -21,7 +22,7 @@ use tokio::time::{sleep, Duration, Instant};
 pub mod batch_maker_tests;
 
 pub type Transaction = Vec<u8>;
-pub type Batch = Vec<Transaction>;
+pub type Batch = (Vec<Transaction>, BTreeMap<u64, u64>);
 
 /// Assemble clients transactions into batches.
 pub struct BatchMaker {
@@ -30,13 +31,13 @@ pub struct BatchMaker {
     /// The maximum delay after which to seal the batch (in ms).
     max_batch_delay: u64,
     /// Channel to receive transactions from the network.
-    rx_transaction: Receiver<Transaction>,
+    rx_transaction: Receiver<(u64, Transaction)>,
     /// Output channel to deliver sealed batches to the `QuorumWaiter`.
     tx_message: Sender<QuorumWaiterMessage>,
     /// The network addresses of the other workers that share our worker id.
     workers_addresses: Vec<(PublicKey, SocketAddr)>,
-    /// Holds the current batch.
-    current_batch: Batch,
+    /// Holds the current batch as (account_id, payload) pairs.
+    current_batch: Vec<(u64, Transaction)>,
     /// Holds the size of the current batch (in bytes).
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
@@ -47,7 +48,7 @@ impl BatchMaker {
     pub fn spawn(
         batch_size: usize,
         max_batch_delay: u64,
-        rx_transaction: Receiver<Transaction>,
+        rx_transaction: Receiver<(u64, Transaction)>,
         tx_message: Sender<QuorumWaiterMessage>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
     ) {
@@ -58,7 +59,7 @@ impl BatchMaker {
                 rx_transaction,
                 tx_message,
                 workers_addresses,
-                current_batch: Batch::with_capacity(batch_size * 2),
+                current_batch: Vec::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
             }
@@ -75,9 +76,9 @@ impl BatchMaker {
         loop {
             tokio::select! {
                 // Assemble client transactions into batches of preset size.
-                Some(transaction) = self.rx_transaction.recv() => {
-                    self.current_batch_size += transaction.len();
-                    self.current_batch.push(transaction);
+                Some((account_id, tx)) = self.rx_transaction.recv() => {
+                    self.current_batch_size += (tx.len() + 8) as usize; // 8 bytes for the account_id
+                    self.current_batch.push((account_id, tx));
                     if self.current_batch_size >= self.batch_size {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
@@ -103,24 +104,31 @@ impl BatchMaker {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
-        // Look for sample txs (they all start with 0) and gather their tx id (bytes 1–8), account_id (bytes 9–16), and client_id (bytes 17–24).
+        // Drain accumulator into (account_id, payload) pairs.
+        self.current_batch_size = 0;
+        let pairs: Vec<(u64, Transaction)> = self.current_batch.drain(..).collect();
+
+        // Build per-account tx counts (deterministic order via BTreeMap).
+        let mut account_counts: BTreeMap<u64, u64> = BTreeMap::new();
+        for (account_id, _) in &pairs {
+            *account_counts.entry(*account_id).or_insert(0) += 1;
+        }
+
+        // Extract payloads only for the batch.
+        let batch_txs: Vec<Transaction> = pairs.iter().map(|(_, tx)| tx.clone()).collect();
+
         #[cfg(feature = "benchmark")]
-        let tx_ids: Vec<_> = self
-            .current_batch
+        // Look for sample txs (type byte 0) and gather their counter and account_id.
+        let sample_ids: Vec<_> = pairs
             .iter()
-            .filter(|tx| tx[0] == 0u8 && tx.len() > 24)
-            .filter_map(|tx| {
-                let id: [u8; 8] = tx[1..9].try_into().ok()?;
-                let account: [u8; 8] = tx[9..17].try_into().ok()?;
-                let client_id: [u8; 8] = tx[17..25].try_into().ok()?;
-                Some((id, account, client_id))
+            .filter(|(_, tx)| tx[0] == 0u8 && tx.len() > 8)
+            .filter_map(|(account_id, tx)| {
+                let counter: [u8; 8] = tx[1..9].try_into().ok()?;
+                Some((counter, *account_id))
             })
             .collect();
 
-        // Serialize the batch.
-        self.current_batch_size = 0;
-        let batch: Vec<_> = self.current_batch.drain(..).collect();
-        let message = WorkerMessage::Batch(batch);
+        let message = WorkerMessage::Batch((batch_txs, account_counts));
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]
@@ -132,14 +140,13 @@ impl BatchMaker {
                     .unwrap(),
             );
 
-            for (id, account, client_id) in tx_ids {
+            for (id, account_id) in sample_ids {
                 // NOTE: This log entry is used to compute performance.
                 info!(
-                    "Batch {:?} contains sample tx {} account {} client {}",
+                    "Batch {:?} contains sample tx {} account {}",
                     digest,
                     u64::from_be_bytes(id),
-                    u64::from_be_bytes(account),
-                    u64::from_be_bytes(client_id),
+                    account_id,
                 );
             }
 

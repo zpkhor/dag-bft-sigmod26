@@ -1,6 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use super::*;
 use crate::common::transaction;
+use std::collections::BTreeMap;
 use tokio::sync::mpsc::channel;
 
 #[tokio::test]
@@ -19,11 +20,11 @@ async fn make_batch() {
     );
 
     // Send enough transactions to seal a batch.
-    tx_transaction.send(transaction()).await.unwrap();
-    tx_transaction.send(transaction()).await.unwrap();
+    tx_transaction.send((0u64, transaction())).await.unwrap();
+    tx_transaction.send((0u64, transaction())).await.unwrap();
 
     // Ensure the batch is as expected.
-    let expected_batch = vec![transaction(), transaction()];
+    let expected_batch = (vec![transaction(), transaction()], BTreeMap::from([(0u64, 2u64)]));
     let QuorumWaiterMessage { batch, handlers: _ } = rx_message.recv().await.unwrap();
     match bincode::deserialize(&batch).unwrap() {
         WorkerMessage::Batch(batch) => assert_eq!(batch, expected_batch),
@@ -47,10 +48,10 @@ async fn batch_timeout() {
     );
 
     // Do not send enough transactions to seal a batch..
-    tx_transaction.send(transaction()).await.unwrap();
+    tx_transaction.send((0u64, transaction())).await.unwrap();
 
     // Ensure the batch is as expected.
-    let expected_batch = vec![transaction()];
+    let expected_batch = (vec![transaction()], BTreeMap::from([(0u64, 1u64)]));
     let QuorumWaiterMessage { batch, handlers: _ } = rx_message.recv().await.unwrap();
     match bincode::deserialize(&batch).unwrap() {
         WorkerMessage::Batch(batch) => assert_eq!(batch, expected_batch),

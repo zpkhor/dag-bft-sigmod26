@@ -1,19 +1,17 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use anyhow::{Context, Result};
 use bytes::BufMut as _;
+use bytes::Bytes;
 use bytes::BytesMut;
 use clap::{crate_name, crate_version, App, AppSettings};
 use env_logger::Env;
 use futures::future::join_all;
-use bytes::Bytes;
 use futures::sink::SinkExt as _;
-use futures::stream::StreamExt as _;
 use log::{info, warn};
 use rand::Rng;
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::sync::{Arc, Mutex};
-use tokio::net::{TcpListener, TcpStream};
+use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
@@ -31,10 +29,6 @@ async fn main() -> Result<()> {
         .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
         .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (default 1000000)'")
         .args_from_usage("--client-id=[INT] 'Unique client identifier (validator_index * num_workers + worker_index)'")
-        .args_from_usage("--reply-port=[INT] 'Port to listen for commit replies'")
-        .args_from_usage("--rr 'Round-robin across validators (requires --num-validators)'")
-        .args_from_usage("--num-validators=[INT] 'Number of validators (default 1)'")
-        .args_from_usage("--check-mismatch 'Enable mismatch detection in replies'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -81,18 +75,6 @@ async fn main() -> Result<()> {
         .unwrap_or("0")
         .parse::<u64>()
         .context("client-id must be a non-negative integer")?;
-    let reply_port = matches
-        .value_of("reply-port")
-        .map(|v| v.parse::<u16>())
-        .transpose()
-        .context("reply-port must be a valid port number")?;
-    let rr = matches.is_present("rr");
-    let num_validators = matches
-        .value_of("num-validators")
-        .unwrap_or("1")
-        .parse::<usize>()
-        .context("num-validators must be a positive integer")?;
-    let check_mismatch = matches.is_present("check-mismatch");
 
     info!("Node addresses: {:?}", targets);
 
@@ -105,17 +87,6 @@ async fn main() -> Result<()> {
     info!("Client mode: {}", if open_loop { "open-loop (no TCP backpressure)" } else { "closed-loop (with TCP backpressure)" });
     info!("Account range: {} to {} ({} accounts)", account_start, account_start + num_accounts - 1, num_accounts);
 
-    // Spawn reply listener if reply_port is set.
-    let seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>> =
-        Arc::new(Mutex::new(HashMap::new()));
-    if let Some(port) = reply_port {
-        let addr: SocketAddr = format!("0.0.0.0:{}", port).parse().unwrap();
-        let seen = Arc::clone(&seen_replies);
-        tokio::spawn(async move {
-            listen_for_replies(addr, seen, check_mismatch).await;
-        });
-    }
-
     let client = Client {
         targets,
         size,
@@ -125,9 +96,6 @@ async fn main() -> Result<()> {
         account_start,
         num_accounts,
         client_id,
-        rr,
-        num_validators,
-        check_mismatch,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -146,17 +114,13 @@ struct Client {
     account_start: u64,
     num_accounts: u64,
     client_id: u64,
-    rr: bool,
-    num_validators: usize,
-    check_mismatch: bool,
 }
 
 impl Client {
     pub async fn send(&self) -> Result<()> {
-
-        if self.size < 25 {
+        if self.size < 17 {
             return Err(anyhow::Error::msg(
-                "Transaction size must be at least 25 bytes",
+                "Transaction size must be at least 17 bytes (8 prefix + 1 type + 8 counter)",
             ));
         }
         if self.num_accounts == 0 {
@@ -202,12 +166,10 @@ impl Client {
         }
 
         let num_workers = senders.len();
-        let num_workers_per_v = num_workers / self.num_validators;
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
-        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
         let mut worker_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
@@ -221,21 +183,14 @@ impl Client {
 
             for x in 0..burst {
                 let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
-                let v_idx = if self.rr {
-                    let entry = validator_rr.entry(account_id).or_insert(0usize);
-                    let v = *entry;
-                    *entry = (v + 1) % self.num_validators;
-                    v
-                } else {
-                    0
-                };
                 let w_idx = {
                     let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
-                    *entry = (w + 1) % num_workers_per_v;
+                    *entry = (w + 1) % num_workers;
                     w
                 };
-                let worker = v_idx * num_workers_per_v + w_idx;
+
+                tx.put_u64(account_id); // bytes 0-7: account_id prefix
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
@@ -247,12 +202,10 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(account_id);
-                tx.put_u64(self.client_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-                if let Err(e) = senders[worker].send(bytes) {
+                if let Err(e) = senders[w_idx].send(bytes) {
                     warn!("Failed to queue transaction: {}", e);
                     break 'main;
                 }
@@ -271,12 +224,10 @@ impl Client {
         const BURST_DURATION: u64 = 1000 / PRECISION;
 
         let num_workers = transports.len();
-        let num_workers_per_v = num_workers / self.num_validators;
         let burst = self.rate / PRECISION;
         let mut tx = BytesMut::with_capacity(self.size);
         let mut counter = 0u64;
         let mut r = rand::thread_rng().gen();
-        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
         let mut worker_rr: HashMap<u64, usize> = HashMap::new();
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
@@ -289,21 +240,14 @@ impl Client {
 
             for x in 0..burst {
                 let account_id = self.account_start + (counter % self.num_accounts); // TODO: use random account_id
-                let v_idx = if self.rr {
-                    let entry = validator_rr.entry(account_id).or_insert(0usize);
-                    let v = *entry;
-                    *entry = (v + 1) % self.num_validators;
-                    v
-                } else {
-                    0
-                };
                 let w_idx = {
                     let entry = worker_rr.entry(account_id).or_insert(0usize);
                     let w = *entry;
-                    *entry = (w + 1) % num_workers_per_v;
+                    *entry = (w + 1) % num_workers;
                     w
                 };
-                let worker = v_idx * num_workers_per_v + w_idx;
+
+                tx.put_u64(account_id); // bytes 0-7: account_id prefix
                 if x == counter % burst {
                     // NOTE: This log entry is used to compute performance.
                     info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
@@ -315,12 +259,10 @@ impl Client {
                     tx.put_u8(1u8); // Standard txs start with 1.
                     tx.put_u64(r); // Ensures all clients send different txs.
                 };
-                tx.put_u64(account_id);
-                tx.put_u64(self.client_id);
 
                 tx.resize(self.size, 0u8);
                 let bytes = tx.split().freeze();
-                if let Err(e) = transports[worker].send(bytes).await {
+                if let Err(e) = transports[w_idx].send(bytes).await {
                     warn!("Failed to send transaction: {}", e);
                     break;
                 }
@@ -344,69 +286,4 @@ impl Client {
         }))
         .await;
     }
-}
-
-/// Listen for commit replies from workers and log them.
-async fn listen_for_replies(addr: SocketAddr, seen_replies: Arc<Mutex<HashMap<u64, (u64, Vec<u8>)>>>, check_mismatch: bool) {
-    let listener = TcpListener::bind(addr)
-        .await
-        .expect("Failed to bind reply listener");
-    info!("Listening for commit replies on {}", addr);
-
-    loop {
-        match listener.accept().await {
-            Ok((stream, peer)) => {
-                info!("Reply connection from {}", peer);
-                let seen = Arc::clone(&seen_replies);
-                tokio::spawn(async move {
-                    let mut transport = Framed::new(stream, LengthDelimitedCodec::new());
-                    while let Some(Ok(frame)) = transport.next().await {
-                        if let Ok((tx_type, counter, account_id, client_id, digest, name, worker_id)) = parse_reply(&frame) {
-                            if tx_type != 0 {
-                                continue;
-                            }
-                            if check_mismatch {
-                                let mut seen_map = seen.lock().unwrap();
-                                if let Some((prev_acct, prev_digest)) = seen_map.get(&counter) {
-                                    if *prev_acct != account_id || *prev_digest != digest {
-                                        warn!(
-                                            "Reply mismatch for tx {}: account {}/{}, digest {:?}/{:?}",
-                                            counter, prev_acct, account_id, prev_digest, digest
-                                        );
-                                    }
-                                } else {
-                                    seen_map.insert(counter, (account_id, digest));
-                                }
-                            }
-                            // NOTE: This log entry is used to compute performance.
-                            info!(
-                                "Received reply for tx {} account {} client {} from validator {:?} worker {}",
-                                counter, account_id, client_id, name, worker_id,
-                            );
-                        }
-                    }
-                });
-            }
-            Err(e) => {
-                warn!("Failed to accept reply connection: {}", e);
-            }
-        }
-    }
-}
-
-fn parse_reply(data: &[u8]) -> Result<(u8, u64, u64, u64, Vec<u8>, crypto::PublicKey, config::WorkerId)> {
-    // Deserialize CommitReply using bincode (matches worker's serialization).
-    #[derive(serde::Deserialize)]
-    struct CommitReply {
-        counter: u64,
-        account_id: u64,
-        client_id: u64,
-        tx_type: u8,
-        digest: crypto::Digest,
-        name: crypto::PublicKey,
-        worker_id: config::WorkerId,
-    }
-    let reply: CommitReply =
-        bincode::deserialize(data).context("Failed to deserialize commit reply")?;
-    Ok((reply.tx_type, reply.counter, reply.account_id, reply.client_id, reply.digest.to_vec(), reply.name, reply.worker_id))
 }

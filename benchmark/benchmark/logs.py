@@ -153,7 +153,7 @@ class LogParser:
         misses = len(findall(r'rate too high', log))
 
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+) account (\d+) client (\d+)', log)
-        samples = {(int(c), int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
+        samples = {(int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
 
         tmp = findall(r'\[(.*Z) .* Received reply for tx (\d+) account (\d+) client (\d+)', log)
         reply_samples = {}
@@ -212,14 +212,14 @@ class LogParser:
         tmp = findall(r'Batch ([^ ]+) contains (\d+) B', log)
         sizes = {d: int(s) for d, s in tmp}
 
-        tmp = findall(r'Batch ([^ ]+) contains sample tx (\d+) account (\d+) client (\d+)', log)
-        samples = {(int(c), int(s), int(a)): d for d, s, a, c in tmp}
+        tmp = findall(r'Batch ([^ ]+) contains sample tx (\d+) account (\d+)', log)
+        samples = {(int(s), int(a)): d for d, s, a in tmp}
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
 
         # Stage 1: Worker arrival timestamps for sample txs
-        tmp = findall(r'\[(.*Z) .* Worker received sample tx (\d+) account (\d+) client (\d+)', log)
-        arrival_times = {(int(c), int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
+        tmp = findall(r'\[(.*Z) .* Worker received sample tx (\d+) account (\d+)', log)
+        arrival_times = {(int(s), int(a)): self._to_posix(t) for t, s, a in tmp}
 
         # Stage 2: Batch seal timestamps (from "Batch X contains Y B" log)
         tmp = findall(r'\[(.*Z) .* Batch ([^ ]+) contains \d+ B', log)
