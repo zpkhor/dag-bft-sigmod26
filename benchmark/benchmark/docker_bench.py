@@ -282,6 +282,13 @@ networks:
             committee = DockerCommittee(
                 names, self.BASE_PORT, self.workers, container_ips, client_ips
             )
+
+            capacities = [] # max tps/validator
+            for i in range(nodes):
+                # worker_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
+                # capacities.append(int(worker_bw_bytes / self.tx_size / (nodes - 1)))
+                capacities.append(1450) # TODO: to be replaced by per validator workers linear regession based on (|B|, T_quorum (without queuing))
+            committee.set_capacities(capacities)
             committee.print(PathMaker.committee_file())
 
             self.node_parameters.print(PathMaker.parameters_file())

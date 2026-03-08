@@ -137,6 +137,9 @@ pub struct Authority {
     pub workers: HashMap<WorkerId, WorkerAddresses>,
     /// Address to send commit replies to the client.
     pub client_reply: SocketAddr,
+    /// Estimated max request throughput (requests/sec)
+    /// Used as initial capacity; may be updated via control plane consensus.
+    pub capacity_by_bw: u64,
 }
 
 #[derive(Clone, Deserialize)]

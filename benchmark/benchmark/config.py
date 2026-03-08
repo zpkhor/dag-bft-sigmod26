@@ -87,7 +87,15 @@ class Committee:
                 'primary': primary_addr,
                 'workers': workers_addr,
                 'client_reply': client_reply_addr,
+                'capacity_by_bw': 0,
             }
+
+    def set_capacities(self, capacities):
+        ''' Set per-validator capacity (requests/sec). capacities is a list aligned
+            with the authority insertion order. '''
+        assert len(capacities) == len(self.json['authorities'])
+        for name, cap in zip(self.json['authorities'], capacities):
+            self.json['authorities'][name]['capacity_by_bw'] = cap
 
     def primary_addresses(self, faults=0):
         ''' Returns an ordered list of primaries' addresses. '''

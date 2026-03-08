@@ -164,6 +164,9 @@ pub struct Consensus {
     gc_depth: Round,
     /// This validator's public key.
     name: PublicKey,
+    /// Per-validator estimated max throughput (requests/sec). Initialized from the committee
+    /// (derived from worker bandwidth and tx size) and later updated via control plane consensus.
+    validator_capacities: HashMap<PublicKey, u64>,
 
     /// Receives new certificates from the primary. The primary should send us new certificates only
     /// if it already sent us its whole history.
@@ -186,6 +189,11 @@ impl Consensus {
         tx_feedback: Sender<Certificate>,
         tx_output: Sender<Certificate>,
     ) {
+        let validator_capacities: HashMap<PublicKey, u64> = committee
+            .authorities
+            .iter()
+            .map(|(pk, auth)| (*pk, auth.capacity_by_bw))
+            .collect();
         tokio::spawn(async move {
             Self {
                 name,
@@ -195,6 +203,7 @@ impl Consensus {
                 tx_feedback,
                 tx_output,
                 genesis: Certificate::genesis(&committee),
+                validator_capacities,
             }
             .run()
             .await;
@@ -205,6 +214,12 @@ impl Consensus {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
         let mut account_history = AccountCountsHistory::new();
+
+        let mut cap_entries: Vec<(PublicKey, u64)> = self.validator_capacities.iter().map(|(pk, c)| (*pk, *c)).collect();
+        cap_entries.sort_by_key(|(pk, _)| *pk);
+        for (pk, cap) in &cap_entries {
+            info!("Validator capacity: {} -> {} req/s", pk, cap);
+        }
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_new_certificates.recv().await {
