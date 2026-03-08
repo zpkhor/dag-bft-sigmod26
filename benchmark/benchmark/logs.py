@@ -48,9 +48,10 @@ class LogParser:
                 results = p.map(self._parse_primaries, primaries)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse nodes\' logs: {e}')
-        proposals, commits, self.configs, primary_ips = zip(*results)
-        self.proposals = self._merge_results([x.items() for x in proposals])
-        self.commits = self._merge_results([x.items() for x in commits])
+        proposals, commits, certified, self.configs, primary_ips = zip(*results)
+        self.proposals = self._merge_results_unique([x.items() for x in proposals])
+        self.commits = self._merge_results_fplus1([x.items() for x in commits])
+        self.certified = self._merge_results_unique([x.items() for x in certified])
 
         # Warmup trimming: discard commits/proposals in the warmup window.
         self.warmup = warmup
@@ -130,6 +131,15 @@ class LogParser:
                     merged[k] = v
         return merged
 
+    def _merge_results_unique(self, input):
+        # Each key should come from exactly one source (one primary).
+        merged = {}
+        for x in input:
+            for k, v in x:
+                assert k not in merged, f'Duplicate key {k} during unique merge'
+                merged[k] = v
+        return merged
+
     def _merge_results_fplus1(self, input):
         # Use the (f+1)th earliest timestamp (f=1, so 2nd earliest).
         # A commit is only meaningful once f+1 validators have committed it.
@@ -173,6 +183,10 @@ class LogParser:
         tmp = [(d, self._to_posix(t)) for t, d in tmp]
         commits = self._merge_results([tmp])
 
+        tmp = findall(r'\[(.*Z) .* Certified B\d+\([^ ]+\) -> ([^ ]+=)', log)
+        tmp = [(d, self._to_posix(t)) for t, d in tmp]
+        certified = self._merge_results([tmp])
+
         configs = {
             'header_size': int(
                 search(r'Header size .* (\d+)', log).group(1)
@@ -199,7 +213,7 @@ class LogParser:
 
         ip = search(r'booted on (\d+.\d+.\d+.\d+)', log).group(1)
         
-        return proposals, commits, configs, ip
+        return proposals, commits, certified, configs, ip
 
     def _parse_workers(self, log):
         if search(r'(?:panic|Error)', log) is not None:
@@ -401,7 +415,8 @@ class LogParser:
             'Batch seal -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
-            'Header -> Committed',
+            'Header -> Certified',
+            'Certified -> Committed',
         ]
         stages = {label: [] for label in stage_labels}
 
@@ -426,6 +441,7 @@ class LogParser:
             quorum = self.quorum_times.get(batch_id)
             processed = self.processed_times.get(batch_id)
             proposed = self.proposals.get(batch_id)
+            certified = self.certified.get(batch_id)
             committed = self.commits[batch_id]
 
             if seal is not None and quorum is not None:
@@ -437,8 +453,11 @@ class LogParser:
             if processed is not None and proposed is not None:
                 stages['Processed -> Header'].append(proposed - processed)
 
-            if proposed is not None:
-                stages['Header -> Committed'].append(committed - proposed)
+            if proposed is not None and certified is not None:
+                stages['Header -> Certified'].append(certified - proposed)
+
+            if certified is not None:
+                stages['Certified -> Committed'].append(committed - certified)
 
         result = {}
         for label, latencies in stages.items():
@@ -466,7 +485,8 @@ class LogParser:
             'Batch seal -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
-            'Header -> Committed',
+            'Header -> Certified',
+            'Certified -> Committed',
         ]
 
         if self.sizes_by_validator:
@@ -502,12 +522,13 @@ class LogParser:
                     seal = self.seal_times[batch_id]
                     stages['Worker -> Batch seal'].append(seal - arrival)
 
-            # Stages 3-6: keyed by batch digest
+            # Stages 3-7: keyed by batch digest
             for batch_id in v_committed_batches:
                 seal = self.seal_times[batch_id]
                 quorum = self.quorum_times[batch_id]
                 processed = self.processed_times[batch_id]
                 proposed = self.proposals[batch_id]
+                certified = self.certified.get(batch_id)
                 committed = self.commits[batch_id]
 
                 if seal is not None and quorum is not None:
@@ -519,8 +540,11 @@ class LogParser:
                 if processed is not None and proposed is not None:
                     stages['Processed -> Header'].append(proposed - processed)
 
-                if proposed is not None:
-                    stages['Header -> Committed'].append(committed - proposed)
+                if proposed is not None and certified is not None:
+                    stages['Header -> Certified'].append(certified - proposed)
+
+                if certified is not None:
+                    stages['Certified -> Committed'].append(committed - certified)
 
             v_result = {}
             for label, latencies in stages.items():
@@ -547,7 +571,8 @@ class LogParser:
             'Batch seal -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
-            'Header -> Committed',
+            'Header -> Certified',
+            'Certified -> Committed',
         ]
         col_w = 8
         label_w = 28

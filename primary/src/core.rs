@@ -10,6 +10,8 @@ use config::Committee;
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey, SignatureService};
 use log::{debug, error, warn};
+#[cfg(feature = "benchmark")]
+use log::info;
 use network::{CancelHandler, ReliableSender};
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -224,6 +226,12 @@ impl Core {
                 .append(vote, &self.committee, &self.current_header)?
         {
             debug!("Assembled {:?}", certificate);
+
+            #[cfg(feature = "benchmark")]
+            for digest in certificate.header.payload.keys() {
+                // NOTE: This log entry is used to compute performance.
+                info!("Certified {} -> {:?}", certificate.header, digest);
+            }
 
             // Broadcast the certificate.
             let addresses = self
