@@ -5,12 +5,107 @@ use crypto::{Digest, PublicKey};
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate, Round};
 use std::cmp::max;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
+
+const WINDOW_SIZE: Round = 10;
+
+struct AccountCountsHistory {
+    /// Per-round, per-validator account_counts extracted from certificates.
+    /// Mirrors the DAG structure but stores only account_counts.
+    dag: HashMap<Round, HashMap<PublicKey, BTreeMap<u64, u64>>>,
+    /// Aggregated account_counts per validator over the rounds currently in `dag`.
+    past_account_counts: HashMap<PublicKey, BTreeMap<u64, u64>>,
+    /// Largest round seen across all received certificates.
+    max_round_seen: Round,
+}
+
+impl AccountCountsHistory {
+    fn new() -> Self {
+        Self {
+            dag: HashMap::new(),
+            past_account_counts: HashMap::new(),
+            max_round_seen: 0,
+        }
+    }
+
+    fn log(&self) {
+        let mut entries: Vec<(PublicKey, &BTreeMap<u64, u64>)> =
+            self.past_account_counts.iter().map(|(pk, counts)| (*pk, counts)).collect();
+        entries.sort_by_key(|(pk, _)| *pk);
+
+        for (pk, counts) in &entries {
+            let total: u64 = counts.values().sum();
+            debug!("past_account_counts validator {}: total={} {:?}", pk, total, counts);
+        }
+    }
+
+    fn log_stable(&self) {
+        // at least 2f+1 validators share the same view on the past up to this round, so we can consider it "stable"
+        let safe_round = self.max_round_seen.saturating_sub(2);
+
+        let mut stable: HashMap<PublicKey, BTreeMap<u64, u64>> = HashMap::new();
+        for (round, validators) in &self.dag {
+            if *round > safe_round {
+                continue;
+            }
+            for (pk, counts) in validators {
+                let entry = stable.entry(*pk).or_insert_with(BTreeMap::new);
+                for (acc, cnt) in counts {
+                    *entry.entry(*acc).or_insert(0) += cnt;
+                }
+            }
+        }
+
+        let mut entries: Vec<(PublicKey, BTreeMap<u64, u64>)> = stable.into_iter().collect();
+        entries.sort_by_key(|(pk, _)| *pk);
+
+        for (pk, counts) in &entries {
+            let total: u64 = counts.values().sum();
+            debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
+        }
+    }
+
+    fn update(&mut self, certificate: &Certificate) {
+        let round = certificate.round();
+        self.max_round_seen = max(self.max_round_seen, round);
+        let origin = certificate.origin();
+        let counts = &certificate.header.account_counts;
+
+        // Insert into dag.
+        self.dag
+            .entry(round)
+            .or_insert_with(HashMap::new)
+            .insert(origin, counts.clone());
+
+        // Incrementally add this certificate's counts.
+        let past = self.past_account_counts.entry(origin).or_insert_with(BTreeMap::new);
+        for (acc, cnt) in counts {
+            *past.entry(*acc).or_insert(0) += cnt;
+        }
+
+        // Evict the round that just fell outside the window, subtracting its counts
+        // from past_account_counts for every validator that had a certificate there.
+        if round >= WINDOW_SIZE {
+            if let Some(evicted) = self.dag.remove(&(round - WINDOW_SIZE)) {
+                for (validator, old_counts) in &evicted {
+                    if let Some(past) = self.past_account_counts.get_mut(validator) {
+                        for (acc, cnt) in old_counts {
+                            if let Some(entry) = past.get_mut(acc) {
+                                *entry = entry.saturating_sub(*cnt);
+                            }
+                        }
+                        past.retain(|_, v| *v > 0);
+                    }
+                }
+            }
+        }
+    }
+}
 
 /// The representation of the DAG in memory.
 type Dag = HashMap<Round, HashMap<PublicKey, (Digest, Certificate)>>;
@@ -67,6 +162,8 @@ pub struct Consensus {
     committee: Committee,
     /// The depth of the garbage collector.
     gc_depth: Round,
+    /// This validator's public key.
+    name: PublicKey,
 
     /// Receives new certificates from the primary. The primary should send us new certificates only
     /// if it already sent us its whole history.
@@ -82,6 +179,7 @@ pub struct Consensus {
 
 impl Consensus {
     pub fn spawn(
+        name: PublicKey,
         committee: Committee,
         gc_depth: Round,
         rx_new_certificates: Receiver<Certificate>,
@@ -90,6 +188,7 @@ impl Consensus {
     ) {
         tokio::spawn(async move {
             Self {
+                name,
                 committee: committee.clone(),
                 gc_depth,
                 rx_new_certificates,
@@ -105,6 +204,7 @@ impl Consensus {
     async fn run(&mut self) {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
+        let mut account_history = AccountCountsHistory::new();
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_new_certificates.recv().await {
@@ -112,6 +212,12 @@ impl Consensus {
             let round = certificate.round();
 
             // Add the new certificate to the local storage.
+            account_history.update(&certificate);
+            if certificate.origin() == self.name && round % 20 == 0 {
+                debug!("Account counts history at round {}:", round);
+                account_history.log();
+                account_history.log_stable();
+            }
             state
                 .dag
                 .entry(round)

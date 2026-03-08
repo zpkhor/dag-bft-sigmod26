@@ -112,6 +112,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
             );
             let analyze_committee = committee.clone();
             Consensus::spawn(
+                name,
                 committee,
                 parameters.gc_depth,
                 rx_new_certificates,
