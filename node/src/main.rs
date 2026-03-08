@@ -138,7 +138,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     unreachable!();
 }
 
-/// Receives an ordered list of certificates and dispatches committed batch digests to our workers.
+/// Receives an ordered list of certificates and dispatches committed batch digests to our workers. Only for primary
 async fn analyze(mut rx_output: Receiver<Certificate>, committee: Committee, name: PublicKey) {
     let mut network = SimpleSender::new();
 

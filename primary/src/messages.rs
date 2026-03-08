@@ -82,7 +82,7 @@ impl Hash for Header {
         for x in &self.parents {
             hasher.update(x);
         }
-        // TODO: we can use bytes.len() of per-account in batch instead of trusting other validator on this
+        // TODO: we can use bytes.len() of per-account in batch instead of trusting other validator on this, or do it once only in process_header before voting
         for (acc, cnt) in &self.account_counts {
             hasher.update(acc.to_le_bytes());
             hasher.update(cnt.to_le_bytes());
