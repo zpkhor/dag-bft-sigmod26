@@ -5,6 +5,7 @@ use crypto::{generate_keypair, SecretKey};
 use primary::Header;
 use rand::rngs::StdRng;
 use rand::SeedableRng as _;
+use std::net::SocketAddr;
 use std::collections::{BTreeSet, VecDeque};
 use tokio::sync::mpsc::channel;
 
@@ -29,10 +30,13 @@ pub fn mock_committee() -> Committee {
                             worker_to_primary: "0.0.0.0:0".parse().unwrap(),
                         },
                         workers: HashMap::default(),
+                        client_reply: "0.0.0.0:0".parse::<SocketAddr>().unwrap(),
+                        capacity_by_bw: 0,
                     },
                 )
             })
             .collect(),
+        latency_matrix: Vec::new(),
     }
 }
 
@@ -100,6 +104,7 @@ async fn commit_one() {
     let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
+        keys[0],
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
@@ -145,6 +150,7 @@ async fn dead_node() {
     let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
+        keys[0],
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
@@ -233,6 +239,7 @@ async fn not_enough_support() {
     let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
+        keys[0],
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,
@@ -296,6 +303,7 @@ async fn missing_leader() {
     let (tx_feedback, mut rx_feedback) = channel(1);
     let (tx_output, mut rx_output) = channel(1);
     Consensus::spawn(
+        keys[0],
         mock_committee(),
         /* gc_depth */ 50,
         rx_waiter,

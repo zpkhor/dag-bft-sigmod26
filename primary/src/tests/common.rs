@@ -59,10 +59,13 @@ pub fn committee() -> Committee {
                         stake: 1,
                         primary,
                         workers,
+                        client_reply: format!("127.0.0.1:{}", 600 + i).parse().unwrap(),
+                        capacity_by_bw: 0,
                     },
                 )
             })
             .collect(),
+        latency_matrix: Vec::new(),
     }
 }
 
