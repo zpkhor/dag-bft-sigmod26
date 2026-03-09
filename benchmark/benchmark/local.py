@@ -90,6 +90,10 @@ class LocalBench:
             weights = self.rate_weights or [1] * len(workers_addresses)
             total_weight = sum(weights)
             validator_rates = [ceil(rate * w / total_weight) for w in weights]
+            excess = sum(validator_rates) - rate
+            if excess > 0:
+                max_idx = weights.index(max(weights))
+                validator_rates[max_idx] -= excess
             running_rate = 0
             for i, addresses in enumerate(workers_addresses):
                 worker_addrs = [address for _, address in addresses]
