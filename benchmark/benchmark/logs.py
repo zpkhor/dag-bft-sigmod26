@@ -69,7 +69,7 @@ class LogParser:
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse workers\' logs: {e}')
         sizes, self.sample_to_batch, workers_ips, \
-            arrival_times_list, seal_times_list, quorum_times_list, processed_times_list, \
+            arrival_times_list, seal_times_list, quorum_wait_times_list, quorum_times_list, processed_times_list, \
             committed_times_list \
             = zip(*results)
         self.sizes = {
@@ -79,6 +79,7 @@ class LogParser:
         # Merge stage timing dicts across all workers.
         self.arrival_times = {k: v for d in arrival_times_list for k, v in d.items()}
         self.seal_times = {k: v for d in seal_times_list for k, v in d.items()}
+        self.quorum_wait_times = {k: v for d in quorum_wait_times_list for k, v in d.items()}
         self.quorum_times = {k: v for d in quorum_times_list for k, v in d.items()}
         self.processed_times = {k: v for d in processed_times_list for k, v in d.items()}
 
@@ -100,7 +101,7 @@ class LogParser:
                 v_sizes = {}
                 v_received_list = []
                 for log in logs:
-                    s, r, _, _, _, _, _, _ = self._parse_workers(log)
+                    s, r, _, _, _, _, _, _, _ = self._parse_workers(log)
                     v_sizes.update(s)
                     v_received_list.append(r)
                 self.sizes_by_validator[v] = v_sizes
@@ -235,6 +236,10 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* Batch ([^ ]+) contains \d+ B', log)
         seal_times = {d: self._to_posix(t) for t, d in tmp}
 
+        # Stage 2.5: Quorum wait start timestamps
+        tmp = findall(r'\[(.*Z) .* Quorum wait for batch (\S+)', log)
+        quorum_wait_times = {d: self._to_posix(t) for t, d in tmp}
+
         # Stage 3: Quorum achieved timestamps
         tmp = findall(r'\[(.*Z) .* Quorum for batch (\S+)', log)
         quorum_times = {d: self._to_posix(t) for t, d in tmp}
@@ -249,7 +254,7 @@ class LogParser:
         for t, full_digest in tmp:
             committed_times_by_batch[full_digest].append(self._to_posix(t))
 
-        return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times, committed_times_by_batch
+        return sizes, samples, ip, arrival_times, seal_times, quorum_wait_times, quorum_times, processed_times, committed_times_by_batch
 
     def _to_posix(self, string):
         x = datetime.fromisoformat(string.replace('Z', '+00:00'))
@@ -412,7 +417,8 @@ class LogParser:
         stage_labels = [
             'Client -> Worker',
             'Worker -> Batch seal',
-            'Batch seal -> Quorum',
+            'Batch seal -> Quorum wait',
+            'Quorum wait -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
             'Header -> Certified',
@@ -438,14 +444,18 @@ class LogParser:
 
         for batch_id in self.commits:
             seal = self.seal_times.get(batch_id)
+            quorum_wait = self.quorum_wait_times.get(batch_id)
             quorum = self.quorum_times.get(batch_id)
             processed = self.processed_times.get(batch_id)
             proposed = self.proposals.get(batch_id)
             certified = self.certified.get(batch_id)
             committed = self.commits[batch_id]
 
-            if seal is not None and quorum is not None:
-                stages['Batch seal -> Quorum'].append(quorum - seal)
+            if seal is not None and quorum_wait is not None:
+                stages['Batch seal -> Quorum wait'].append(quorum_wait - seal)
+
+            if quorum_wait is not None and quorum is not None:
+                stages['Quorum wait -> Quorum'].append(quorum - quorum_wait)
 
             if quorum is not None and processed is not None:
                 stages['Quorum -> Processed'].append(processed - quorum)
@@ -482,7 +492,8 @@ class LogParser:
         stage_labels = [
             'Client -> Worker',
             'Worker -> Batch seal',
-            'Batch seal -> Quorum',
+            'Batch seal -> Quorum wait',
+            'Quorum wait -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
             'Header -> Certified',
@@ -525,14 +536,18 @@ class LogParser:
             # Stages 3-7: keyed by batch digest
             for batch_id in v_committed_batches:
                 seal = self.seal_times[batch_id]
+                quorum_wait = self.quorum_wait_times.get(batch_id)
                 quorum = self.quorum_times[batch_id]
                 processed = self.processed_times[batch_id]
                 proposed = self.proposals[batch_id]
                 certified = self.certified.get(batch_id)
                 committed = self.commits[batch_id]
 
-                if seal is not None and quorum is not None:
-                    stages['Batch seal -> Quorum'].append(quorum - seal)
+                if seal is not None and quorum_wait is not None:
+                    stages['Batch seal -> Quorum wait'].append(quorum_wait - seal)
+
+                if quorum_wait is not None and quorum is not None:
+                    stages['Quorum wait -> Quorum'].append(quorum - quorum_wait)
 
                 if quorum is not None and processed is not None:
                     stages['Quorum -> Processed'].append(processed - quorum)
@@ -568,7 +583,8 @@ class LogParser:
         stage_labels = [
             'Client -> Worker',
             'Worker -> Batch seal',
-            'Batch seal -> Quorum',
+            'Batch seal -> Quorum wait',
+            'Quorum wait -> Quorum',
             'Quorum -> Processed',
             'Processed -> Header',
             'Header -> Certified',
@@ -600,7 +616,7 @@ class LogParser:
         for v in validators:
             count = stage_data[v]['Client -> Worker']['count']
             if count == 0:
-                count = stage_data[v]['Batch seal -> Quorum']['count']
+                count = stage_data[v]['Batch seal -> Quorum wait']['count']
             count_row += f'{count:>{col_w},}'
         output += count_row + '\n'
 

@@ -1,18 +1,13 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::processor::SerializedBatchMessage;
 use config::{Committee, Stake};
-#[cfg(feature = "benchmark")]
 use crypto::Digest;
 use crypto::PublicKey;
-#[cfg(feature = "benchmark")]
-use ed25519_dalek::{Digest as _, Sha512};
 use futures::stream::futures_unordered::FuturesUnordered;
 use futures::stream::StreamExt as _;
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::CancelHandler;
-#[cfg(feature = "benchmark")]
-use std::convert::TryInto as _;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[cfg(test)]
@@ -23,6 +18,8 @@ pub mod quorum_waiter_tests;
 pub struct QuorumWaiterMessage {
     /// A serialized `WorkerMessage::Batch` message.
     pub batch: SerializedBatchMessage,
+    /// Pre-computed digest of the batch (computed once in batch_maker).
+    pub digest: Digest,
     /// The cancel handlers to receive the acknowledgements of our broadcast.
     pub handlers: Vec<(PublicKey, CancelHandler)>,
 }
@@ -36,7 +33,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<SerializedBatchMessage>,
+    tx_batch: Sender<(SerializedBatchMessage, Digest)>,
 }
 
 impl QuorumWaiter {
@@ -45,7 +42,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<Vec<u8>>,
+        tx_batch: Sender<(SerializedBatchMessage, Digest)>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -67,7 +64,10 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
-        while let Some(QuorumWaiterMessage { batch, handlers }) = self.rx_message.recv().await {
+        while let Some(QuorumWaiterMessage { batch, digest, handlers }) = self.rx_message.recv().await {
+            #[cfg(feature = "benchmark")]
+            info!("Quorum wait for batch {:?}", digest);
+
             let mut wait_for_quorum: FuturesUnordered<_> = handlers
                 .into_iter()
                 .map(|(name, handler)| {
@@ -84,14 +84,9 @@ impl QuorumWaiter {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
                     #[cfg(feature = "benchmark")]
-                    {
-                        let digest = Digest(
-                            Sha512::digest(&batch).as_ref()[..32].try_into().unwrap(),
-                        );
-                        info!("Quorum for batch {:?}", digest);
-                    }
+                    info!("Quorum for batch {:?}", digest);
                     self.tx_batch
-                        .send(batch)
+                        .send((batch, digest))
                         .await
                         .expect("Failed to deliver batch");
                     break;
