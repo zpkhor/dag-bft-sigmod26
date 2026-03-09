@@ -2,13 +2,16 @@
 use crate::quorum_waiter::QuorumWaiterMessage;
 use crate::worker::WorkerMessage;
 use bytes::Bytes;
+#[cfg(feature = "benchmark")]
 use crypto::Digest;
 use crypto::PublicKey;
+#[cfg(feature = "benchmark")]
 use ed25519_dalek::{Digest as _, Sha512};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
 use std::collections::BTreeMap;
+#[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -128,14 +131,15 @@ impl BatchMaker {
         let message = WorkerMessage::Batch((batch_txs, account_counts));
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
-        let digest = Digest(
-            Sha512::digest(&serialized).as_ref()[..32]
-                .try_into()
-                .unwrap(),
-        );
-
         #[cfg(feature = "benchmark")]
         {
+            // NOTE: This is one extra hash that is only needed to print the following log entries.
+            let digest = Digest(
+                Sha512::digest(&serialized).as_ref()[..32]
+                    .try_into()
+                    .unwrap(),
+            );
+
             for (id, account_id) in sample_ids {
                 // NOTE: This log entry is used to compute performance.
                 info!(
@@ -159,7 +163,6 @@ impl BatchMaker {
         self.tx_message
             .send(QuorumWaiterMessage {
                 batch: serialized,
-                digest,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
             })
             .await

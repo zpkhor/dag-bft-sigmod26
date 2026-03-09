@@ -7,7 +7,7 @@ use ed25519_dalek::Sha512;
 #[cfg(feature = "benchmark")]
 use log::info;
 use primary::WorkerPrimaryMessage;
-use std::convert::TryInto as _;
+use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
 
@@ -31,43 +31,37 @@ impl Processor {
         mut rx_batch: Receiver<SerializedBatchMessage>,
         // Output channel to send out batches' digests.
         tx_digest: Sender<SerializedBatchDigestMessage>,
+        // Whether we are processing our own batches or the batches of other nodes.
+        own_digest: bool,
     ) {
         tokio::spawn(async move {
             while let Some(batch) = rx_batch.recv().await {
+                // Hash the batch.
                 let digest = Digest(Sha512::digest(&batch).as_ref()[..32].try_into().unwrap());
-                store.write(digest.to_vec(), batch).await;
-                let message = WorkerPrimaryMessage::OthersBatch(digest, id);
-                let message = bincode::serialize(&message)
-                    .expect("Failed to serialize worker-primary message");
-                tx_digest
-                    .send(message)
-                    .await
-                    .expect("Failed to send digest");
-            }
-        });
-    }
 
-    /// Spawn a processor for our own batches, using the digest pre-computed in batch_maker.
-    pub fn spawn_own(
-        id: WorkerId,
-        mut store: Store,
-        mut rx_batch: Receiver<(SerializedBatchMessage, Digest)>,
-        tx_digest: Sender<SerializedBatchDigestMessage>,
-    ) {
-        tokio::spawn(async move {
-            while let Some((batch, digest)) = rx_batch.recv().await {
-                let account_counts =
+                // Extract account_counts before moving batch into store.
+                let account_counts = if own_digest {
                     match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
                         Ok(crate::worker::WorkerMessage::Batch((_, counts))) => counts,
                         _ => std::collections::BTreeMap::new(),
-                    };
+                    }
+                } else {
+                    std::collections::BTreeMap::new()
+                };
 
+                // Store the batch.
                 store.write(digest.to_vec(), batch).await;
 
                 #[cfg(feature = "benchmark")]
-                info!("Processed batch {:?}", digest);
+                if own_digest {
+                    info!("Processed batch {:?}", digest);
+                }
 
-                let message = WorkerPrimaryMessage::OurBatch(digest, id, account_counts);
+                // Deliver the batch's digest.
+                let message = match own_digest {
+                    true => WorkerPrimaryMessage::OurBatch(digest, id, account_counts),
+                    false => WorkerPrimaryMessage::OthersBatch(digest, id),
+                };
                 let message = bincode::serialize(&message)
                     .expect("Failed to serialize our own worker-primary message");
                 tx_digest

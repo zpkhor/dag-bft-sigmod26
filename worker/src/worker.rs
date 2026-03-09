@@ -140,7 +140,7 @@ impl Worker {
     fn handle_clients_transactions(&self, tx_primary: Sender<SerializedBatchDigestMessage>) {
         let (tx_batch_maker, rx_batch_maker) = channel(CHANNEL_CAPACITY);
         let (tx_quorum_waiter, rx_quorum_waiter) = channel(CHANNEL_CAPACITY);
-        let (tx_processor, rx_processor) = channel::<(SerializedBatchMessage, Digest)>(CHANNEL_CAPACITY);
+        let (tx_processor, rx_processor) = channel(CHANNEL_CAPACITY);
 
         // We first receive clients' transactions from the network.
         let mut address = self
@@ -181,11 +181,12 @@ impl Worker {
 
         // The `Processor` hashes and stores the batch. It then forwards the batch's digest to the `PrimaryConnector`
         // that will send it to our primary machine.
-        Processor::spawn_own(
+        Processor::spawn(
             self.id,
             self.store.clone(),
             /* rx_batch */ rx_processor,
             /* tx_digest */ tx_primary,
+            /* own_batch */ true,
         );
 
         info!(
@@ -230,6 +231,7 @@ impl Worker {
             self.store.clone(),
             /* rx_batch */ rx_processor,
             /* tx_digest */ tx_primary,
+            /* own_batch */ false,
         );
 
         info!(
