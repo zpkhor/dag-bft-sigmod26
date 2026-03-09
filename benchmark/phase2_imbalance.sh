@@ -3,12 +3,12 @@
 # Set RATES env var based on Phase 1 results (~30%, ~70%, ~90% of saturation).
 set -euo pipefail
 
-RATES=(${RATES:-22500 17500 7500})
-# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "4,1,1,1" "10,1,1,1")
-# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1") # /home/zpkhor/narwhal/benchmark/results/phase2_20260218_155933/merged_output.log
-RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1") # /home/zpkhor/narwhal/benchmark/results/phase2_20260218_163321/merged_output.log
+RATES=(${RATES:-5700})
+RATE_WEIGHTS_LIST=("1,1,1,1" "3,1,1,1" "5,1,1,1" "10,1,1,1") # /home/zpkhor/narwhal-validator/benchmark/results/phase2_20260308_232151/merged_output.log
+# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1")
+# RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1")
 RETRIES=1
-DURATION=${DURATION:-60}
+DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-5}
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
@@ -33,7 +33,8 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            OUTPUT=$(RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
+            echo "CMD: NUM_ACCOUNTS=100 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(NUM_ACCOUNTS=100 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
