@@ -145,6 +145,8 @@ pub struct Authority {
 #[derive(Clone, Deserialize)]
 pub struct Committee {
     pub authorities: BTreeMap<PublicKey, Authority>,
+    #[serde(default)]
+    pub latency_matrix: Vec<Vec<u64>>,
 }
 
 impl Import for Committee {}

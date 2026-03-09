@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
 
-const WINDOW_SIZE: Round = 10;
+const WINDOW_SIZE: Round = 50;
 
 struct AccountCountsHistory {
     /// Per-round, per-validator account_counts extracted from certificates.
@@ -167,6 +167,10 @@ pub struct Consensus {
     /// Per-validator estimated max throughput (requests/sec). Initialized from the committee
     /// (derived from worker bandwidth and tx size) and later updated via control plane consensus.
     validator_capacities: HashMap<PublicKey, u64>,
+    /// Latency in ms between each (client_i, validator_j) pair.
+    /// Indexed by sorted authority order (matches BTreeMap iteration order).
+    /// Empty if committee did not provide latency data.
+    client_validator_latency: Vec<Vec<u64>>,
 
     /// Receives new certificates from the primary. The primary should send us new certificates only
     /// if it already sent us its whole history.
@@ -194,6 +198,8 @@ impl Consensus {
             .iter()
             .map(|(pk, auth)| (*pk, auth.capacity_by_bw))
             .collect();
+        let client_validator_latency = committee.latency_matrix.clone();
+        info!("Client-Validator latency matrix: {:?}", client_validator_latency);
         tokio::spawn(async move {
             Self {
                 name,
@@ -204,6 +210,7 @@ impl Consensus {
                 tx_output,
                 genesis: Certificate::genesis(&committee),
                 validator_capacities,
+                client_validator_latency,
             }
             .run()
             .await;
@@ -228,9 +235,9 @@ impl Consensus {
 
             // Add the new certificate to the local storage.
             account_history.update(&certificate);
-            if certificate.origin() == self.name && round % 20 == 0 {
+            if certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
                 debug!("Account counts history at round {}:", round);
-                account_history.log();
+                // account_history.log();
                 account_history.log_stable();
             }
             state

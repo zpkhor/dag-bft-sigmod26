@@ -90,6 +90,14 @@ class Committee:
                 'capacity_by_bw': 0,
             }
 
+    def set_latency_matrix(self, matrix):
+        ''' matrix[i][j] = latency in ms from client i to validator j.
+            i, j indexed by sorted authority name order (matches Rust BTreeMap order). '''
+        sorted_names = sorted(self.json['authorities'].keys())
+        assert len(matrix) == len(sorted_names)
+        assert all(len(row) == len(sorted_names) for row in matrix)
+        self.json['latency_matrix'] = matrix
+
     def set_capacities(self, capacities):
         ''' Set per-validator capacity (requests/sec). capacities is a list aligned
             with the authority insertion order. '''

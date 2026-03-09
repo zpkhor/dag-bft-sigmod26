@@ -289,6 +289,15 @@ networks:
                 # capacities.append(int(worker_bw_bytes / self.tx_size / (nodes - 1)))
                 capacities.append(1450) # TODO: to be replaced by per validator workers linear regession based on (|B|, T_quorum (without queuing))
             committee.set_capacities(capacities)
+            latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
+            sorted_names = sorted(committee.json['authorities'].keys())
+            name_to_idx = {name: i for i, name in enumerate(names)}
+            latency_matrix = [
+                [0 if name_to_idx[row_name] == name_to_idx[col_name] else latency_ms
+                 for col_name in sorted_names]
+                for row_name in sorted_names
+            ]
+            committee.set_latency_matrix(latency_matrix)
             committee.print(PathMaker.committee_file())
 
             self.node_parameters.print(PathMaker.parameters_file())
