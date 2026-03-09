@@ -53,6 +53,19 @@ class LogParser:
         self.commits = self._merge_results_fplus1([x.items() for x in commits])
         self.certified = self._merge_results_unique([x.items() for x in certified])
 
+        # Map each primary's validator key to its integer ID (sort order = validator ID)
+        key_to_id = {}
+        for i, p_log in enumerate(primaries):
+            m = search(r'Primary (\S+) successfully booted', p_log)
+            if m:
+                key_to_id[m.group(1)] = i
+
+        raw_timeline = self._parse_primaries_dags(primaries[0])
+        self.dag_timeline = {
+            sr: {key_to_id.get(k, k): v for k, v in row.items()}
+            for sr, row in raw_timeline.items()
+        }
+
         # Warmup trimming: discard commits/proposals in the warmup window.
         self.warmup = warmup
         self.verbose = verbose
@@ -606,6 +619,45 @@ class LogParser:
 
         return output
 
+    def _parse_primaries_dags(self, log):
+        """Parse 'stable_account_counts' entries from one primary log.
+        Returns {safe_round: {validator_key_str: total_txs}}.
+        """
+        pattern = r'stable_account_counts \(safe_round=(\d+)\) validator (\S+): total=(\d+)'
+        result = {}
+        for safe_round_s, key, total_s in findall(pattern, log):
+            result.setdefault(int(safe_round_s), {})[key] = int(total_s)
+        return result
+
+    def _format_dag_timeline(self):
+        if not self.dag_timeline:
+            return ''
+        sorted_rounds = sorted(self.dag_timeline.keys())
+        all_validators = sorted({v for row in self.dag_timeline.values() for v in row})
+        if not all_validators:
+            return ''
+        label_w = max(len('safe_r'), max(len(str(sr)) for sr in sorted_rounds))
+
+        def make_cell(val, row_total):
+            pct = f'{val / row_total * 100:.0f}%' if row_total else '-%'
+            return f'{val:,} ({pct})'
+
+        cells = []
+        for sr in sorted_rounds:
+            row_total = sum(self.dag_timeline[sr].get(v, 0) for v in all_validators)
+            cells.append([make_cell(self.dag_timeline[sr].get(v, 0), row_total) for v in all_validators])
+
+        col_w = max(max(len(c) for row in cells for c in row), max(len('V'+str(v)) for v in all_validators)) + 2
+
+        header = f'   {"safe_r":<{label_w}}' + ''.join(f'{"V"+str(v):>{col_w}}' for v in all_validators)
+        output = f'\n + DAG TIMELINE (total tx per validator in the past):\n{header}\n'
+        for i, sr in enumerate(sorted_rounds):
+            row_str = f'   {sr:<{label_w}}'
+            for cell in cells[i]:
+                row_str += f'{cell:>{col_w}}'
+            output += row_str + '\n'
+        return output
+
     def result(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
@@ -642,24 +694,29 @@ class LogParser:
             ' SUMMARY:\n'
             '-----------------------------------------\n'
             ' + CONFIG:\n'
-            f' Faults: {self.faults} node(s)\n'
             f' Committee size: {self.committee_size} node(s)\n'
             f' Worker(s) per node: {self.workers} worker(s)\n'
-            f' Collocate primary and workers: {self.collocate}\n'
             f' Input rate: {sum(self.rate):,} tx/s\n'
             f' Transaction size: {self.size[0]:,} B\n'
             f' Benchmark duration: {self.bench_duration:,} s\n'
             f' Consensus duration: {round(consensus_duration, 2):,} s\n'
             f' Commit duration: {round(commit_duration, 2):,} s\n'
             '\n'
-            f' Header size: {header_size:,} B\n'
-            f' Max header delay: {max_header_delay:,} ms\n'
-            f' GC depth: {gc_depth:,} round(s)\n'
-            f' Sync retry delay: {sync_retry_delay:,} ms\n'
-            f' Sync retry nodes: {sync_retry_nodes:,} node(s)\n'
-            f' batch size: {batch_size:,} B\n'
-            f' Max batch delay: {max_batch_delay:,} ms\n'
-            '\n'
+        )
+        if self.verbose:
+            output += (
+                f' Faults: {self.faults} node(s)\n'
+                f' Collocate primary and workers: {self.collocate}\n'
+                f' Header size: {header_size:,} B\n'
+                f' Max header delay: {max_header_delay:,} ms\n'
+                f' GC depth: {gc_depth:,} round(s)\n'
+                f' Sync retry delay: {sync_retry_delay:,} ms\n'
+                f' Sync retry nodes: {sync_retry_nodes:,} node(s)\n'
+                f' batch size: {batch_size:,} B\n'
+                f' Max batch delay: {max_batch_delay:,} ms\n'
+                '\n'
+            )
+        output += (
             ' + RESULTS:\n'
             f' f+1 Commit latency (workers) (mean): {round(commit_latency):,} ms\n'
             f' f+1 Commit latency (workers) (p95): {round(commit_p95):,} ms\n'
@@ -754,6 +811,8 @@ class LogParser:
                 output += self._format_stage_matrix(
                     'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p99, ms)', 'p99', stage_data
                 )
+
+        output += self._format_dag_timeline()
 
         if warnings_str:
             output += warnings_str

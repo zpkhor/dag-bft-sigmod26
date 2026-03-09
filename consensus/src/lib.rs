@@ -66,7 +66,8 @@ impl AccountCountsHistory {
 
         for (pk, counts) in &entries {
             let total: u64 = counts.values().sum();
-            debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
+            // debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
+            info!("stable_account_counts (safe_round={}) validator {}: total={}", safe_round, pk, total);
         }
     }
 

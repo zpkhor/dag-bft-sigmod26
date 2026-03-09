@@ -50,7 +50,7 @@ def local(ctx, debug=True):
 
 
 @task
-def docker(ctx, debug=True, bandwidth='10gbit', latency='0ms', jitter='0ms',
+def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
            cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):
     ''' Run benchmarks in Docker containers with tc bandwidth shaping '''
     rate = int(os.environ.get('RATE', 50_000))
