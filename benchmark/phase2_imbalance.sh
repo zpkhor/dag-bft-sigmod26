@@ -3,11 +3,11 @@
 # Set RATES env var based on Phase 1 results (~30%, ~70%, ~90% of saturation).
 set -euo pipefail
 
-RATES=(${RATES:-5800 3800 1800})
-RATE_WEIGHTS_LIST=("1,1,1,1" "3,1,1,1" "5,1,1,1" "10,1,1,1") # /home/zpkhor/narwhal-validator/benchmark/results/phase2_20260309_173544/merged_output.log
+RATES=(${RATES:-6000 3000})
+RATE_WEIGHTS_LIST=("1,1,1,1" "10,1,1,1") # /home/zpkhor/narwhal-validator/benchmark/results/phase2_20260310_160943/merged_output.log
 # RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1")
 # RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1")
-RETRIES=1
+RETRIES=2
 DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-5}
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
