@@ -72,6 +72,8 @@ class LogParser:
         if warmup and self.start:
             cutoff = min(self.start) + warmup
             self.commits = {d: t for d, t in self.commits.items() if t >= cutoff}
+            end_cutoff = min(self.start) + self.bench_duration - warmup / 2
+            self.commits = {d: t for d, t in self.commits.items() if t < end_cutoff}
             self.proposals = {d: t for d, t in self.proposals.items() if d in self.commits}
         self.effective_start = cutoff if (warmup and self.start) else min(self.start)
 
@@ -675,7 +677,7 @@ class LogParser:
         
         warnings = []
         assert isinstance(self.bench_duration, float), 'Bench duration is not set'
-        effective_bench_duration = self.bench_duration - self.warmup
+        effective_bench_duration = self.bench_duration - self.warmup - self.warmup / 2
         if (consensus_duration / effective_bench_duration) < 0.9:
             warnings.append('Consensus stalled the system')
         if (commit_duration / effective_bench_duration) < 0.9:
