@@ -31,4 +31,7 @@ scripts/build_and_fab
 benchmark/bash_logs/
 benchmark/logs/
 benchmark/logs_copies
+
+# Docker
 benchmark/docker-compose.yml
+benchmark/.docker-image-hash

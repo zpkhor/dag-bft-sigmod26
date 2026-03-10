@@ -1,8 +1,10 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
 import json
+import os
+import socket
 import subprocess
 from math import ceil
-from time import sleep
+from time import sleep, time as _now
 
 from benchmark.commands import CommandMaker
 from benchmark.config import (
@@ -14,6 +16,14 @@ from benchmark.config import (
 )
 from benchmark.logs import LogParser, ParseError
 from benchmark.utils import Print, BenchError, PathMaker
+
+
+def _port_open(host, port):
+    try:
+        with socket.create_connection((host, port), timeout=0.3):
+            return True
+    except OSError:
+        return False
 
 
 class DockerBench:
@@ -112,6 +122,23 @@ class DockerBench:
             )
         except subprocess.SubprocessError:
             pass
+
+    @staticmethod
+    def _entrypoint_hash():
+        import hashlib
+        h = hashlib.sha256()
+        for path in ['docker/entrypoint.sh', 'docker/client-entrypoint.sh']:
+            with open(path, 'rb') as f:
+                h.update(f.read())
+        return h.hexdigest()
+
+    @staticmethod
+    def _image_exists():
+        result = subprocess.run(
+            ['docker', 'image', 'inspect', DockerBench.IMAGE_NAME],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
+        return result.returncode == 0
 
     def _build_image(self):
         cmd = [
@@ -404,8 +431,16 @@ networks:
             primary_ports_str = " ".join(primary_ports)
 
             # Build Docker image.
-            Print.info("Building Docker image...")
-            self._build_image()
+            HASH_FILE = '.docker-image-hash'
+            current_hash = self._entrypoint_hash()
+            stored_hash = open(HASH_FILE).read().strip() if os.path.exists(HASH_FILE) else ''
+            if not self._image_exists() or current_hash != stored_hash:
+                Print.info("Building Docker image...")
+                self._build_image()
+                with open(HASH_FILE, 'w') as f:
+                    f.write(current_hash)
+            else:
+                Print.info("Docker image up to date, skipping build.")
 
             # Generate docker-compose.yml.
             self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports, primary_ports_str)
@@ -419,6 +454,17 @@ networks:
 
             with open(PathMaker.bench_params_file(), 'w') as f:
                 json.dump({'duration': self.duration, 'warmup': self.warmup, 'faults': self.faults}, f)
+
+            Print.info("Waiting for all containers to be ready...")
+            addrs = [(a.split(':')[0], int(a.split(':')[1])) for a in client_wait_ports.split()]
+            deadline = _now() + 120
+            while True:
+                if all(_port_open(h, p) for h, p in addrs):
+                    break
+                if _now() > deadline:
+                    raise BenchError("Containers did not become ready within 120s", Exception())
+                sleep(0.5)
+            Print.info("All containers ready.")
 
             # Wait for benchmark duration.
             Print.info(f"Running benchmark ({self.duration} sec)...")
