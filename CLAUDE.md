@@ -35,6 +35,7 @@
 2. **Handle client transactions**:
    - Receiver → Batch Maker (assembles txs into batches)
        - Seals when current_batch_size >= batch_size OR max_batch_delay timer. At low rates, batches are always timer-sealed.
+       - account_id is first 8 bytes of transaction
    - QuorumWaiter (waits for quorum of acks)
    - Processor (hashes and stores batches)
    - PrimaryConnector (sends batch digests to our primary)
