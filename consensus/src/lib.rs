@@ -12,12 +12,12 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
 
-const WINDOW_SIZE: Round = 50;
+const WINDOW_SIZE: Round = 75;
 
 struct AccountCountsHistory {
     /// Per-round, per-validator account_counts extracted from certificates.
     /// Mirrors the DAG structure but stores only account_counts.
-    dag: HashMap<Round, HashMap<PublicKey, BTreeMap<u64, u64>>>,
+    dag: HashMap<Round, HashMap<PublicKey, (BTreeMap<u64, u64>, u64)>>,
     /// Aggregated account_counts per validator over the rounds currently in `dag`.
     past_account_counts: HashMap<PublicKey, BTreeMap<u64, u64>>,
     /// Largest round seen across all received certificates.
@@ -48,26 +48,33 @@ impl AccountCountsHistory {
         // at least 2f+1 validators share the same view on the past up to this round, so we can consider it "stable"
         let safe_round = self.max_round_seen.saturating_sub(2);
 
-        let mut stable: HashMap<PublicKey, BTreeMap<u64, u64>> = HashMap::new();
+        let mut stable: HashMap<PublicKey, (BTreeMap<u64, u64>, u64, u64)> = HashMap::new();
         for (round, validators) in &self.dag {
             if *round > safe_round {
                 continue;
             }
-            for (pk, counts) in validators {
-                let entry = stable.entry(*pk).or_insert_with(BTreeMap::new);
+            for (pk, (counts, ts)) in validators {
+                let entry = stable.entry(*pk).or_insert_with(|| (BTreeMap::new(), u64::MAX, 0u64));
                 for (acc, cnt) in counts {
-                    *entry.entry(*acc).or_insert(0) += cnt;
+                    *entry.0.entry(*acc).or_insert(0) += cnt;
                 }
+                entry.1 = entry.1.min(*ts);
+                entry.2 = entry.2.max(*ts);
             }
         }
 
-        let mut entries: Vec<(PublicKey, BTreeMap<u64, u64>)> = stable.into_iter().collect();
+        let mut entries: Vec<(PublicKey, (BTreeMap<u64, u64>, u64, u64))> = stable.into_iter().collect();
         entries.sort_by_key(|(pk, _)| *pk);
 
-        for (pk, counts) in &entries {
+        for (pk, (counts, min_ts, max_ts)) in &entries {
             let total: u64 = counts.values().sum();
+            let tps = if max_ts > min_ts {
+                total as f64 / ((max_ts - min_ts) as f64 / 1000.0)
+            } else {
+                0.0
+            };
             // debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
-            info!("stable_account_counts (safe_round={}) validator {}: total={}", safe_round, pk, total);
+            info!("stable_account_counts (safe_round={}) validator {}: total={} tx/s={:.1}", safe_round, pk, total, tps);
         }
     }
 
@@ -81,7 +88,7 @@ impl AccountCountsHistory {
         self.dag
             .entry(round)
             .or_insert_with(HashMap::new)
-            .insert(origin, counts.clone());
+            .insert(origin, (counts.clone(), certificate.header.created_at));
 
         // Incrementally add this certificate's counts.
         let past = self.past_account_counts.entry(origin).or_insert_with(BTreeMap::new);
@@ -93,7 +100,7 @@ impl AccountCountsHistory {
         // from past_account_counts for every validator that had a certificate there.
         if round >= WINDOW_SIZE {
             if let Some(evicted) = self.dag.remove(&(round - WINDOW_SIZE)) {
-                for (validator, old_counts) in &evicted {
+                for (validator, (old_counts, _)) in &evicted {
                     if let Some(past) = self.past_account_counts.get_mut(validator) {
                         for (acc, cnt) in old_counts {
                             if let Some(entry) = past.get_mut(acc) {
@@ -231,13 +238,12 @@ impl Consensus {
 
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_new_certificates.recv().await {
-            debug!("Processing {:?}", certificate);
+            info!("Processing {:?}", certificate);
             let round = certificate.round();
 
             // Add the new certificate to the local storage.
             account_history.update(&certificate);
             if certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
-                debug!("Account counts history at round {}:", round);
                 // account_history.log();
                 account_history.log_stable();
             }

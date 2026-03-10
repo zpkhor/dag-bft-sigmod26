@@ -625,10 +625,10 @@ class LogParser:
         """Parse 'stable_account_counts' entries from one primary log.
         Returns {safe_round: {validator_key_str: total_txs}}.
         """
-        pattern = r'stable_account_counts \(safe_round=(\d+)\) validator (\S+): total=(\d+)'
+        pattern = r'stable_account_counts \(safe_round=(\d+)\) validator (\S+): total=(\d+) tx/s=([\d.]+)'
         result = {}
-        for safe_round_s, key, total_s in findall(pattern, log):
-            result.setdefault(int(safe_round_s), {})[key] = int(total_s)
+        for safe_round_s, key, total_s, tps_s in findall(pattern, log):
+            result.setdefault(int(safe_round_s), {})[key] = (int(total_s), float(tps_s))
         return result
 
     def _format_dag_timeline(self):
@@ -640,14 +640,16 @@ class LogParser:
             return ''
         label_w = max(len('safe_r'), max(len(str(sr)) for sr in sorted_rounds))
 
-        def make_cell(val, row_total):
+        def make_cell(entry, row_total):
+            val, tps = entry
             pct = f'{val / row_total * 100:.0f}%' if row_total else '-%'
-            return f'{val:,} ({pct})'
+            return f'{val if self.verbose else ""} ({pct}) {tps:.0f}t/s'
 
         cells = []
         for sr in sorted_rounds:
-            row_total = sum(self.dag_timeline[sr].get(v, 0) for v in all_validators)
-            cells.append([make_cell(self.dag_timeline[sr].get(v, 0), row_total) for v in all_validators])
+            row_entries = [self.dag_timeline[sr].get(v, (0, 0.0)) for v in all_validators]
+            row_total = sum(e[0] for e in row_entries)
+            cells.append([make_cell(e, row_total) for e in row_entries])
 
         col_w = max(max(len(c) for row in cells for c in row), max(len('V'+str(v)) for v in all_validators)) + 2
 

@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::convert::TryInto;
 use std::fmt;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct Header {
@@ -17,6 +18,7 @@ pub struct Header {
     pub payload: BTreeMap<Digest, WorkerId>,
     pub parents: BTreeSet<Digest>,
     pub account_counts: BTreeMap<u64, u64>,
+    pub created_at: u64,
     pub id: Digest,
     pub signature: Signature,
 }
@@ -36,6 +38,7 @@ impl Header {
             payload,
             parents,
             account_counts,
+            created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
             id: Digest::default(),
             signature: Signature::default(),
         };
@@ -83,6 +86,7 @@ impl Hash for Header {
         for x in &self.parents {
             hasher.update(x);
         }
+        hasher.update(self.created_at.to_le_bytes());
         Digest(hasher.finalize().as_ref()[..32].try_into().unwrap())
     }
 }
