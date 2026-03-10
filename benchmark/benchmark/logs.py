@@ -623,12 +623,12 @@ class LogParser:
 
     def _parse_primaries_dags(self, log):
         """Parse 'stable_account_counts' entries from one primary log.
-        Returns {safe_round: {validator_key_str: total_txs}}.
+        Returns {safe_round: {validator_key_str: (total, tps, tpr, tpx)}}.
         """
-        pattern = r'stable_account_counts \(safe_round=(\d+)\) validator (\S+): total=(\d+) tx/s=([\d.]+)'
+        pattern = r'stable_account_counts \(safe_round=(\d+)\) validator (\S+): total=(\d+) tx/s=([\d.]+) tx/r=(\d+) tx/x=([\d.]+)'
         result = {}
-        for safe_round_s, key, total_s, tps_s in findall(pattern, log):
-            result.setdefault(int(safe_round_s), {})[key] = (int(total_s), float(tps_s))
+        for safe_round_s, key, total_s, tps_s, tpr_s, tpx_s in findall(pattern, log):
+            result.setdefault(int(safe_round_s), {})[key] = (int(total_s), float(tps_s), int(tpr_s), float(tpx_s))
         return result
 
     def _format_dag_timeline(self):
@@ -641,20 +641,20 @@ class LogParser:
         label_w = max(len('safe_r'), max(len(str(sr)) for sr in sorted_rounds))
 
         def make_cell(entry, row_total):
-            val, tps = entry
+            val, tps, tpr, tpx = entry
             pct = f'{val / row_total * 100:.0f}%' if row_total else '-%'
-            return f'{val if self.verbose else ""} ({pct}) {tps:.0f}t/s'
+            return f'{val if self.verbose else ""} ({pct}) {tps:.0f}t/s {tpr}t/r {tpx:.0f}t/x'
 
         cells = []
         for sr in sorted_rounds:
-            row_entries = [self.dag_timeline[sr].get(v, (0, 0.0)) for v in all_validators]
+            row_entries = [self.dag_timeline[sr].get(v, (0, 0.0, 0, 0.0)) for v in all_validators]
             row_total = sum(e[0] for e in row_entries)
             cells.append([make_cell(e, row_total) for e in row_entries])
 
         col_w = max(max(len(c) for row in cells for c in row), max(len('V'+str(v)) for v in all_validators)) + 2
 
         header = f'   {"safe_r":<{label_w}}' + ''.join(f'{"V"+str(v):>{col_w}}' for v in all_validators)
-        output = f'\n + DAG TIMELINE (total tx per validator in the past):\n{header}\n'
+        output = f'\n + DAG TIMELINE (t/s=self-reported, t/r=per-round, t/x=median-duration):\n{header}\n'
         for i, sr in enumerate(sorted_rounds):
             row_str = f'   {sr:<{label_w}}'
             for cell in cells[i]:

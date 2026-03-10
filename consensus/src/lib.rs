@@ -44,7 +44,7 @@ impl AccountCountsHistory {
         }
     }
 
-    fn log_stable(&self) {
+    fn log_stable(&self, committee_size: usize) {
         // at least 2f+1 validators share the same view on the past up to this round, so we can consider it "stable"
         let safe_round = self.max_round_seen.saturating_sub(2);
 
@@ -53,6 +53,7 @@ impl AccountCountsHistory {
             if *round > safe_round {
                 continue;
             }
+            assert_eq!(validators.len(), committee_size, "round {} has {} validators", round, validators.len());
             for (pk, (counts, ts)) in validators {
                 let entry = stable.entry(*pk).or_insert_with(|| (BTreeMap::new(), u64::MAX, 0u64));
                 for (acc, cnt) in counts {
@@ -63,18 +64,31 @@ impl AccountCountsHistory {
             }
         }
 
-        let mut entries: Vec<(PublicKey, (BTreeMap<u64, u64>, u64, u64))> = stable.into_iter().collect();
+        // stable_round_count is uniform across all validators (asserted above)
+        let stable_round_count = self.dag.keys().filter(|&&r| r <= safe_round).count() as u64;
+
+        let mut all_min: Vec<u64> = stable.values().map(|(_, min, _)| *min).collect();
+        let mut all_max: Vec<u64> = stable.values().map(|(_, _, max)| *max).collect();
+        all_min.sort();
+        all_max.sort();
+        let median_min = all_min[all_min.len() / 2];
+        let median_max = all_max[all_max.len() / 2];
+        let median_duration_secs = (median_max - median_min) as f64 / 1000.0;
+
+        let mut entries: Vec<(PublicKey, (BTreeMap<u64, u64>, u64, u64))> = stable.into_iter().collect(); // TODO: no need to sort, useless
         entries.sort_by_key(|(pk, _)| *pk);
 
         for (pk, (counts, min_ts, max_ts)) in &entries {
             let total: u64 = counts.values().sum();
             let tps = if max_ts > min_ts {
-                total as f64 / ((max_ts - min_ts) as f64 / 1000.0)
+                total as f64 / ((*max_ts - *min_ts) as f64 / 1000.0)
             } else {
                 0.0
             };
+            let tpr = if stable_round_count > 0 { total / stable_round_count } else { 0 };
+            let tpx = if median_duration_secs > 0.0 { total as f64 / median_duration_secs } else { 0.0 };
             // debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
-            info!("stable_account_counts (safe_round={}) validator {}: total={} tx/s={:.1}", safe_round, pk, total, tps);
+            info!("stable_account_counts (safe_round={}) validator {}: total={} tx/s={:.1} tx/r={} tx/x={:.1}", safe_round, pk, total, tps, tpr, tpx);
         }
     }
 
@@ -245,7 +259,7 @@ impl Consensus {
             account_history.update(&certificate);
             if certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
                 // account_history.log();
-                account_history.log_stable();
+                account_history.log_stable(self.committee.size());
             }
             state
                 .dag
