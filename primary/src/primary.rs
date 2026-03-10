@@ -55,7 +55,7 @@ pub enum WorkerPrimaryMessage {
     /// The worker indicates it sealed a new batch.
     OurBatch(Digest, WorkerId, BTreeMap<u64, u64>),
     /// The worker indicates it received a batch's digest from another authority.
-    OthersBatch(Digest, WorkerId),
+    OthersBatch(Digest, WorkerId, BTreeMap<u64, u64>),
 }
 
 pub struct Primary;
@@ -250,7 +250,7 @@ impl MessageHandler for PrimaryReceiverHandler {
 #[derive(Clone)]
 struct WorkerReceiverHandler {
     tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
-    tx_others_digests: Sender<(Digest, WorkerId)>,
+    tx_others_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
 }
 
 #[async_trait]
@@ -267,9 +267,9 @@ impl MessageHandler for WorkerReceiverHandler {
                 .send((digest, worker_id, account_counts))
                 .await
                 .expect("Failed to send workers' digests"),
-            WorkerPrimaryMessage::OthersBatch(digest, worker_id) => self
+            WorkerPrimaryMessage::OthersBatch(digest, worker_id, account_counts) => self
                 .tx_others_digests
-                .send((digest, worker_id))
+                .send((digest, worker_id, account_counts))
                 .await
                 .expect("Failed to send workers' digests"),
         }

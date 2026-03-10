@@ -40,13 +40,22 @@ impl Processor {
                 let digest = Digest(Sha512::digest(&batch).as_ref()[..32].try_into().unwrap());
 
                 // Extract account_counts before moving batch into store.
-                let account_counts = if own_digest {
-                    match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
-                        Ok(crate::worker::WorkerMessage::Batch((_, counts))) => counts,
-                        _ => std::collections::BTreeMap::new(),
+                let account_counts = match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
+                    Ok(crate::worker::WorkerMessage::Batch((txs, counts))) => {
+                        if own_digest {
+                            counts
+                        } else {
+                            let mut recomputed = std::collections::BTreeMap::new();
+                            for tx in &txs {
+                                if tx.len() >= 8 {
+                                    let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+                                    *recomputed.entry(account_id).or_insert(0) += 1;
+                                }
+                            }
+                            recomputed
+                        }
                     }
-                } else {
-                    std::collections::BTreeMap::new()
+                    _ => std::collections::BTreeMap::new(),
                 };
 
                 // Store the batch.
@@ -60,7 +69,7 @@ impl Processor {
                 // Deliver the batch's digest.
                 let message = match own_digest {
                     true => WorkerPrimaryMessage::OurBatch(digest, id, account_counts),
-                    false => WorkerPrimaryMessage::OthersBatch(digest, id),
+                    false => WorkerPrimaryMessage::OthersBatch(digest, id, account_counts),
                 };
                 let message = bincode::serialize(&message)
                     .expect("Failed to serialize our own worker-primary message");

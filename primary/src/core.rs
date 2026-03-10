@@ -13,7 +13,7 @@ use log::{debug, error, warn};
 #[cfg(feature = "benchmark")]
 use log::info;
 use network::{CancelHandler, ReliableSender};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use store::Store;
@@ -178,6 +178,25 @@ impl Core {
         if self.synchronizer.missing_payload(header).await? {
             debug!("Processing of {} suspended: missing payload", header);
             return Ok(());
+        }
+
+        // Verify that the header's account_counts matches the sum of per-batch counts we computed.
+        if header.author != self.name {
+            let mut expected: BTreeMap<u64, u64> = BTreeMap::new();
+            for (digest, worker_id) in &header.payload {
+                let key = [digest.as_ref(), &worker_id.to_le_bytes()].concat();
+                if let Some(bytes) = self.store.read(key).await? {
+                    if let Ok(counts) = bincode::deserialize::<BTreeMap<u64, u64>>(&bytes) {
+                        for (acc, cnt) in counts {
+                            *expected.entry(acc).or_insert(0) += cnt;
+                        }
+                    }
+                }
+            }
+            ensure!(
+                expected == header.account_counts,
+                DagError::MalformedHeader(header.id.clone())
+            );
         }
 
         // Store the header.

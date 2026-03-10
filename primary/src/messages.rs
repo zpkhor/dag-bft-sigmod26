@@ -76,16 +76,12 @@ impl Hash for Header {
         hasher.update(&self.author);
         hasher.update(self.round.to_le_bytes());
         for (x, y) in &self.payload {
+            // account_counts of a batch is part of the payload, so the digest contains it implicitly
             hasher.update(x);
             hasher.update(y.to_le_bytes());
         }
         for x in &self.parents {
             hasher.update(x);
-        }
-        // TODO: we can use bytes.len() of per-account in batch instead of trusting other validator on this, or do it once only in process_header before voting
-        for (acc, cnt) in &self.account_counts {
-            hasher.update(acc.to_le_bytes());
-            hasher.update(cnt.to_le_bytes());
         }
         Digest(hasher.finalize().as_ref()[..32].try_into().unwrap())
     }

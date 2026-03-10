@@ -1,6 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use config::WorkerId;
 use crypto::Digest;
+use std::collections::BTreeMap;
 use store::Store;
 use tokio::sync::mpsc::Receiver;
 
@@ -10,20 +11,21 @@ pub struct PayloadReceiver {
     /// The persistent storage.
     store: Store,
     /// Receives batches' digests from the network.
-    rx_workers: Receiver<(Digest, WorkerId)>,
+    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
 }
 
 impl PayloadReceiver {
-    pub fn spawn(store: Store, rx_workers: Receiver<(Digest, WorkerId)>) {
+    pub fn spawn(store: Store, rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>) {
         tokio::spawn(async move {
             Self { store, rx_workers }.run().await;
         });
     }
 
     async fn run(&mut self) {
-        while let Some((digest, worker_id)) = self.rx_workers.recv().await {
+        while let Some((digest, worker_id, account_counts)) = self.rx_workers.recv().await {
             let key = [digest.as_ref(), &worker_id.to_le_bytes()].concat();
-            self.store.write(key.to_vec(), Vec::default()).await;
+            let value = bincode::serialize(&account_counts).expect("Failed to serialize account_counts");
+            self.store.write(key.to_vec(), value).await;
         }
     }
 }

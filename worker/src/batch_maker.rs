@@ -31,13 +31,13 @@ pub struct BatchMaker {
     /// The maximum delay after which to seal the batch (in ms).
     max_batch_delay: u64,
     /// Channel to receive transactions from the network.
-    rx_transaction: Receiver<(u64, Transaction)>,
+    rx_transaction: Receiver<Transaction>,
     /// Output channel to deliver sealed batches to the `QuorumWaiter`.
     tx_message: Sender<QuorumWaiterMessage>,
     /// The network addresses of the other workers that share our worker id.
     workers_addresses: Vec<(PublicKey, SocketAddr)>,
-    /// Holds the current batch as (account_id, payload) pairs.
-    current_batch: Vec<(u64, Transaction)>,
+    /// Holds the current batch of transactions (each includes 8-byte account_id prefix).
+    current_batch: Vec<Transaction>,
     /// Holds the size of the current batch (in bytes).
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
@@ -48,7 +48,7 @@ impl BatchMaker {
     pub fn spawn(
         batch_size: usize,
         max_batch_delay: u64,
-        rx_transaction: Receiver<(u64, Transaction)>,
+        rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
     ) {
@@ -76,9 +76,9 @@ impl BatchMaker {
         loop {
             tokio::select! {
                 // Assemble client transactions into batches of preset size.
-                Some((account_id, tx)) = self.rx_transaction.recv() => {
-                    self.current_batch_size += (tx.len() + 8) as usize; // 8 bytes for the account_id
-                    self.current_batch.push((account_id, tx));
+                Some(tx) = self.rx_transaction.recv() => {
+                    self.current_batch_size += tx.len();
+                    self.current_batch.push(tx);
                     if self.current_batch_size >= self.batch_size {
                         self.seal().await;
                         timer.as_mut().reset(Instant::now() + Duration::from_millis(self.max_batch_delay));
@@ -104,31 +104,30 @@ impl BatchMaker {
         #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
-        // Drain accumulator into (account_id, payload) pairs.
+        // Drain accumulator.
         self.current_batch_size = 0;
-        let pairs: Vec<(u64, Transaction)> = self.current_batch.drain(..).collect();
+        let txs: Vec<Transaction> = self.current_batch.drain(..).collect();
 
-        // Build per-account tx counts (deterministic order via BTreeMap).
+        // Build per-account tx counts from the first 8 bytes of each transaction.
         let mut account_counts: BTreeMap<u64, u64> = BTreeMap::new();
-        for (account_id, _) in &pairs {
-            *account_counts.entry(*account_id).or_insert(0) += 1;
+        for tx in &txs {
+            let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+            *account_counts.entry(account_id).or_insert(0) += 1;
         }
-
-        // Extract payloads only for the batch.
-        let batch_txs: Vec<Transaction> = pairs.iter().map(|(_, tx)| tx.clone()).collect();
 
         #[cfg(feature = "benchmark")]
         // Look for sample txs (type byte 0) and gather their counter and account_id.
-        let sample_ids: Vec<_> = pairs
+        let sample_ids: Vec<_> = txs
             .iter()
-            .filter(|(_, tx)| tx[0] == 0u8 && tx.len() > 8)
-            .filter_map(|(account_id, tx)| {
-                let counter: [u8; 8] = tx[1..9].try_into().ok()?;
-                Some((counter, *account_id))
+            .filter(|tx| tx.len() > 17 && tx[8] == 0u8)
+            .filter_map(|tx| {
+                let counter: [u8; 8] = tx[9..17].try_into().ok()?;
+                let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+                Some((counter, account_id))
             })
             .collect();
 
-        let message = WorkerMessage::Batch((batch_txs, account_counts));
+        let message = WorkerMessage::Batch((txs, account_counts));
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
         #[cfg(feature = "benchmark")]

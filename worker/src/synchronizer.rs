@@ -114,8 +114,8 @@ impl Synchronizer {
             };
 
             for tx in &txs {
-                if tx.len() > 8 && tx[0] == 0u8 {
-                    let counter = u64::from_be_bytes(tx[1..9].try_into().unwrap());
+                if tx.len() > 17 && tx[8] == 0u8 {
+                    let counter = u64::from_be_bytes(tx[9..17].try_into().unwrap());
                     info!("Committed sample tx {} from batch {:?}", counter, digest);
                 }
             }
