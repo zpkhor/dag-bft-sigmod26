@@ -17,8 +17,8 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
             if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
                 JITTER_ARG="$TC_JITTER"
             fi
-            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
-            tc qdisc add dev eth0 parent 1:20 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-100000}
+            tc qdisc add dev eth0 parent 1:20 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-100000}
         fi
 
         # Client class: no latency, full bandwidth ceiling
@@ -47,7 +47,7 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
             if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
                 JITTER_ARG="$TC_JITTER"
             fi
-            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+            tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-100000}
         fi
 
         echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
@@ -62,7 +62,7 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     fi
 fi
 
-# Apply ingress shaping on eth0 via IFB device
+# Apply ingress shaping on eth0 via IFB device (symmetric with egress)
 if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     ip link add ifb0 type ifb 2>/dev/null || true
     ip link set dev ifb0 up
@@ -75,16 +75,19 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
         tc class add dev ifb0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
         tc class add dev ifb0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_BANDWIDTH prio 0
         tc class add dev ifb0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_BANDWIDTH prio 1
+        tc qdisc add dev ifb0 parent 1:10 handle 10: pfifo limit 100000
+        tc qdisc add dev ifb0 parent 1:20 handle 20: pfifo limit 100000
 
         for port in $PRIMARY_PORTS; do
             tc filter add dev ifb0 parent 1:0 protocol ip prio 2 u32 match ip sport $port 0xffff flowid 1:10
             tc filter add dev ifb0 parent 1:0 protocol ip prio 2 u32 match ip dport $port 0xffff flowid 1:10
         done
 
-        echo "ingress QoS shaping applied via ifb0: primary_bw=$TC_PRIMARY_BW worker_bw=$TC_WORKER_BW"
+        echo "ingress QoS shaping applied via ifb0: primary_bw=$TC_PRIMARY_BW worker_bw=$TC_WORKER_BW ceil=$TC_BANDWIDTH"
     else
         tc qdisc add dev ifb0 root handle 1: htb default 10
         tc class add dev ifb0 parent 1: classid 1:10 htb rate $TC_BANDWIDTH
+        tc qdisc add dev ifb0 parent 1:10 handle 10: pfifo limit 100000
         echo "ingress shaping applied via ifb0: rate=$TC_BANDWIDTH"
     fi
 fi
