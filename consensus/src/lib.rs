@@ -12,7 +12,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
 
-const WINDOW_SIZE: Round = 75;
+const WINDOW_SIZE: Round = 40;
 
 struct AccountCountsHistory {
     /// Per-round, per-validator account_counts extracted from certificates.

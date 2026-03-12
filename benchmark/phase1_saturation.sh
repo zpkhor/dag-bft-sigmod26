@@ -2,13 +2,13 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(1800 3800 5400 6000)
+RATES=(1000 6000 9000 9500 9750)
 RETRIES=2
 DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-10}
 RESULTS_DIR="results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal-validator/benchmark/results/phase1_20260307_212317/merged_output.log
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # /home/zpkhor/narwhal-validator/benchmark/results/phase1_20260311_213903/merged_output.log
 
 cd "$(dirname "$0")"
 
