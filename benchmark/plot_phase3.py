@@ -3,7 +3,7 @@ import argparse
 import re
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Set, Tuple
 
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
@@ -18,14 +18,15 @@ from plot_worker_batches import (
 COLUMN_ORDER = [
     "balanced",
     "imbalance_rate",
-    "imbalance_bw",
+    "imbalance_bw1",
+    "imbalance_bw2",
     "imbalance_bw_rate",
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
 TPS_RE = re.compile(r"Committed TPS: ([\d,]+) tx/s")
 
-RUN_DIR_RE = re.compile(r"^(.+)_run_(\d+)$")
+RUN_DIR_RE = re.compile(r"^(.+)_rate(\d+)_run_(\d+)$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,26 +45,28 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def discover_runs(results_dir: Path) -> Dict[str, List[Tuple[int, Path]]]:
-    """Returns {label: [(run_number, run_dir), ...]} sorted by run number."""
-    groups: Dict[str, List[Tuple[int, Path]]] = {}
+def discover_runs(results_dir: Path) -> Dict[Tuple[str, int], List[Tuple[int, Path]]]:
+    """Returns {(label, rate): [(run_number, run_dir), ...]} sorted by run number."""
+    groups: Dict[Tuple[str, int], List[Tuple[int, Path]]] = {}
     for subdir in sorted(results_dir.iterdir()):
         if not subdir.is_dir():
             continue
         match = RUN_DIR_RE.match(subdir.name)
         if not match:
             continue
-        label, run_num = match.group(1), int(match.group(2))
-        groups.setdefault(label, []).append((run_num, subdir))
-    for label in groups:
-        groups[label].sort(key=lambda x: x[0])
+        label, rate, run_num = match.group(1), int(match.group(2)), int(match.group(3))
+        groups.setdefault((label, rate), []).append((run_num, subdir))
+    for key in groups:
+        groups[key].sort(key=lambda x: x[0])
     return groups
 
 
-def sort_labels(labels):
-    known = [l for l in COLUMN_ORDER if l in labels]
-    unknown = sorted(l for l in labels if l not in COLUMN_ORDER)
-    return known + unknown
+def sort_label_rate_pairs(pairs: Set[Tuple[str, int]]) -> List[Tuple[str, int]]:
+    label_order = {l: i for i, l in enumerate(COLUMN_ORDER)}
+    def key(pair):
+        label, rate = pair
+        return (label_order.get(label, len(COLUMN_ORDER)), label, rate)
+    return sorted(pairs, key=key)
 
 
 def parse_metrics(run_dir: Path) -> Tuple[str, str]:
@@ -81,10 +84,10 @@ def parse_metrics(run_dir: Path) -> Tuple[str, str]:
 def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
     groups = discover_runs(results_dir)
     if not groups:
-        raise ValueError(f"No *_run_* subdirectories found in {results_dir}")
+        raise ValueError(f"No *_rate*_run_* subdirectories found in {results_dir}")
 
-    labels = sort_labels(groups.keys())
-    n_cols = len(labels)
+    columns = sort_label_rate_pairs(set(groups.keys()))
+    n_cols = len(columns)
 
     fig = plt.figure(figsize=(6 * n_cols, 16))
     gs = gridspec.GridSpec(
@@ -96,13 +99,13 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
     )
     axes = [[fig.add_subplot(gs[row, col]) for col in range(n_cols)] for row in range(3)]
 
-    for col_idx, label in enumerate(labels):
-        runs = groups[label]
+    for col_idx, (label, rate) in enumerate(columns):
+        runs = groups[(label, rate)]
         metrics_lines = []
 
         for run_num, run_dir in runs:
             alpha = 1.0 if run_num == runs[0][0] else 0.5
-            worker_logs = find_worker_logs(run_dir)
+            worker_logs = find_worker_logs(run_dir / "logs")
 
             for worker_log in worker_logs:
                 worker_label = f"{worker_log.stem} (run {run_num})"
@@ -131,7 +134,7 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
             latency, tps = parse_metrics(run_dir)
             metrics_lines.append(f"Run {run_num}: Latency={latency}  TPS={tps}")
 
-        axes[0][col_idx].set_title(label, fontsize=10, fontweight="bold")
+        axes[0][col_idx].set_title(f"{label}\nrate={rate}", fontsize=10, fontweight="bold")
 
         ax_text = axes[2][col_idx]
         ax_text.axis("off")
