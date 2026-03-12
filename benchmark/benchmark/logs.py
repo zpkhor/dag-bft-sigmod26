@@ -683,7 +683,21 @@ class LogParser:
             }
         return result
 
-    def result(self):
+    def _format_warnings_section(self):
+        _, _, consensus_duration = self._consensus_throughput()
+        _, _, commit_duration = self._committed_throughput()
+        assert isinstance(self.bench_duration, float), 'Bench duration is not set'
+        effective_bench_duration = self.bench_duration - self.warmup - self.warmup / 2
+        warnings = []
+        if (consensus_duration / effective_bench_duration) < 0.9:
+            warnings.append('Consensus stalled the system')
+        if (commit_duration / effective_bench_duration) < 0.9:
+            warnings.append('Commit stalled the system')
+        if not warnings:
+            return ''
+        return '\n WARNINGS:\n' + ''.join(f'  - {msg}\n' for msg in warnings)
+
+    def _format_config_section(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
         gc_depth = self.configs[0]['gc_depth']
@@ -691,33 +705,9 @@ class LogParser:
         sync_retry_nodes = self.configs[0]['sync_retry_nodes']
         batch_size = self.configs[0]['batch_size']
         max_batch_delay = self.configs[0]['max_batch_delay']
-
-        consensus_tps, consensus_bps, consensus_duration = self._consensus_throughput()
-        committed_tps, committed_bps, commit_duration = self._committed_throughput()
-        commit_metrics = self._worker_committed_latency()
-        commit_latency = commit_metrics['mean'] * 1_000
-        commit_p95 = commit_metrics['p95'] * 1_000
-        
-        warnings = []
-        assert isinstance(self.bench_duration, float), 'Bench duration is not set'
-        effective_bench_duration = self.bench_duration - self.warmup - self.warmup / 2
-        if (consensus_duration / effective_bench_duration) < 0.9:
-            warnings.append('Consensus stalled the system')
-        if (commit_duration / effective_bench_duration) < 0.9:
-            warnings.append('Commit stalled the system')
-
-        warnings_str = ''
-        if warnings:
-            warnings_str = (
-            '\n WARNINGS:\n'
-            + ''.join(f'  - {msg}\n' for msg in warnings)
-            )
-
-        output = (
-            '\n'
-            '-----------------------------------------\n'
-            ' SUMMARY:\n'
-            '-----------------------------------------\n'
+        _, _, consensus_duration = self._consensus_throughput()
+        _, _, commit_duration = self._committed_throughput()
+        s = (
             ' + CONFIG:\n'
             f' Committee size: {self.committee_size} node(s)\n'
             f' Worker(s) per node: {self.workers} worker(s)\n'
@@ -729,7 +719,7 @@ class LogParser:
             '\n'
         )
         if self.verbose:
-            output += (
+            s += (
                 f' Faults: {self.faults} node(s)\n'
                 f' Collocate primary and workers: {self.collocate}\n'
                 f' Header size: {header_size:,} B\n'
@@ -741,7 +731,15 @@ class LogParser:
                 f' Max batch delay: {max_batch_delay:,} ms\n'
                 '\n'
             )
-        output += (
+        return s
+
+    def _format_results_section(self):
+        commit_metrics = self._worker_committed_latency()
+        commit_latency = commit_metrics['mean'] * 1_000
+        commit_p95 = commit_metrics['p95'] * 1_000
+        consensus_tps, consensus_bps, _ = self._consensus_throughput()
+        committed_tps, committed_bps, _ = self._committed_throughput()
+        return (
             ' + RESULTS:\n'
             f' f+1 Commit latency (workers) (mean): {round(commit_latency):,} ms\n'
             f' f+1 Commit latency (workers) (p95): {round(commit_p95):,} ms\n'
@@ -751,77 +749,73 @@ class LogParser:
             f' Committed TPS: {round(committed_tps):,} tx/s\n'
             f' Committed BPS: {round(committed_bps):,} B/s\n'
         )
-        if self.sizes_by_validator:
-            tx_counts, percentages = self._validator_load_distribution()
-            per_v_tps = self._per_validator_committed_tps()
-            per_v_latency = self._per_validator_committed_latency()
 
-            output += (
-                '\n'
-                ' + VALIDATOR LOAD DISTRIBUTION:\n'
-            )
-            for v in sorted(tx_counts.keys()):
-                output += (
-                    f' Validator {v}: {tx_counts[v]:,} tx'
-                    f' ({percentages[v]:.1f}%)\n'
-                )
-
-            output += (
-                '\n'
-                ' + PER-VALIDATOR COMMIT METRICS:\n'
-                ' Validator    TPS (tx/s)    Latency (ms)    Misses\n'
-            )
-            for v in sorted(per_v_tps.keys()):
-                lat_metrics = per_v_latency.get(v)
-                lat_str = f'{round(lat_metrics["mean"] * 1_000):,}' if lat_metrics else 'N/A'
-                misses = self.misses_by_validator.get(v, 0)
-                output += (
-                    f' {v:<12} {round(per_v_tps[v]):<13,} {lat_str:<15} {misses}\n'
-                )
-            total_tps = sum(per_v_tps.values())
-            weighted_lat = sum(
-                per_v_latency[v]['mean'] * percentages[v] / 100
+    def _format_validator_commit_section(self):
+        tx_counts, percentages = self._validator_load_distribution()
+        per_v_tps = self._per_validator_committed_tps()
+        per_v_latency = self._per_validator_committed_latency()
+        lines = [
+            '\n'
+            ' + VALIDATOR LOAD DISTRIBUTION:\n'
+        ]
+        for v in sorted(tx_counts.keys()):
+            lines.append(f' Validator {v}: {tx_counts[v]:,} tx ({percentages[v]:.1f}%)\n')
+        lines.append(
+            '\n'
+            ' + PER-VALIDATOR COMMIT METRICS:\n'
+            ' Validator    TPS (tx/s)    Mean (ms)    p95 (ms)    Misses\n'
+        )
+        for v in sorted(per_v_tps.keys()):
+            lat_metrics = per_v_latency.get(v)
+            mean_str = f'{round(lat_metrics["mean"] * 1_000):,}' if lat_metrics else 'N/A'
+            p95_str = f'{round(lat_metrics["p95"] * 1_000):,}' if lat_metrics else 'N/A'
+            misses = self.misses_by_validator.get(v, 0)
+            lines.append(f' {v:<12} {round(per_v_tps[v]):<13,} {mean_str:<12} {p95_str:<11} {misses}\n')
+        total_tps = sum(per_v_tps.values())
+        weighted_lat = sum(
+            per_v_latency[v]['mean'] * percentages[v] / 100
+            for v in per_v_latency if v in percentages
+        )
+        weighted_lat_str = f'{round(weighted_lat * 1_000):,}' if per_v_latency else 'N/A'
+        weighted_p95_str = 'N/A'
+        if per_v_latency:
+            weighted_p95 = sum(
+                per_v_latency[v]['p95'] * percentages[v] / 100
                 for v in per_v_latency if v in percentages
             )
-            weighted_lat_str = f'{round(weighted_lat * 1_000):,}' if per_v_latency else 'N/A'
-            total_misses = sum(self.misses_by_validator.values())
-            output += (
-                f' {"Overall":<12} {round(total_tps):<13,} {weighted_lat_str + " (wtd)":<15} {total_misses}\n'
-            )
+            weighted_p95_str = f'{round(weighted_p95 * 1_000):,}'
+        total_misses = sum(self.misses_by_validator.values())
+        lines.append(
+            f' {"Overall":<12} {round(total_tps):<13,}'
+            f' {weighted_lat_str + " (wtd)":<12} {weighted_p95_str + " (wtd)":<11} {total_misses}\n'
+        )
+        return ''.join(lines)
 
-            output += (
-                '\n'
-                ' + PER-VALIDATOR COMMIT TAIL LATENCY (p95):\n'
-            )
-            for v in sorted(per_v_latency.keys()):
-                lat_metrics = per_v_latency.get(v)
-                p95_str = f'{round(lat_metrics["p95"] * 1_000):,}' if lat_metrics else 'N/A'
-                output += (
-                    f' Validator {v}: {p95_str} ms\n'
-                )
+    def _format_quorum_timing_section(self):
+        quorum_timing = self._per_validator_quorum_timing()
+        lines = [
+            '\n'
+            ' + PER-VALIDATOR QUORUM TIMING (mean, ms):\n'
+            ' Validator    Queue delay    Quorum latency\n'
+        ]
+        for v in sorted(quorum_timing.keys()):
+            t = quorum_timing[v]
+            lines.append(f' {v:<12} {round(t["queue_delay"]):<14,} {round(t["quorum_latency"]):,}\n')
+        return ''.join(lines)
 
-            # Calculate weighted p95 for overall
-            if per_v_latency:
-                weighted_p95 = sum(
-                    per_v_latency[v]['p95'] * percentages[v] / 100
-                    for v in per_v_latency if v in percentages
-                )
-                output += (
-                    f' Overall (weighted): {round(weighted_p95 * 1_000):,} ms\n'
-                )
-
+    def result(self):
+        sections = [
+            '\n'
+            '-----------------------------------------\n'
+            ' SUMMARY:\n'
+            '-----------------------------------------\n',
+            self._format_config_section(),
+            self._format_results_section(),
+        ]
+        if self.sizes_by_validator:
+            sections.append(self._format_validator_commit_section())
         if self.queue_delay_by_validator:
-            quorum_timing = self._per_validator_quorum_timing()
-            output += (
-                '\n'
-                ' + PER-VALIDATOR QUORUM TIMING (mean, ms):\n'
-                ' Validator    Queue delay    Quorum latency\n'
-            )
-            for v in sorted(quorum_timing.keys()):
-                t = quorum_timing[v]
-                output += (
-                    f' {v:<12} {round(t["queue_delay"]):<14,} {round(t["quorum_latency"]):,}\n'
-                )
+            sections.append(self._format_quorum_timing_section())
 
         # Global and per-validator per-stage latency breakdown
         global_stage_data = self._global_stage_latency_breakdown()
@@ -832,31 +826,28 @@ class LogParser:
             for label in stage_data[v]
         )
         if has_stage_data:
-            output += self._format_stage_matrix(
+            sections.append(self._format_stage_matrix(
                 'PER-STAGE LATENCY BREAKDOWN (mean, ms)', 'mean', global_stage_data
-            )
-            output += self._format_stage_matrix(
+            ))
+            sections.append(self._format_stage_matrix(
                 'PER-VALIDATOR PER-STAGE LATENCY BREAKDOWN (mean, ms)', 'mean', stage_data
-            )
+            ))
             if self.verbose:
-                output += self._format_stage_matrix(
+                sections.append(self._format_stage_matrix(
                     'PER-VALIDATOR PER-STAGE LATENCY BREAKDOWN (p50, ms)', 'p50', stage_data
-                )
-            output += self._format_stage_matrix(
+                ))
+            sections.append(self._format_stage_matrix(
                 'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p95, ms)', 'p95', stage_data
-            )
+            ))
             if self.verbose:
-                output += self._format_stage_matrix(
+                sections.append(self._format_stage_matrix(
                     'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p99, ms)', 'p99', stage_data
-                )
+                ))
 
-        output += self._format_dag_timeline()
-
-        if warnings_str:
-            output += warnings_str
-
-        output += '-----------------------------------------\n'
-        return output
+        sections.append(self._format_dag_timeline())
+        sections.append(self._format_warnings_section())
+        sections.append('-----------------------------------------\n')
+        return ''.join(s for s in sections if s)
 
     def print(self, filename):
         assert isinstance(filename, str)
