@@ -13,6 +13,7 @@ use log::info;
 use network::CancelHandler;
 #[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
+use std::time::Instant;
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[cfg(test)]
@@ -25,6 +26,7 @@ pub struct QuorumWaiterMessage {
     pub batch: SerializedBatchMessage,
     /// The cancel handlers to receive the acknowledgements of our broadcast.
     pub handlers: Vec<(PublicKey, CancelHandler)>,
+    pub batch_sending_enqueue_at: Instant,
 }
 
 /// The QuorumWaiter waits for 2f authorities to acknowledge reception of a batch.
@@ -36,7 +38,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<SerializedBatchMessage>,
+    tx_batch: Sender<(SerializedBatchMessage, u64)>,
 }
 
 impl QuorumWaiter {
@@ -45,7 +47,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<Vec<u8>>,
+        tx_batch: Sender<(Vec<u8>, u64)>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -67,7 +69,10 @@ impl QuorumWaiter {
 
     /// Main loop.
     async fn run(&mut self) {
-        while let Some(QuorumWaiterMessage { batch, handlers }) = self.rx_message.recv().await {
+        while let Some(QuorumWaiterMessage { batch, handlers, batch_sending_enqueue_at }) = self.rx_message.recv().await {
+            let quorum_start_at = Instant::now();
+            let queue_delay_ms = quorum_start_at.duration_since(batch_sending_enqueue_at).as_millis() as u64;
+
             let mut wait_for_quorum: FuturesUnordered<_> = handlers
                 .into_iter()
                 .map(|(name, handler)| {
@@ -83,15 +88,16 @@ impl QuorumWaiter {
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
+                    let quorum_latency_ms = quorum_start_at.elapsed().as_millis() as u64;
                     #[cfg(feature = "benchmark")]
                     {
                         let digest = Digest(
                             Sha512::digest(&batch).as_ref()[..32].try_into().unwrap(),
                         );
-                        info!("Quorum for batch {:?}", digest);
+                        info!("Quorum for batch {:?} queue_delay {}ms quorum_latency {}ms", digest, queue_delay_ms, quorum_latency_ms);
                     }
                     self.tx_batch
-                        .send(batch)
+                        .send((batch, quorum_latency_ms))
                         .await
                         .expect("Failed to deliver batch");
                     break;

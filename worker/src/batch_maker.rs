@@ -155,6 +155,7 @@ impl BatchMaker {
         // Broadcast the batch through the network.
         let (names, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();
         let bytes = Bytes::from(serialized.clone());
+        let batch_sending_enqueue_at = std::time::Instant::now();
         let handlers = self.network.broadcast(addresses, bytes).await;
 
         // Send the batch through the deliver channel for further processing.
@@ -162,6 +163,7 @@ impl BatchMaker {
             .send(QuorumWaiterMessage {
                 batch: serialized,
                 handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+                batch_sending_enqueue_at,
             })
             .await
             .expect("Failed to deliver batch");

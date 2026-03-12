@@ -85,7 +85,7 @@ class LogParser:
             raise ParseError(f'Failed to parse workers\' logs: {e}')
         sizes, self.sample_to_batch, workers_ips, \
             arrival_times_list, seal_times_list, quorum_times_list, processed_times_list, \
-            committed_times_list \
+            committed_times_list, queue_delay_list, quorum_latency_list \
             = zip(*results)
         self.sizes = {
             k: v for x in sizes for k, v in x.items() if k in self.commits
@@ -110,16 +110,24 @@ class LogParser:
         self.sample_to_batch_by_validator = {}
         self.sent_samples_by_validator = {}
         self.misses_by_validator = {}
+        self.queue_delay_by_validator = {}
+        self.quorum_latency_by_validator = {}
         if workers_by_validator:
             for v, logs in workers_by_validator.items():
                 v_sizes = {}
                 v_received_list = []
+                v_queue_delay = {}
+                v_quorum_latency = {}
                 for log in logs:
-                    s, r, _, _, _, _, _, _ = self._parse_workers(log)
+                    s, r, _, _, _, _, _, _, qd, ql = self._parse_workers(log)
                     v_sizes.update(s)
                     v_received_list.append(r)
+                    v_queue_delay.update(qd)
+                    v_quorum_latency.update(ql)
                 self.sizes_by_validator[v] = v_sizes
                 self.sample_to_batch_by_validator[v] = v_received_list
+                self.queue_delay_by_validator[v] = v_queue_delay
+                self.quorum_latency_by_validator[v] = v_quorum_latency
         if clients_by_validator:
             for v, logs in clients_by_validator.items():
                 v_sent_list = []
@@ -251,8 +259,10 @@ class LogParser:
         seal_times = {d: self._to_posix(t) for t, d in tmp}
 
         # Stage 3: Quorum achieved timestamps
-        tmp = findall(r'\[(.*Z) .* Quorum for batch (\S+)', log)
-        quorum_times = {d: self._to_posix(t) for t, d in tmp}
+        tmp = findall(r'\[(.*Z) .* Quorum for batch (\S+) queue_delay (\d+)ms quorum_latency (\d+)ms', log)
+        quorum_times = {d: self._to_posix(t) for t, d, _, __ in tmp}
+        queue_delay_by_batch = {d: int(q) for _, d, q, __ in tmp}
+        quorum_latency_by_batch = {d: int(l) for _, d, __, l in tmp}
 
         # Stage 4: Processed batch timestamps
         tmp = findall(r'\[(.*Z) .* Processed batch (\S+)', log)
@@ -264,7 +274,7 @@ class LogParser:
         for t, full_digest in tmp:
             committed_times_by_batch[full_digest].append(self._to_posix(t))
 
-        return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times, committed_times_by_batch
+        return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times, committed_times_by_batch, queue_delay_by_batch, quorum_latency_by_batch
 
     def _to_posix(self, string):
         x = datetime.fromisoformat(string.replace('Z', '+00:00'))
@@ -662,6 +672,17 @@ class LogParser:
             output += row_str + '\n'
         return output
 
+    def _per_validator_quorum_timing(self):
+        result = {}
+        for v in sorted(self.queue_delay_by_validator.keys()):
+            delays = [ms for d, ms in self.queue_delay_by_validator[v].items() if d in self.commits]
+            latencies = [ms for d, ms in self.quorum_latency_by_validator[v].items() if d in self.commits]
+            result[v] = {
+                'queue_delay': mean(delays) if delays else 0,
+                'quorum_latency': mean(latencies) if latencies else 0,
+            }
+        return result
+
     def result(self):
         header_size = self.configs[0]['header_size']
         max_header_delay = self.configs[0]['max_header_delay']
@@ -787,6 +808,19 @@ class LogParser:
                 )
                 output += (
                     f' Overall (weighted): {round(weighted_p95 * 1_000):,} ms\n'
+                )
+
+        if self.queue_delay_by_validator:
+            quorum_timing = self._per_validator_quorum_timing()
+            output += (
+                '\n'
+                ' + PER-VALIDATOR QUORUM TIMING (mean, ms):\n'
+                ' Validator    Queue delay    Quorum latency\n'
+            )
+            for v in sorted(quorum_timing.keys()):
+                t = quorum_timing[v]
+                output += (
+                    f' {v:<12} {round(t["queue_delay"]):<14,} {round(t["quorum_latency"]):,}\n'
                 )
 
         # Global and per-validator per-stage latency breakdown

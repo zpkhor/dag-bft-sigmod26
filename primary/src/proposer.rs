@@ -29,7 +29,7 @@ pub struct Proposer {
     /// Receives the parents to include in the next header (along with their round number).
     rx_core: Receiver<(Vec<Digest>, Round)>,
     /// Receives the batches' digests from our workers.
-    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
+    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>, u64)>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -43,6 +43,8 @@ pub struct Proposer {
     payload_size: usize,
     /// Aggregated account tx counts across batches pending in the next header.
     account_counts: BTreeMap<u64, u64>,
+    /// Quorum latency per batch digest waiting to be included in the next header.
+    quorum_latencies: BTreeMap<Digest, u64>,
 }
 
 impl Proposer {
@@ -54,7 +56,7 @@ impl Proposer {
         header_size: usize,
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
-        rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
+        rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>, u64)>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)
@@ -76,6 +78,7 @@ impl Proposer {
                 digests: Vec::with_capacity(2 * header_size),
                 payload_size: 0,
                 account_counts: BTreeMap::new(),
+                quorum_latencies: BTreeMap::new(),
             }
             .run()
             .await;
@@ -85,12 +88,14 @@ impl Proposer {
     async fn make_header(&mut self) {
         // Make a new header.
         let account_counts = std::mem::take(&mut self.account_counts);
+        let quorum_latencies = std::mem::take(&mut self.quorum_latencies);
         let header = Header::new(
             self.name,
             self.round,
             self.digests.drain(..).collect(),
             self.last_parents.drain(..).collect(),
             account_counts,
+            quorum_latencies,
             &mut self.signature_service,
         )
         .await;
@@ -153,8 +158,9 @@ impl Proposer {
                     // Signal that we have enough parent certificates to propose a new header.
                     self.last_parents = parents;
                 }
-                Some((digest, worker_id, counts)) = self.rx_workers.recv() => {
+                Some((digest, worker_id, counts, quorum_latency_ms)) = self.rx_workers.recv() => {
                     self.payload_size += digest.size();
+                    self.quorum_latencies.insert(digest.clone(), quorum_latency_ms);
                     self.digests.push((digest, worker_id));
                     for (acc, cnt) in counts {
                         *self.account_counts.entry(acc).or_insert(0) += cnt;
