@@ -10,7 +10,7 @@ import matplotlib.gridspec as gridspec
 
 from plot_worker_batches import (
     extract_batches,
-    extract_quorum_times_by_digest,
+    extract_quorum_metrics_by_digest,
     find_worker_logs,
 )
 
@@ -89,15 +89,15 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
     columns = sort_label_rate_pairs(set(groups.keys()))
     n_cols = len(columns)
 
-    fig = plt.figure(figsize=(6 * n_cols, 16))
+    fig = plt.figure(figsize=(6 * n_cols, 20))
     gs = gridspec.GridSpec(
-        3, n_cols,
+        4, n_cols,
         figure=fig,
-        height_ratios=[3, 3, 1],
+        height_ratios=[3, 3, 3, 1],
         hspace=0.45,
         wspace=0.35,
     )
-    axes = [[fig.add_subplot(gs[row, col]) for col in range(n_cols)] for row in range(3)]
+    axes = [[fig.add_subplot(gs[row, col]) for col in range(n_cols)] for row in range(4)]
 
     for col_idx, (label, rate) in enumerate(columns):
         runs = groups[(label, rate)]
@@ -118,25 +118,30 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
                         linewidth=1.0, alpha=alpha, label=worker_label,
                     )
 
-                quorum_by_digest = extract_quorum_times_by_digest(worker_log)
-                latency_idxs, latency_ms = [], []
-                for i, (batch_ts, digest, _) in enumerate(batches):
-                    q_ts = quorum_by_digest.get(digest)
-                    if q_ts is not None:
+                quorum_by_digest = extract_quorum_metrics_by_digest(worker_log)
+                latency_idxs, latency_ms, queue_delay_ms = [], [], []
+                for i, (_, digest, _) in enumerate(batches):
+                    metrics = quorum_by_digest.get(digest)
+                    if metrics is not None:
                         latency_idxs.append(i)
-                        latency_ms.append((q_ts - batch_ts).total_seconds() * 1000.0)
+                        queue_delay_ms.append(metrics[0])
+                        latency_ms.append(metrics[1])
                 if latency_ms:
                     axes[1][col_idx].plot(
                         latency_idxs, latency_ms,
+                        linewidth=1.0, alpha=alpha, label=worker_label,
+                    )
+                    axes[2][col_idx].plot(
+                        latency_idxs, queue_delay_ms,
                         linewidth=1.0, alpha=alpha, label=worker_label,
                     )
 
             latency, tps = parse_metrics(run_dir)
             metrics_lines.append(f"Run {run_num}: Latency={latency}  TPS={tps}")
 
-        axes[0][col_idx].set_title(f"{label}\nrate={rate}", fontsize=10, fontweight="bold")
+        axes[0][col_idx].set_title(label, fontsize=10, fontweight="bold")
 
-        ax_text = axes[2][col_idx]
+        ax_text = axes[3][col_idx]
         ax_text.axis("off")
         ax_text.text(
             0.5, 0.5,
@@ -148,10 +153,11 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
 
     axes[0][0].set_ylabel("Batch size (B)")
     axes[1][0].set_ylabel("Quorum latency (ms)")
+    axes[2][0].set_ylabel("Queue delay (ms)")
 
     for col_idx in range(n_cols):
-        axes[1][col_idx].set_xlabel("Batch index")
-        for row_idx in range(2):
+        axes[2][col_idx].set_xlabel("Batch index")
+        for row_idx in range(3):
             axes[row_idx][col_idx].grid(True, alpha=0.3)
             if axes[row_idx][col_idx].get_lines():
                 axes[row_idx][col_idx].legend(fontsize=6, loc="upper right")

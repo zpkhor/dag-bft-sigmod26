@@ -16,7 +16,8 @@ BATCH_LINE_PATTERN = re.compile(
 
 QUORUM_LINE_PATTERN = re.compile(
     r"^\[(?P<timestamp>[^\]]+)\s+INFO\s+worker::quorum_waiter\]\s+"
-    r"Quorum\s+for\s+batch\s+(?P<digest>\S+)\s+queue_delay\s+\d+ms\s+quorum_latency\s+\d+ms$"
+    r"Quorum\s+for\s+batch\s+(?P<digest>\S+)\s+"
+    r"queue_delay\s+(?P<queue_delay_ms>\d+)ms\s+quorum_latency\s+(?P<quorum_latency_ms>\d+)ms$"
 )
 
 
@@ -60,37 +61,18 @@ def extract_batches(log_path: Path) -> List[Tuple[datetime, str, int]]:
     return batches
 
 
-def extract_quorum_timestamps(log_path: Path) -> List[datetime]:
-    timestamps = []
+def extract_quorum_metrics_by_digest(log_path: Path) -> Dict[str, Tuple[int, int]]:
+    metrics = {}
     with log_path.open("r", encoding="utf-8") as handle:
         for line in handle:
             match = QUORUM_LINE_PATTERN.match(line.strip())
             if not match:
                 continue
-
-            timestamps.append(parse_timestamp(match.group("timestamp")))
-
-    return timestamps
-
-
-def extract_quorum_times_by_digest(log_path: Path) -> Dict[str, datetime]:
-    timestamps = {}
-    with log_path.open("r", encoding="utf-8") as handle:
-        for line in handle:
-            match = QUORUM_LINE_PATTERN.match(line.strip())
-            if not match:
-                continue
-
-            timestamps[match.group("digest")] = parse_timestamp(match.group("timestamp"))
-
-    return timestamps
-
-
-def build_intervals_ms(timestamps: List[datetime]) -> List[float]:
-    intervals_ms = [0.0]
-    for previous, current in zip(timestamps, timestamps[1:]):
-        intervals_ms.append((current - previous).total_seconds() * 1000.0)
-    return intervals_ms
+            metrics[match.group("digest")] = (
+                int(match.group("queue_delay_ms")),
+                int(match.group("quorum_latency_ms")),
+            )
+    return metrics
 
 
 def find_worker_logs(path: Path) -> List[Path]:
@@ -115,7 +97,7 @@ def plot_batches(path: Path, output_path: Optional[Path]) -> None:
     if not worker_logs:
         raise ValueError("No worker log files were found")
 
-    fig, axes = plt.subplots(2, 1, figsize=(12, 8), sharex=False)
+    fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=False)
 
     plotted_logs = 0
     plotted_quorum_latency_logs = 0
@@ -130,21 +112,22 @@ def plot_batches(path: Path, output_path: Optional[Path]) -> None:
             axes[0].plot(batch_indices, sizes_bytes, linewidth=1.2, label=label)
             plotted_logs += 1
 
-        quorum_times_by_digest = extract_quorum_times_by_digest(worker_log)
+        quorum_metrics_by_digest = extract_quorum_metrics_by_digest(worker_log)
         latency_indices = []
         quorum_latency_ms = []
-        for index, (batch_timestamp, digest, _) in enumerate(batches):
-            quorum_timestamp = quorum_times_by_digest.get(digest)
-            if quorum_timestamp is None:
+        queue_delay_ms = []
+        for index, (_, digest, _) in enumerate(batches):
+            metrics = quorum_metrics_by_digest.get(digest)
+            if metrics is None:
                 continue
 
             latency_indices.append(index)
-            quorum_latency_ms.append(
-                (quorum_timestamp - batch_timestamp).total_seconds() * 1000.0
-            )
+            queue_delay_ms.append(metrics[0])
+            quorum_latency_ms.append(metrics[1])
 
         if quorum_latency_ms:
             axes[1].plot(latency_indices, quorum_latency_ms, linewidth=1.2, label=label)
+            axes[2].plot(latency_indices, queue_delay_ms, linewidth=1.2, label=label)
             plotted_quorum_latency_logs += 1
 
     if plotted_logs == 0:
@@ -157,11 +140,16 @@ def plot_batches(path: Path, output_path: Optional[Path]) -> None:
     axes[0].set_title(path.name)
     axes[0].legend(loc="upper right")
 
-    axes[1].set_xlabel("Batch index")
     axes[1].set_ylabel("Quorum latency (ms)")
     axes[1].grid(True, alpha=0.3)
     if plotted_quorum_latency_logs > 0:
         axes[1].legend(loc="upper right")
+
+    axes[2].set_xlabel("Batch index")
+    axes[2].set_ylabel("Queue delay (ms)")
+    axes[2].grid(True, alpha=0.3)
+    if plotted_quorum_latency_logs > 0:
+        axes[2].legend(loc="upper right")
 
     fig.tight_layout()
 
