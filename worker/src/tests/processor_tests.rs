@@ -17,26 +17,33 @@ async fn hash_and_store() {
 
     // Spawn a new `Processor` instance.
     let id = 0;
-    Processor::spawn_own(
+    Processor::spawn(
         id,
         store.clone(),
         rx_batch,
         tx_digest,
+        true,
     );
 
     // Send a batch to the `Processor`.
     let message = WorkerMessage::Batch(batch());
     let serialized = bincode::serialize(&message).unwrap();
     let digest = Digest(
-        Sha512::digest(&serialized).as_slice()[..32]
+        Sha512::digest(&serialized).as_ref()[..32]
             .try_into()
             .unwrap(),
     );
-    tx_batch.send((serialized.clone(), digest.clone())).await.unwrap();
+    tx_batch.send((serialized.clone(), 0u64)).await.unwrap();
 
     // Ensure the `Processor` outputs the batch's digest.
     let output = rx_digest.recv().await.unwrap();
-    let expected = bincode::serialize(&WorkerPrimaryMessage::OurBatch(digest.clone(), id, std::collections::BTreeMap::new())).unwrap();
+    let expected = bincode::serialize(&WorkerPrimaryMessage::OurBatch(
+        digest.clone(),
+        id,
+        std::collections::BTreeMap::new(),
+        0u64,
+    ))
+    .unwrap();
     assert_eq!(output, expected);
 
     // Ensure the `Processor` correctly stored the batch.

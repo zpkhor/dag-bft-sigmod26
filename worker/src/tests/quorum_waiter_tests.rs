@@ -3,11 +3,9 @@ use super::*;
 use crate::common::{batch, committee_with_base_port, keys, listener};
 use crate::worker::WorkerMessage;
 use bytes::Bytes;
-use crypto::Digest;
-use ed25519_dalek::{Digest as _, Sha512};
 use futures::future::try_join_all;
 use network::ReliableSender;
-use std::convert::TryInto as _;
+use std::time::Instant;
 use tokio::sync::mpsc::channel;
 
 #[tokio::test]
@@ -23,7 +21,6 @@ async fn wait_for_quorum() {
     // Make a batch.
     let message = WorkerMessage::Batch(batch());
     let serialized = bincode::serialize(&message).unwrap();
-    let digest = Digest(Sha512::digest(&serialized).as_ref()[..32].try_into().unwrap());
     let expected = Bytes::from(serialized.clone());
 
     // Spawn enough listeners to acknowledge our batches.
@@ -45,15 +42,15 @@ async fn wait_for_quorum() {
     // Forward the batch along with the handlers to the `QuorumWaiter`.
     let message = QuorumWaiterMessage {
         batch: serialized.clone(),
-        digest: digest.clone(),
         handlers: names.into_iter().zip(handlers.into_iter()).collect(),
+        batch_sending_enqueue_at: Instant::now(),
     };
     tx_message.send(message).await.unwrap();
 
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
-    let (output_batch, output_digest) = rx_batch.recv().await.unwrap();
+    let (output_batch, output_quorum_latency_ms) = rx_batch.recv().await.unwrap();
     assert_eq!(output_batch, serialized);
-    assert_eq!(output_digest, digest);
+    assert!(output_quorum_latency_ms <= 10_000);
 
     // Ensure the other listeners correctly received the batch.
     assert!(try_join_all(listener_handles).await.is_ok());

@@ -1,9 +1,13 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use super::*;
 use crate::common::{batch_digest, committee_with_base_port, keys, listener, transaction};
+use futures::stream::StreamExt as _;
 use network::SimpleSender;
 use primary::WorkerPrimaryMessage;
 use std::fs;
+use tokio::net::TcpListener;
+use tokio::sync::oneshot;
+use tokio_util::codec::{Framed, LengthDelimitedCodec};
 
 #[tokio::test]
 async fn handle_clients_transactions() {
@@ -25,8 +29,21 @@ async fn handle_clients_transactions() {
 
     // Spawn a network listener to receive our batch's digest.
     let primary_address = committee.primary(&name).unwrap().worker_to_primary;
-    let expected = bincode::serialize(&WorkerPrimaryMessage::OurBatch(batch_digest(), id, std::collections::BTreeMap::new())).unwrap();
-    let handle = listener(primary_address, Some(Bytes::from(expected)));
+    let (tx_received, rx_received) = oneshot::channel();
+    let handle = tokio::spawn(async move {
+        let listener = TcpListener::bind(&primary_address).await.unwrap();
+        let (socket, _) = listener.accept().await.unwrap();
+        let transport = Framed::new(socket, LengthDelimitedCodec::new());
+        let (mut writer, mut reader) = transport.split();
+        let received = reader
+            .next()
+            .await
+            .expect("Failed to receive network message")
+            .expect("Failed to decode network message")
+            .freeze();
+        writer.send(Bytes::from("Ack")).await.unwrap();
+        tx_received.send(received.to_vec()).unwrap();
+    });
 
     // Spawn enough workers' listeners to acknowledge our batches.
     for (_, addresses) in committee.others_workers(&name, &id) {
@@ -40,6 +57,16 @@ async fn handle_clients_transactions() {
     network.send(address, Bytes::from(transaction())).await;
     network.send(address, Bytes::from(transaction())).await;
 
-    // Ensure the primary received the batch's digest (ie. it did not panic).
+    // Ensure the primary received the batch's digest with expected content.
     assert!(handle.await.is_ok());
+    let payload = rx_received.await.unwrap();
+    let decoded: WorkerPrimaryMessage = bincode::deserialize(&payload).unwrap();
+    match decoded {
+        WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, _quorum_latency_ms) => {
+            assert_eq!(digest, batch_digest());
+            assert_eq!(worker_id, id);
+            assert_eq!(account_counts, std::collections::BTreeMap::from([(0u64, 2u64)]));
+        }
+        _ => panic!("Unexpected message type"),
+    }
 }

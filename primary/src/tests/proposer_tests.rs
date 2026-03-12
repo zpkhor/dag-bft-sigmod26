@@ -56,7 +56,12 @@ async fn propose_payload() {
     let digest = Digest(name.0);
     let worker_id = 0;
     tx_our_digests
-        .send((digest.clone(), worker_id, std::collections::BTreeMap::new()))
+        .send((
+            digest.clone(),
+            worker_id,
+            std::collections::BTreeMap::new(),
+            0u64,
+        ))
         .await
         .unwrap();
 
