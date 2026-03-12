@@ -44,11 +44,12 @@ def parse_block(block):
     # We want only the first occurrence (the "All" column table)
     batch_seal_to_quorum_mean_ms = find(r'Batch seal -> Quorum:\s*([\d,]+)', block)
 
-    # Per-validator TPS and latency from PER-VALIDATOR COMMIT METRICS
-    # Lines look like: " 0            647           52,615          0"
-    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+\d+', block, re.MULTILINE)
+    # Per-validator TPS, mean latency, and p95 from PER-VALIDATOR COMMIT METRICS
+    # Lines look like: " 0            647           52,615       65,234       0"
+    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+\d+', block, re.MULTILINE)
     per_validator_tps = ','.join(m[1].replace(',', '') for m in validator_metrics)
     per_validator_latency = ','.join(m[2].replace(',', '') for m in validator_metrics)
+    per_validator_p95 = ','.join(m[3].replace(',', '') for m in validator_metrics)
 
     return [
         rr, duration, open_loop, rate_weights, warmup,
@@ -58,7 +59,7 @@ def parse_block(block):
         consensus_tps, consensus_bps,
         committed_tps, committed_bps,
         batch_seal_to_quorum_mean_ms,
-        per_validator_tps, per_validator_latency,
+        per_validator_tps, per_validator_latency, per_validator_p95,
         cmd_line,
     ]
 
@@ -66,12 +67,12 @@ def parse_block(block):
 HEADER = [
     'rr', 'duration', 'open_loop', 'rate_weights', 'warmup',
     'cpus_per_validator', 'bandwidth', 'bandwidths_mbps', 'latency', 'primary_bw',
-    'committee_size', 'input_rate', 'tx_size_B', 
+    'committee_size', 'input_rate', 'tx_size_B',
     'commit_lat_mean_ms', 'commit_lat_p95_ms',
     'consensus_tps', 'consensus_bps',
     'committed_tps', 'committed_bps',
     'batch_seal_to_quorum_mean_ms',
-    'per_validator_tps', 'per_validator_latency',
+    'per_validator_tps', 'per_validator_latency', 'per_validator_p95',
     'cmd',
 ]
 

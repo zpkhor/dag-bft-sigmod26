@@ -16,7 +16,7 @@ BATCH_LINE_PATTERN = re.compile(
 
 QUORUM_LINE_PATTERN = re.compile(
     r"^\[(?P<timestamp>[^\]]+)\s+INFO\s+worker::quorum_waiter\]\s+"
-    r"Quorum\s+for\s+batch\s+(?P<digest>\S+)$"
+    r"Quorum\s+for\s+batch\s+(?P<digest>\S+)\s+queue_delay\s+\d+ms\s+quorum_latency\s+\d+ms$"
 )
 
 
