@@ -11,7 +11,6 @@ use ed25519_dalek::{Digest as _, Sha512};
 use log::info;
 use network::ReliableSender;
 use std::collections::BTreeMap;
-#[cfg(feature = "benchmark")]
 use std::convert::TryInto as _;
 use std::net::SocketAddr;
 use tokio::sync::mpsc::{Receiver, Sender};

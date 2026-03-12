@@ -17,6 +17,7 @@ def parse_block(block):
 
     rr = find(r'\bRR=(\S+)', cmd_line)
     open_loop = find(r'\bOPEN_LOOP=(\S+)', cmd_line)
+    rate_weights = find(r'\bRATE_WEIGHTS=(\S+)', cmd_line, keep_commas=True)
     rate = find(r'\bRATE=(\S+)', cmd_line)
     duration = find(r'\bDURATION=(\S+)', cmd_line)
     warmup = find(r'\bWARMUP=(\S+)', cmd_line)
@@ -43,39 +44,48 @@ def parse_block(block):
     # We want only the first occurrence (the "All" column table)
     batch_seal_to_quorum_mean_ms = find(r'Batch seal -> Quorum:\s*([\d,]+)', block)
 
+    # Per-validator TPS and latency from PER-VALIDATOR COMMIT METRICS
+    # Lines look like: " 0            647           52,615          0"
+    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+\d+', block, re.MULTILINE)
+    per_validator_tps = ','.join(m[1].replace(',', '') for m in validator_metrics)
+    per_validator_latency = ','.join(m[2].replace(',', '') for m in validator_metrics)
+
     return [
-        rr, duration, open_loop, warmup,
+        rr, duration, open_loop, rate_weights, warmup,
         cpus_per_validator, bandwidth, bandwidths_mbps, latency, primary_bw,
-        committee_size, input_rate, tx_size_B, 
+        committee_size, input_rate, tx_size_B,
         commit_lat_mean_ms, commit_lat_p95_ms,
         consensus_tps, consensus_bps,
         committed_tps, committed_bps,
         batch_seal_to_quorum_mean_ms,
+        per_validator_tps, per_validator_latency,
         cmd_line,
     ]
 
 
 HEADER = [
-    'rr', 'duration', 'open_loop', 'warmup',
+    'rr', 'duration', 'open_loop', 'rate_weights', 'warmup',
     'cpus_per_validator', 'bandwidth', 'bandwidths_mbps', 'latency', 'primary_bw',
     'committee_size', 'input_rate', 'tx_size_B', 
     'commit_lat_mean_ms', 'commit_lat_p95_ms',
     'consensus_tps', 'consensus_bps',
     'committed_tps', 'committed_bps',
     'batch_seal_to_quorum_mean_ms',
+    'per_validator_tps', 'per_validator_latency',
     'cmd',
 ]
 
 EXCLUDE_HEADER = [
     'rr',
     'open_loop',
+    # 'rate_weights',
     'cpus_per_validator',
     'latency',
     'bandwidth',
-    'bandwidths_mbps',
+    # 'bandwidths_mbps',
     'primary_bw',
     'tx_size_B',
-    'duration',
+    # 'duration',
     'warmup',
     'consensus_tps', 'consensus_bps',
     'committee_size',
@@ -83,7 +93,7 @@ EXCLUDE_HEADER = [
     # 'consensus_tps',
     # 'consensus_bps',
     # 'committed_bps',
-    'cmd',
+    # 'cmd',
 ]
 
 
