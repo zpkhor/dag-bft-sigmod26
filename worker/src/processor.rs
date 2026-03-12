@@ -6,7 +6,7 @@ use ed25519_dalek::Digest as _;
 use ed25519_dalek::Sha512;
 #[cfg(feature = "benchmark")]
 use log::info;
-use primary::WorkerPrimaryMessage;
+use primary::{QuorumMetrics, WorkerPrimaryMessage};
 use std::convert::TryInto;
 use store::Store;
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -28,14 +28,14 @@ impl Processor {
         // The persistent storage.
         mut store: Store,
         // Input channel to receive batches.
-        mut rx_batch: Receiver<(SerializedBatchMessage, u64)>,
+        mut rx_batch: Receiver<(SerializedBatchMessage, QuorumMetrics)>,
         // Output channel to send out batches' digests.
         tx_digest: Sender<SerializedBatchDigestMessage>,
         // Whether we are processing our own batches or the batches of other nodes.
         own_digest: bool,
     ) {
         tokio::spawn(async move {
-            while let Some((batch, quorum_latency_ms)) = rx_batch.recv().await {
+            while let Some((batch, quorum_metrics)) = rx_batch.recv().await {
                 // Hash the batch.
                 let digest = Digest(Sha512::digest(&batch).as_ref()[..32].try_into().unwrap());
 
@@ -68,7 +68,7 @@ impl Processor {
 
                 // Deliver the batch's digest.
                 let message = match own_digest {
-                    true => WorkerPrimaryMessage::OurBatch(digest, id, account_counts, quorum_latency_ms),
+                    true => WorkerPrimaryMessage::OurBatch(digest, id, account_counts, quorum_metrics),
                     false => WorkerPrimaryMessage::OthersBatch(digest, id, account_counts),
                 };
                 let message = bincode::serialize(&message)

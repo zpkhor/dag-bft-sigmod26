@@ -11,6 +11,12 @@ use std::convert::TryInto;
 use std::fmt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[derive(Clone, Serialize, Deserialize, Default, Debug)]
+pub struct QuorumMetrics {
+    pub queue_delay_ms: u64,
+    pub quorum_latency_ms: u64,
+}
+
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct Header {
     pub author: PublicKey,
@@ -18,7 +24,7 @@ pub struct Header {
     pub payload: BTreeMap<Digest, WorkerId>,
     pub parents: BTreeSet<Digest>,
     pub account_counts: BTreeMap<u64, u64>,
-    pub quorum_latencies: BTreeMap<Digest, u64>,
+    pub quorum_metrics: BTreeMap<Digest, QuorumMetrics>,
     pub created_at: u64,
     pub id: Digest,
     pub signature: Signature,
@@ -31,7 +37,7 @@ impl Header {
         payload: BTreeMap<Digest, WorkerId>,
         parents: BTreeSet<Digest>,
         account_counts: BTreeMap<u64, u64>,
-        quorum_latencies: BTreeMap<Digest, u64>,
+        quorum_metrics: BTreeMap<Digest, QuorumMetrics>,
         signature_service: &mut SignatureService,
     ) -> Self {
         let header = Self {
@@ -40,7 +46,7 @@ impl Header {
             payload,
             parents,
             account_counts,
-            quorum_latencies,
+            quorum_metrics,
             created_at: SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_millis() as u64,
             id: Digest::default(),
             signature: Signature::default(),

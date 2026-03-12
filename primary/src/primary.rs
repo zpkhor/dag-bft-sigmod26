@@ -5,7 +5,7 @@ use crate::error::DagError;
 use crate::garbage_collector::GarbageCollector;
 use crate::header_waiter::HeaderWaiter;
 use crate::helper::Helper;
-use crate::messages::{Certificate, Header, Vote};
+use crate::messages::{Certificate, Header, QuorumMetrics, Vote};
 use crate::payload_receiver::PayloadReceiver;
 use crate::proposer::Proposer;
 use crate::synchronizer::Synchronizer;
@@ -53,7 +53,7 @@ pub enum PrimaryWorkerMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerPrimaryMessage {
     /// The worker indicates it sealed a new batch.
-    OurBatch(Digest, WorkerId, BTreeMap<u64, u64>, u64),
+    OurBatch(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics),
     /// The worker indicates it received a batch's digest from another authority.
     OthersBatch(Digest, WorkerId, BTreeMap<u64, u64>),
 }
@@ -70,7 +70,7 @@ impl Primary {
         rx_feedback: Receiver<Certificate>,
     ) {
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
-        let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u64, u64>, u64)>, _) = channel(CHANNEL_CAPACITY);
+        let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>, _) = channel(CHANNEL_CAPACITY);
         let (tx_parents, rx_parents) = channel(CHANNEL_CAPACITY);
         let (tx_headers, rx_headers) = channel(CHANNEL_CAPACITY);
         let (tx_sync_headers, rx_sync_headers) = channel(CHANNEL_CAPACITY);
@@ -249,7 +249,7 @@ impl MessageHandler for PrimaryReceiverHandler {
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 struct WorkerReceiverHandler {
-    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>, u64)>,
+    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>,
     tx_others_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
 }
 
@@ -262,9 +262,9 @@ impl MessageHandler for WorkerReceiverHandler {
     ) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(DagError::SerializationError)? {
-            WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, quorum_latency_ms) => self
+            WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, quorum_metrics) => self
                 .tx_our_digests
-                .send((digest, worker_id, account_counts, quorum_latency_ms))
+                .send((digest, worker_id, account_counts, quorum_metrics))
                 .await
                 .expect("Failed to send workers' digests"),
             WorkerPrimaryMessage::OthersBatch(digest, worker_id, account_counts) => self

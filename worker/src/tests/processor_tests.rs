@@ -33,7 +33,7 @@ async fn hash_and_store() {
             .try_into()
             .unwrap(),
     );
-    tx_batch.send((serialized.clone(), 0u64)).await.unwrap();
+    tx_batch.send((serialized.clone(), primary::QuorumMetrics::default())).await.unwrap();
 
     // Ensure the `Processor` outputs the batch's digest.
     let output = rx_digest.recv().await.unwrap();
@@ -41,7 +41,7 @@ async fn hash_and_store() {
         digest.clone(),
         id,
         std::collections::BTreeMap::new(),
-        0u64,
+        primary::QuorumMetrics::default(),
     ))
     .unwrap();
     assert_eq!(output, expected);

@@ -282,7 +282,7 @@ impl MessageHandler for TxReceiverHandler {
 #[derive(Clone)]
 struct WorkerReceiverHandler {
     tx_helper: Sender<(Vec<Digest>, PublicKey)>,
-    tx_processor: Sender<(SerializedBatchMessage, u64)>,
+    tx_processor: Sender<(SerializedBatchMessage, primary::QuorumMetrics)>,
 }
 
 #[async_trait]
@@ -295,7 +295,7 @@ impl MessageHandler for WorkerReceiverHandler {
         match bincode::deserialize(&serialized) {
             Ok(WorkerMessage::Batch(..)) => self
                 .tx_processor
-                .send((serialized.to_vec(), 0u64))
+                .send((serialized.to_vec(), primary::QuorumMetrics::default()))
                 .await
                 .expect("Failed to send batch"),
             Ok(WorkerMessage::BatchRequest(missing, requestor)) => self

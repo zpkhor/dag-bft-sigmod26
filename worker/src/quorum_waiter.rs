@@ -1,6 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use crate::processor::SerializedBatchMessage;
 use config::{Committee, Stake};
+use primary::QuorumMetrics;
 #[cfg(feature = "benchmark")]
 use crypto::Digest;
 use crypto::PublicKey;
@@ -38,7 +39,7 @@ pub struct QuorumWaiter {
     /// Input Channel to receive commands.
     rx_message: Receiver<QuorumWaiterMessage>,
     /// Channel to deliver batches for which we have enough acknowledgements.
-    tx_batch: Sender<(SerializedBatchMessage, u64)>,
+    tx_batch: Sender<(SerializedBatchMessage, QuorumMetrics)>,
 }
 
 impl QuorumWaiter {
@@ -47,7 +48,7 @@ impl QuorumWaiter {
         committee: Committee,
         stake: Stake,
         rx_message: Receiver<QuorumWaiterMessage>,
-        tx_batch: Sender<(Vec<u8>, u64)>,
+        tx_batch: Sender<(Vec<u8>, QuorumMetrics)>,
     ) {
         tokio::spawn(async move {
             Self {
@@ -97,7 +98,7 @@ impl QuorumWaiter {
                         info!("Quorum for batch {:?} queue_delay {}ms quorum_latency {}ms", digest, queue_delay_ms, quorum_latency_ms);
                     }
                     self.tx_batch
-                        .send((batch, quorum_latency_ms))
+                        .send((batch, QuorumMetrics { queue_delay_ms, quorum_latency_ms }))
                         .await
                         .expect("Failed to deliver batch");
                     break;

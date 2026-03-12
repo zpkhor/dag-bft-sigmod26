@@ -2,12 +2,9 @@
 use crate::quorum_waiter::QuorumWaiterMessage;
 use crate::worker::WorkerMessage;
 use bytes::Bytes;
-#[cfg(feature = "benchmark")]
 use crypto::Digest;
 use crypto::PublicKey;
-#[cfg(feature = "benchmark")]
 use ed25519_dalek::{Digest as _, Sha512};
-#[cfg(feature = "benchmark")]
 use log::info;
 use network::ReliableSender;
 use std::collections::BTreeMap;
@@ -100,7 +97,6 @@ impl BatchMaker {
 
     /// Seal and broadcast the current batch.
     async fn seal(&mut self) {
-        #[cfg(feature = "benchmark")]
         let size = self.current_batch_size;
 
         // Drain accumulator.
@@ -129,14 +125,15 @@ impl BatchMaker {
         let message = WorkerMessage::Batch((txs, account_counts));
         let serialized = bincode::serialize(&message).expect("Failed to serialize our own batch");
 
+        // NOTE: This is one extra hash that is only needed to print the following log entries.
+        let digest = Digest(
+            Sha512::digest(&serialized).as_ref()[..32]
+                .try_into()
+                .unwrap(),
+        );
+
         #[cfg(feature = "benchmark")]
         {
-            // NOTE: This is one extra hash that is only needed to print the following log entries.
-            let digest = Digest(
-                Sha512::digest(&serialized).as_ref()[..32]
-                    .try_into()
-                    .unwrap(),
-            );
 
             for (id, account_id) in sample_ids {
                 // NOTE: This log entry is used to compute performance.
@@ -147,10 +144,10 @@ impl BatchMaker {
                     account_id,
                 );
             }
-
-            // NOTE: This log entry is used to compute performance.
-            info!("Batch {:?} contains {} B", digest, size);
         }
+
+        // NOTE: This log entry is used to compute performance.
+        info!("Batch {:?} contains {} B", digest, size);
 
         // Broadcast the batch through the network.
         let (names, addresses): (Vec<_>, _) = self.workers_addresses.iter().cloned().unzip();

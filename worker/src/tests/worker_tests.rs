@@ -62,7 +62,7 @@ async fn handle_clients_transactions() {
     let payload = rx_received.await.unwrap();
     let decoded: WorkerPrimaryMessage = bincode::deserialize(&payload).unwrap();
     match decoded {
-        WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, _quorum_latency_ms) => {
+        WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, _) => {
             assert_eq!(digest, batch_digest());
             assert_eq!(worker_id, id);
             assert_eq!(account_counts, std::collections::BTreeMap::from([(0u64, 2u64)]));
