@@ -7,7 +7,7 @@ DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-10}
 RESULTS_DIR="results/phase3_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260312_104158/merged_output_filtered.log
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260312_230816/merged_output.log
 
 cd "$(dirname "$0")"
 
@@ -20,9 +20,12 @@ cd "$(dirname "$0")"
 #     "imbalance_bw_rate|30,30,50,50|3,3,1,1"
 # )
 CONFIGS=(
+    "balanced|50,50,50,50|1,1,1,1"
+    "imbalance_rate_5|50,50,50,50|5,1,1,1"
+    "imbalance_rate_10|50,50,50,50|10,1,1,1"
     "imbalance_bw1|30,50,50,50|1,1,1,1"
-    "imbalance_bw1|38,50,50,50|1,1,1,1" # TODO: label should be unique
     "imbalance_bw2|30,30,50,50|1,1,1,1"
+    "imbalance_bw3|30,30,30,50|1,1,1,1"
 )
 
 # Validate unique labels
@@ -37,7 +40,7 @@ for CONFIG in "${CONFIGS[@]}"; do
 done
 
 
-RATES=(6500 8800)
+RATES=(2700 6500 8800)
 
 echo "Phase 3: Scenario comparison"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
@@ -55,9 +58,9 @@ for CONFIG in "${CONFIGS[@]}"; do
             echo ""
             echo "--- $LABEL | bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS rate=$RATE Run: $RETRY/$RETRIES ---"
 
-            CMD="BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit"
+            CMD="BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit"
             echo "CMD: $CMD" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
+            OUTPUT=$(BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             mv logs "$RUN_DIR/logs" 2>/dev/null || true
