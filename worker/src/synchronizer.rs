@@ -1,5 +1,6 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
-use crate::worker::{Round, WorkerMessage};
+#[allow(unused_imports)]
+use crate::worker::{CommitNotification, Round, WorkerMessage};
 use bytes::Bytes;
 use config::{Committee, WorkerId};
 use crypto::{Digest, PublicKey};

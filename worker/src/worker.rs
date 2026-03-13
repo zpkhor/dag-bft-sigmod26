@@ -41,6 +41,12 @@ pub enum WorkerMessage {
     BatchRequest(Vec<Digest>, /* origin */ PublicKey),
 }
 
+/// Notification sent from workers to clients when sample txs are committed.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct CommitNotification {
+    pub sample: (u64, u64), // (counter, account_id)
+}
+
 pub struct Worker {
     /// The public key of this authority.
     name: PublicKey,
