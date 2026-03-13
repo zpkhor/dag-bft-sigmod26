@@ -17,14 +17,26 @@ from plot_worker_batches import (
 
 COLUMN_ORDER = [
     "balanced",
-    "imbalance_rate",
+    "imbalance_rate_5",
+    "imbalance_rate_10",
     "imbalance_bw1",
     "imbalance_bw2",
-    "imbalance_bw_rate",
+    "imbalance_bw3",
+]
+
+
+INCLUDED = ["balanced",
+    "imbalance_bw1",
+    "imbalance_bw2",
+    "imbalance_bw3",    
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
 TPS_RE = re.compile(r"Committed TPS: ([\d,]+) tx/s")
+PER_VALIDATOR_SECTION_RE = re.compile(
+    r"\+ PER-VALIDATOR COMMIT METRICS:.*?(?=\n\s*\+|\Z)", re.DOTALL
+)
+PER_VALIDATOR_ROW_RE = re.compile(r"^\s+(\d+)\s+([\d,]+)\s+([\d,]+)", re.MULTILINE)
 
 RUN_DIR_RE = re.compile(r"^(.+)_rate(\d+)_run_(\d+)$")
 
@@ -81,8 +93,27 @@ def parse_metrics(run_dir: Path) -> Tuple[str, str]:
     return latency, tps
 
 
+def parse_per_validator_metrics(run_dir: Path) -> List[Tuple[int, str, str]]:
+    output_log = run_dir / "output.log"
+    if not output_log.exists():
+        return []
+    text = output_log.read_text(encoding="utf-8")
+    section_match = PER_VALIDATOR_SECTION_RE.search(text)
+    if not section_match:
+        return []
+    results = []
+    for m in PER_VALIDATOR_ROW_RE.finditer(section_match.group(0)):
+        v_id = int(m.group(1))
+        tps = m.group(2).replace(",", "")
+        mean_ms = m.group(3).replace(",", "")
+        results.append((v_id, tps, mean_ms))
+    return results
+
+
 def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
     groups = discover_runs(results_dir)
+    # filter groups
+    groups = {k: v for k, v in groups.items() if k[0] in INCLUDED}
     if not groups:
         raise ValueError(f"No *_rate*_run_* subdirectories found in {results_dir}")
 
@@ -138,6 +169,8 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
 
             latency, tps = parse_metrics(run_dir)
             metrics_lines.append(f"Run {run_num}: Latency={latency}  TPS={tps}")
+            for v_id, v_tps, v_mean in parse_per_validator_metrics(run_dir):
+                metrics_lines.append(f"  V{v_id}: {v_tps}tx/s  {v_mean}ms")
 
         axes[0][col_idx].set_title(label, fontsize=10, fontweight="bold")
 
