@@ -314,7 +314,7 @@ networks:
             for i in range(nodes):
                 # worker_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
                 # capacities.append(int(worker_bw_bytes / self.tx_size / (nodes - 1)))
-                capacities.append(1450) # TODO: to be replaced by per validator workers linear regession based on (|B|, T_quorum (without queuing))
+                capacities.append(2200) # TODO: to be replaced by inferred broadcast capacity based on worker bandwidth and tx size tps_i=sum_worker_bw_bytes_i/tx_size/(num_nodes-1)
             committee.set_capacities(capacities)
             latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
             sorted_names = sorted(committee.json['authorities'].keys())
@@ -390,7 +390,11 @@ networks:
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
-                addrs_str = " ".join(worker_addrs)
+                if self.rr:
+                    all_worker_addrs = [addr for all_addrs in workers_addresses for _, addr in all_addrs]
+                    addrs_str = " ".join(all_worker_addrs)
+                else:
+                    addrs_str = " ".join(worker_addrs)
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} "
@@ -483,6 +487,7 @@ networks:
                 duration=self.duration,
                 warmup=self.warmup,
                 verbose=debug,
+                rr=self.rr,
             )
 
         except (subprocess.SubprocessError, ParseError) as e:

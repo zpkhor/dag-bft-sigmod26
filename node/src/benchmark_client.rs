@@ -176,7 +176,7 @@ impl Client {
             for x in 0..burst {
                 let account_id = self.account_start + rng.gen_range(0, self.num_accounts);
                 let w_idx = {
-                    let entry = worker_rr.entry(account_id).or_insert(0usize);
+                    let entry = worker_rr.entry(account_id).or_insert((account_id as usize) % num_workers);
                     let w = *entry;
                     *entry = (w + 1) % num_workers;
                     w
