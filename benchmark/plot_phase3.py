@@ -11,6 +11,7 @@ import matplotlib.gridspec as gridspec
 from plot_worker_batches import (
     find_worker_logs,
     plot_worker_log,
+    WINDOW_SIZE,
 )
 
 
@@ -25,9 +26,9 @@ COLUMN_ORDER = [
 
 
 INCLUDED = ["balanced",
+    "imbalance_rate_5",
     "imbalance_bw1",
     "imbalance_bw2",
-    "imbalance_bw3",    
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
@@ -52,6 +53,11 @@ def parse_args() -> argparse.Namespace:
         "-o",
         "--output",
         help="Output image path. Defaults to benchmark/<results_dir_name>-phase3.png",
+    )
+    parser.add_argument(
+        "--no-smooth",
+        action="store_true",
+        help=f"Disable moving average smoothing (window={WINDOW_SIZE}).",
     )
     return parser.parse_args()
 
@@ -109,7 +115,7 @@ def parse_per_validator_metrics(run_dir: Path) -> List[Tuple[int, str, str]]:
     return results
 
 
-def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
+def plot_phase3(results_dir: Path, output_path: Optional[Path], smooth: bool) -> None:
     groups = discover_runs(results_dir)
     # filter groups
     groups = {k: v for k, v in groups.items() if k[0] in INCLUDED}
@@ -142,7 +148,7 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
                 plot_worker_log(
                     worker_log,
                     axes[0][col_idx], axes[1][col_idx], axes[2][col_idx],
-                    worker_label, 1.0, alpha,
+                    worker_label, smooth, 1.0, alpha,
                 )
 
             latency, tps = parse_metrics(run_dir)
@@ -180,7 +186,7 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
         output_path = benchmark_dir / f"{results_dir.name}-phase3.png"
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(output_path, dpi=150, bbox_inches="tight")
+    fig.savefig(str(output_path), dpi=150, bbox_inches="tight")
     print(output_path)
 
 
@@ -195,7 +201,7 @@ def main() -> int:
     output_path = Path(args.output) if args.output else None
 
     try:
-        plot_phase3(results_dir, output_path)
+        plot_phase3(results_dir, output_path, not args.no_smooth)
     except ValueError as error:
         print(error, file=sys.stderr)
         return 1
