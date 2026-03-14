@@ -19,7 +19,7 @@ def local(ctx, debug=True):
     duration = int(os.environ.get('DURATION', 20))
     warmup = int(os.environ.get('WARMUP', 0))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
-    rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
@@ -57,7 +57,7 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     duration = int(os.environ.get('DURATION', 20))
     warmup = int(os.environ.get('WARMUP', 0))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
-    rate_weights = [int(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
