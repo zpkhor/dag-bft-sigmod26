@@ -75,6 +75,43 @@ def extract_quorum_metrics_by_digest(log_path: Path) -> Dict[str, Tuple[int, int
     return metrics
 
 
+def plot_worker_log(
+    worker_log: Path,
+    batch_ax,
+    latency_ax,
+    queue_ax,
+    label: str,
+    linewidth: float = 1.2,
+    alpha: float = 1.0,
+) -> Tuple[bool, bool]:
+    """Plot batch sizes, quorum latency, and queue delay from a single worker log onto the given axes.
+
+    Returns (plotted_batches, plotted_quorum).
+    """
+    batches = extract_batches(worker_log)
+    if not batches:
+        return False, False
+
+    sizes = [s for _, _, s in batches]
+    batch_ax.plot(range(len(sizes)), sizes, linewidth=linewidth, alpha=alpha, label=label)
+
+    quorum_by_digest = extract_quorum_metrics_by_digest(worker_log)
+    latency_idxs, latency_ms, queue_ms = [], [], []
+    for i, (_, digest, _) in enumerate(batches):
+        m = quorum_by_digest.get(digest)
+        if m is not None:
+            latency_idxs.append(i)
+            queue_ms.append(m[0])
+            latency_ms.append(m[1])
+
+    if latency_ms:
+        latency_ax.plot(latency_idxs, latency_ms, linewidth=linewidth, alpha=alpha, label=label)
+        queue_ax.plot(latency_idxs, queue_ms, linewidth=linewidth, alpha=alpha, label=label)
+        return True, True
+
+    return True, False
+
+
 def find_worker_logs(path: Path) -> List[Path]:
     if path.is_file():
         return [path]
@@ -102,32 +139,11 @@ def plot_batches(path: Path, output_path: Optional[Path]) -> None:
     plotted_logs = 0
     plotted_quorum_latency_logs = 0
     for worker_log in worker_logs:
-        batches = extract_batches(worker_log)
         label = worker_log.stem
-
-        if batches:
-            sizes_bytes = [size_bytes for _, _, size_bytes in batches]
-            batch_indices = list(range(len(batches)))
-
-            axes[0].plot(batch_indices, sizes_bytes, linewidth=1.2, label=label)
+        plotted_batches, plotted_quorum = plot_worker_log(worker_log, axes[0], axes[1], axes[2], label)
+        if plotted_batches:
             plotted_logs += 1
-
-        quorum_metrics_by_digest = extract_quorum_metrics_by_digest(worker_log)
-        latency_indices = []
-        quorum_latency_ms = []
-        queue_delay_ms = []
-        for index, (_, digest, _) in enumerate(batches):
-            metrics = quorum_metrics_by_digest.get(digest)
-            if metrics is None:
-                continue
-
-            latency_indices.append(index)
-            queue_delay_ms.append(metrics[0])
-            quorum_latency_ms.append(metrics[1])
-
-        if quorum_latency_ms:
-            axes[1].plot(latency_indices, quorum_latency_ms, linewidth=1.2, label=label)
-            axes[2].plot(latency_indices, queue_delay_ms, linewidth=1.2, label=label)
+        if plotted_quorum:
             plotted_quorum_latency_logs += 1
 
     if plotted_logs == 0:

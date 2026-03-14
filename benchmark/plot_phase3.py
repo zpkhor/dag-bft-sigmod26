@@ -9,9 +9,8 @@ import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
 from plot_worker_batches import (
-    extract_batches,
-    extract_quorum_metrics_by_digest,
     find_worker_logs,
+    plot_worker_log,
 )
 
 
@@ -140,32 +139,11 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path]) -> None:
 
             for worker_log in worker_logs:
                 worker_label = f"{worker_log.stem} (run {run_num})"
-
-                batches = extract_batches(worker_log)
-                if batches:
-                    sizes = [s for _, _, s in batches]
-                    axes[0][col_idx].plot(
-                        range(len(sizes)), sizes,
-                        linewidth=1.0, alpha=alpha, label=worker_label,
-                    )
-
-                quorum_by_digest = extract_quorum_metrics_by_digest(worker_log)
-                latency_idxs, latency_ms, queue_delay_ms = [], [], []
-                for i, (_, digest, _) in enumerate(batches):
-                    metrics = quorum_by_digest.get(digest)
-                    if metrics is not None:
-                        latency_idxs.append(i)
-                        queue_delay_ms.append(metrics[0])
-                        latency_ms.append(metrics[1])
-                if latency_ms:
-                    axes[1][col_idx].plot(
-                        latency_idxs, latency_ms,
-                        linewidth=1.0, alpha=alpha, label=worker_label,
-                    )
-                    axes[2][col_idx].plot(
-                        latency_idxs, queue_delay_ms,
-                        linewidth=1.0, alpha=alpha, label=worker_label,
-                    )
+                plot_worker_log(
+                    worker_log,
+                    axes[0][col_idx], axes[1][col_idx], axes[2][col_idx],
+                    worker_label, 1.0, alpha,
+                )
 
             latency, tps = parse_metrics(run_dir)
             metrics_lines.append(f"Run {run_num}: Latency={latency}  TPS={tps}")

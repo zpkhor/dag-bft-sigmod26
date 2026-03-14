@@ -41,6 +41,7 @@ class LogParser:
         self.size, self.rate, self.start, misses, self.sent_samples \
             = zip(*results)
         self.misses = sum(misses)
+        _client_cache = {id(log): r for log, r in zip(clients, results)}
 
         # Parse the primaries logs.
         try:
@@ -87,6 +88,7 @@ class LogParser:
             arrival_times_list, seal_times_list, quorum_times_list, processed_times_list, \
             committed_times_list, queue_delay_list, quorum_latency_list \
             = zip(*results)
+        _worker_cache = {id(log): r for log, r in zip(workers, results)}
         self.sizes = {
             k: v for x in sizes for k, v in x.items() if k in self.commits
         }
@@ -119,7 +121,7 @@ class LogParser:
                 v_queue_delay = {}
                 v_quorum_latency = {}
                 for log in logs:
-                    s, r, _, _, _, _, _, _, qd, ql = self._parse_workers(log)
+                    s, r, _, _, _, _, _, _, qd, ql = _worker_cache[id(log)]
                     v_sizes.update(s)
                     v_received_list.append(r)
                     v_queue_delay.update(qd)
@@ -133,7 +135,7 @@ class LogParser:
                 v_sent_list = []
                 v_misses = 0
                 for log in logs:
-                    _, _, _, misses, samples = self._parse_clients(log)
+                    _, _, _, misses, samples = _client_cache[id(log)]
                     v_sent_list.append(samples)
                     v_misses += misses
                 self.sent_samples_by_validator[v] = v_sent_list
