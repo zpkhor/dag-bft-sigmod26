@@ -5,7 +5,7 @@
 - Narwhal is a BFT system with a **two-tier process architecture**:
   - **Tier 1 (Primary)**: One per validator (handles consensus)
   - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and receival of batch from others)
-- There is one client per validator that connects to all of that validator's workers (or all validators' workers in round-robin mode). In docker mode, the client runs in its own dedicated container with 4 pinned CPUs adjacent (directly after) its validator's CPU range, with 0ms tc latency to the validator.
+- The number of client and validator are same. In docker mode, the client runs in its own dedicated container with 4 pinned CPUs adjacent (directly after) its validator's CPU range, with 0ms tc latency to the validator.
 - The client sends at a fixed rate. When overloaded, backpressure from TCP / tx_batch_maker mpsc channel blocks the client's send() call. The signal for overload is client misses, not latency increase
 - Local bench runs all processes on one machine, clock drift is not an issue
 
@@ -59,6 +59,8 @@
 - When editing existing code, don't "improve" adjacent code, comments, or formatting. If you notice unrelated dead code, mention it - don't delete it.
 - Don't remove any TODO when editing files
 - `benchmark/fabfile.py` is the entrypoint and contains environ var to control the behavior of program, when making any edit always check if it needs to be updated
+- When editing python file, please DO NOT use None as default arg (always use positional args over keyword args)
+- I prefer hardfail (assert, panic) rather than warning or silence continue or skipping
 
 **Don't assume. Don't hide confusion. Surface tradeoffs.**
 
