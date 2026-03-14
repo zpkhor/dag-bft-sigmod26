@@ -43,26 +43,44 @@ impl CertifiedTpsTracker {
         self.rounds.retain(|&r, _| r >= min_round);
     }
 
+    fn median_ts(validators: &HashMap<PublicKey, (u64, u64)>) -> u64 {
+        let mut timestamps: Vec<u64> = validators.values().map(|(ts, _)| *ts).collect();
+        assert!(!timestamps.is_empty(), "median_ts called on empty round");
+        timestamps.sort_unstable();
+        let n = timestamps.len();
+        if n % 2 == 1 {
+            timestamps[n / 2]
+        } else {
+            (timestamps[n / 2 - 1] + timestamps[n / 2]) / 2
+        }
+    }
+
     /// Compute per-validator TPS using certificates in [stable_round - window, stable_round].
+    /// Duration is median(ts @ stable_round) - median(ts @ min_round).
     fn get_tps(&self, stable_round: Round) -> Option<HashMap<PublicKey, f64>> {
         let min_round = stable_round.saturating_sub(self.window_rounds);
         let mut totals: HashMap<PublicKey, u64> = HashMap::new();
-        let mut min_ts = u64::MAX;
-        let mut max_ts = 0u64;
         for (&round, validators) in &self.rounds {
             if round < min_round || round > stable_round {
                 continue;
             }
-            for (pk, &(ts, tx_count)) in validators {
+            for (pk, &(_ts, tx_count)) in validators {
                 *totals.entry(*pk).or_insert(0) += tx_count;
-                min_ts = min_ts.min(ts);
-                max_ts = max_ts.max(ts);
             }
         }
         if totals.is_empty() {
             return None;
         }
-        let duration_ms = max_ts.saturating_sub(min_ts);
+
+        // TODO: formally prove that first/last rounds always have certificates
+        let start_ts = Self::median_ts(
+            self.rounds.get(&min_round).expect("no certificates in first round of window")
+        );
+        let end_ts = Self::median_ts(
+            self.rounds.get(&stable_round).expect("no certificates in last round of window")
+        );
+
+        let duration_ms = end_ts.saturating_sub(start_ts);
         if duration_ms == 0 {
             return None;
         }
