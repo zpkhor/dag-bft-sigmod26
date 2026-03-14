@@ -67,6 +67,12 @@ class LogParser:
             for sr, row in raw_timeline.items()
         }
 
+        raw_certified = self._parse_certified_tps(primaries[0])
+        self.certified_tps_timeline = {
+            r: {key_to_id.get(k, k): v for k, v in row.items()}
+            for r, row in raw_certified.items()
+        }
+
         # Warmup trimming: discard commits/proposals in the warmup window.
         self.warmup = warmup
         self.verbose = verbose
@@ -643,6 +649,16 @@ class LogParser:
             result.setdefault(int(safe_round_s), {})[key] = (int(total_s), float(tps_s), int(tpr_s), float(tpx_s))
         return result
 
+    def _parse_certified_tps(self, log):
+        """Parse 'certified_tps' entries from one primary log.
+        Returns {round: {validator_key_str: (tps, capacity, spare)}}.
+        """
+        pattern = r'certified_tps \(round=(\d+)\) validator (\S+): ([\d.]+) tx/s \(capacity: (\d+) tx/s, spare: (-?[\d.]+)\)'
+        result = {}
+        for round_s, key, tps_s, cap_s, spare_s in findall(pattern, log):
+            result.setdefault(int(round_s), {})[key] = (float(tps_s), int(cap_s), float(spare_s))
+        return result
+
     def _format_dag_timeline(self):
         if not self.dag_timeline:
             return ''
@@ -669,6 +685,34 @@ class LogParser:
         output = f'\n + DAG TIMELINE (t/s=self-reported, t/r=per-round, t/x=median-duration):\n{header}\n'
         for i, sr in enumerate(sorted_rounds):
             row_str = f'   {sr:<{label_w}}'
+            for cell in cells[i]:
+                row_str += f'{cell:>{col_w}}'
+            output += row_str + '\n'
+        return output
+
+    def _format_certified_tps_timeline(self):
+        if not self.certified_tps_timeline:
+            return ''
+        sorted_rounds = sorted(self.certified_tps_timeline.keys())
+        all_validators = sorted({v for row in self.certified_tps_timeline.values() for v in row})
+        if not all_validators:
+            return ''
+        label_w = max(len('round'), max(len(str(r)) for r in sorted_rounds))
+
+        def make_cell(entry):
+            tps, cap, spare = entry
+            return f'{tps:.0f}/{cap} ({spare:+.0f})'
+
+        cells = []
+        for r in sorted_rounds:
+            cells.append([make_cell(self.certified_tps_timeline[r].get(v, (0.0, 0, 0.0))) for v in all_validators])
+
+        col_w = max(max(len(c) for row in cells for c in row), max(len('V'+str(v)) for v in all_validators)) + 2
+
+        header = f'   {"round":<{label_w}}' + ''.join(f'{"V"+str(v):>{col_w}}' for v in all_validators)
+        output = f'\n + CERTIFIED TPS TIMELINE (actual/capacity (spare)):\n{header}\n'
+        for i, r in enumerate(sorted_rounds):
+            row_str = f'   {r:<{label_w}}'
             for cell in cells[i]:
                 row_str += f'{cell:>{col_w}}'
             output += row_str + '\n'
@@ -868,6 +912,7 @@ class LogParser:
                 ))
 
         sections.append(self._format_dag_timeline())
+        sections.append(self._format_certified_tps_timeline())
         sections.append(self._format_warnings_section())
         sections.append('-----------------------------------------\n')
         return ''.join(s for s in sections if s)
