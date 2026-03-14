@@ -60,7 +60,7 @@ async fn propose_payload() {
             digest.clone(),
             worker_id,
             std::collections::BTreeMap::new(),
-            0u64,
+            QuorumMetrics::default(),
         ))
         .await
         .unwrap();
