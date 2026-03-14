@@ -391,11 +391,7 @@ networks:
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
-                if self.rr:
-                    all_worker_addrs = [addr for all_addrs in workers_addresses for _, addr in all_addrs]
-                    addrs_str = " ".join(all_worker_addrs)
-                else:
-                    addrs_str = " ".join(worker_addrs)
+                addrs_str = " ".join(worker_addrs)
                 c_cmd = (
                     f"./benchmark_client {addrs_str} --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} "
@@ -491,7 +487,6 @@ networks:
                 duration=self.duration,
                 warmup=self.warmup,
                 verbose=debug,
-                rr=self.rr,
             )
 
         except (subprocess.SubprocessError, ParseError) as e:

@@ -144,7 +144,7 @@ class Committee:
                 ips.add(self.ip(worker['worker_to_worker']))
                 ips.add(self.ip(worker['transactions']))
 
-            ips.add(self.ip(self.json['authorities'][name]['client_reply']))
+            ips.add(self.ip(self.json['authorities'][name]['client_reply'])) # TODO: to be used by workers
 
         return list(ips)
 
@@ -308,7 +308,6 @@ class BenchParameters:
                     )
             self.warmup = int(json.get('warmup', 0))
             self.num_accounts = int(json.get('num_accounts', 1_000_000))
-            self.rr = bool(json.get('rr', False))
         except KeyError as e:
             raise ConfigError(f'Malformed bench parameters: missing key {e}')
 

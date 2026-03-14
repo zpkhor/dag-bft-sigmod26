@@ -63,7 +63,6 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
     bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
-    rr = os.environ.get('RR', 'false').lower() in ('true', '1', 'yes')
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
         'faults': 0,
@@ -76,7 +75,6 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
         'account_weights': account_weights,
         'warmup': warmup,
         'num_accounts': num_accounts,
-        'rr': rr,
     }
     node_params = {
         'header_size': 1_000,

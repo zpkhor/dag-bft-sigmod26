@@ -17,14 +17,13 @@ class ParseError(Exception):
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
-                 duration=None, warmup=0, verbose=False, rr=False):
+                 duration=None, warmup=0, verbose=False):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
 
         self.faults = faults
-        self.rr = rr
         self.bench_duration = float(duration) if duration is not None else None
         if isinstance(faults, int):
             self.committee_size = len(primaries) + int(faults)
@@ -630,9 +629,6 @@ class LogParser:
             count_row += f'{count:>{col_w},}'
         output += count_row + '\n'
 
-        if self.rr:
-            output += '   * Client -> Worker includes TC network latency for cross-validator traffic\n'
-
         return output
 
     def _parse_primaries_dags(self, log):
@@ -722,8 +718,6 @@ class LogParser:
             f' Commit duration: {round(commit_duration, 2):,} s\n'
             '\n'
         )
-        if self.rr:
-            s += ' RR mode (cross-validator): True\n'
         if self.verbose:
             s += (
                 f' Faults: {self.faults} node(s)\n'
@@ -861,7 +855,7 @@ class LogParser:
             f.write(self.result())
 
     @classmethod
-    def process(cls, directory, faults=0, duration=None, warmup=0, verbose=False, rr=False):
+    def process(cls, directory, faults=0, duration=None, warmup=0, verbose=False):
         assert isinstance(directory, str)
 
         clients = []
@@ -896,5 +890,4 @@ class LogParser:
             duration=duration,
             warmup=warmup,
             verbose=verbose,
-            rr=rr,
         )

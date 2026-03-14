@@ -15,7 +15,6 @@ def parse_block(block):
             return default
         return m.group(1) if keep_commas else m.group(1).replace(',', '')
 
-    rr = find(r'\bRR=(\S+)', cmd_line)
     open_loop = find(r'\bOPEN_LOOP=(\S+)', cmd_line)
     rate_weights = find(r'\bRATE_WEIGHTS=(\S+)', cmd_line, keep_commas=True)
     rate = find(r'\bRATE=(\S+)', cmd_line)
@@ -52,7 +51,7 @@ def parse_block(block):
     per_validator_p95 = ','.join(m[3].replace(',', '') for m in validator_metrics)
 
     return [
-        rr, duration, open_loop, rate_weights, warmup,
+        duration, open_loop, rate_weights, warmup,
         cpus_per_validator, bandwidth, bandwidths_mbps, latency, primary_bw,
         committee_size, input_rate, tx_size_B,
         commit_lat_mean_ms, commit_lat_p95_ms,
@@ -65,7 +64,7 @@ def parse_block(block):
 
 
 HEADER = [
-    'rr', 'duration', 'open_loop', 'rate_weights', 'warmup',
+    'duration', 'open_loop', 'rate_weights', 'warmup',
     'cpus_per_validator', 'bandwidth', 'bandwidths_mbps', 'latency', 'primary_bw',
     'committee_size', 'input_rate', 'tx_size_B',
     'commit_lat_mean_ms', 'commit_lat_p95_ms',
@@ -77,7 +76,6 @@ HEADER = [
 ]
 
 EXCLUDE_HEADER = [
-    'rr',
     'open_loop',
     # 'rate_weights',
     'cpus_per_validator',

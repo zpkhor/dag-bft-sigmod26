@@ -106,7 +106,6 @@ class LocalBench:
                     [x for y in workers_addresses for _, x in y],
                     client_id=i * num_workers,
                     reply_port=reply_port,
-                    check_mismatch=self.check_mismatch,
                 )
                 log_file = PathMaker.client_log_file(i, 0)
                 self._background_run(cmd, log_file, env_prefix)

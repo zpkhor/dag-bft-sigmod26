@@ -46,7 +46,8 @@ class CommandMaker:
                 f'--store {store} --parameters {parameters} worker --id {id}')
 
     @staticmethod
-    def run_client(addresses, size, rate, nodes, account_start=None, num_accounts=None, client_id=None, reply_port=None, num_validators=None, rr=False, check_mismatch=False):
+    def run_client(addresses, size, rate, nodes, account_start=None, num_accounts=None, client_id=None, reply_port=None, num_validators=None):
+        # TODO: reply_port and num_validators are for closed-loop client (reply requires) and round-robin
         assert isinstance(addresses, list) and all(isinstance(x, str) for x in addresses)
         assert isinstance(size, int) and size > 0
         assert isinstance(rate, int) and rate >= 0
@@ -56,14 +57,8 @@ class CommandMaker:
         account_args = ''
         if account_start is not None and num_accounts is not None:
             account_args = f'--account-start {account_start} --num-accounts {num_accounts}'
-        reply_args = ''
-        if client_id is not None and reply_port is not None:
-            reply_args = f'--client-id {client_id} --reply-port {reply_port}'
-        rr_args = ''
-        if rr and num_validators is not None:
-            rr_args = f'--rr --num-validators {num_validators}'
-        check_mismatch_flag = '--check-mismatch' if check_mismatch else ''
-        return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {reply_args} {rr_args} {check_mismatch_flag}'
+        client_id_arg = f'--client-id {client_id}' if client_id is not None else ''
+        return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {client_id_arg}'
 
     @staticmethod
     def kill():
