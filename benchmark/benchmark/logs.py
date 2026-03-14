@@ -699,13 +699,15 @@ class LogParser:
             return ''
         label_w = max(len('round'), max(len(str(r)) for r in sorted_rounds))
 
-        def make_cell(entry):
+        def make_cell(entry, pct):
             tps, cap, spare = entry
-            return f'{tps:.0f}/{cap} ({spare:+.0f})'
+            return f'{pct:.1f}% {tps:.0f}/{cap} ({spare:+.0f})'
 
         cells = []
         for r in sorted_rounds:
-            cells.append([make_cell(self.certified_tps_timeline[r].get(v, (0.0, 0, 0.0))) for v in all_validators])
+            row_entries = [self.certified_tps_timeline[r].get(v, (0.0, 0, 0.0)) for v in all_validators]
+            total_tps = sum(e[0] for e in row_entries) or 1.0
+            cells.append([make_cell(e, e[0] / total_tps * 100) for e in row_entries])
 
         col_w = max(max(len(c) for row in cells for c in row), max(len('V'+str(v)) for v in all_validators)) + 2
 

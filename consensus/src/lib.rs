@@ -5,33 +5,27 @@ use crypto::{Digest, PublicKey};
 use log::{debug, info, log_enabled, warn};
 use primary::{Certificate, Round};
 use std::cmp::max;
-use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 #[cfg(test)]
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
 
-const WINDOW_SIZE: Round = 40;
-const CERTIFIED_TPS_WINDOW_MS: u64 = 5_000;
+const WINDOW_SIZE: Round = 30;
+const CERTIFIED_TPS_WINDOW_ROUNDS: Round = 20;
 
 struct CertifiedTpsTracker {
-    /// Time-ordered buffer of (created_at_ms, validator, tx_count).
-    entries: VecDeque<(u64, PublicKey, u64)>,
-    /// Running sum of tx count per validator within the window.
-    totals: HashMap<PublicKey, u64>,
-    window_ms: u64,
-    /// Highest created_at seen (for correct eviction with out-of-order timestamps).
-    max_ts: u64,
+    /// Per-round, per-validator (created_at_ms, tx_count).
+    rounds: HashMap<Round, HashMap<PublicKey, (u64, u64)>>,
+    window_rounds: Round,
 }
 
 impl CertifiedTpsTracker {
-    fn new(window_ms: u64) -> Self {
+    fn new(window_rounds: Round) -> Self {
         Self {
-            entries: VecDeque::new(),
-            totals: HashMap::new(),
-            window_ms,
-            max_ts: 0,
+            rounds: HashMap::new(),
+            window_rounds,
         }
     }
 
@@ -39,45 +33,50 @@ impl CertifiedTpsTracker {
         let origin = certificate.origin();
         let tx_count: u64 = certificate.header.account_counts.values().sum();
         let created_at = certificate.header.created_at;
+        let round = certificate.round();
 
-        self.entries.push_back((created_at, origin, tx_count));
-        *self.totals.entry(origin).or_insert(0) += tx_count;
-        self.max_ts = self.max_ts.max(created_at);
-
-        // Evict entries outside the window.
-        let cutoff = self.max_ts.saturating_sub(self.window_ms);
-        while let Some(&(ts, _, _)) = self.entries.front() {
-            if ts < cutoff {
-                let (_, pk, cnt) = self.entries.pop_front().unwrap();
-                if let Some(total) = self.totals.get_mut(&pk) {
-                    *total = total.saturating_sub(cnt);
-                }
-            } else {
-                break;
-            }
-        }
+        self.rounds.entry(round).or_default().insert(origin, (created_at, tx_count));
     }
 
-    fn get_tps(&self) -> Option<HashMap<PublicKey, f64>> {
-        if self.entries.is_empty() {
+    /// Evict entries below min_round.
+    fn evict(&mut self, min_round: Round) {
+        self.rounds.retain(|&r, _| r >= min_round);
+    }
+
+    /// Compute per-validator TPS using certificates in [stable_round - window, stable_round].
+    fn get_tps(&self, stable_round: Round) -> Option<HashMap<PublicKey, f64>> {
+        let min_round = stable_round.saturating_sub(self.window_rounds);
+        let mut totals: HashMap<PublicKey, u64> = HashMap::new();
+        let mut min_ts = u64::MAX;
+        let mut max_ts = 0u64;
+        for (&round, validators) in &self.rounds {
+            if round < min_round || round > stable_round {
+                continue;
+            }
+            for (pk, &(ts, tx_count)) in validators {
+                *totals.entry(*pk).or_insert(0) += tx_count;
+                min_ts = min_ts.min(ts);
+                max_ts = max_ts.max(ts);
+            }
+        }
+        if totals.is_empty() {
             return None;
         }
-        let oldest = self.entries.front().unwrap().0;
-        let duration_ms = self.max_ts.saturating_sub(oldest);
-        if duration_ms < self.window_ms / 2 {
+        let duration_ms = max_ts.saturating_sub(min_ts);
+        if duration_ms == 0 {
             return None;
         }
         let duration_secs = duration_ms as f64 / 1000.0;
         Some(
-            self.totals
+            totals
                 .iter()
                 .map(|(pk, count)| (*pk, *count as f64 / duration_secs))
                 .collect(),
         )
     }
 
-    fn spare_capacity(&self, capacities: &HashMap<PublicKey, u64>) -> Option<HashMap<PublicKey, f64>> {
-        let tps = self.get_tps()?;
+    fn spare_capacity(&self, stable_round: Round, capacities: &HashMap<PublicKey, u64>) -> Option<HashMap<PublicKey, f64>> {
+        let tps = self.get_tps(stable_round)?;
         Some(
             capacities
                 .iter()
@@ -89,8 +88,8 @@ impl CertifiedTpsTracker {
         )
     }
 
-    fn log(&self, round: Round, capacities: &HashMap<PublicKey, u64>) {
-        if let Some(tps) = self.get_tps() {
+    fn log(&self, round: Round, stable_round: Round, capacities: &HashMap<PublicKey, u64>) {
+        if let Some(tps) = self.get_tps(stable_round) {
             let mut entries: Vec<_> = tps.iter().collect();
             entries.sort_by_key(|(pk, _)| **pk);
             for (pk, rate) in entries {
@@ -333,7 +332,7 @@ impl Consensus {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
         let mut account_history = AccountCountsHistory::new();
-        let mut certified_tps_tracker = CertifiedTpsTracker::new(CERTIFIED_TPS_WINDOW_MS);
+        let mut certified_tps_tracker = CertifiedTpsTracker::new(CERTIFIED_TPS_WINDOW_ROUNDS);
 
         let mut cap_entries: Vec<(PublicKey, u64)> = self.validator_capacities.iter().map(|(pk, c)| (*pk, *c)).collect();
         cap_entries.sort_by_key(|(pk, _)| *pk);
@@ -352,7 +351,9 @@ impl Consensus {
             if certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
                 // account_history.log();
                 account_history.log_stable(self.committee.size());
-                certified_tps_tracker.log(round, &self.validator_capacities);
+                let stable_round = round.saturating_sub(2);
+                certified_tps_tracker.log(round, stable_round, &self.validator_capacities);
+                certified_tps_tracker.evict(stable_round.saturating_sub(CERTIFIED_TPS_WINDOW_ROUNDS));
             }
             state
                 .dag
