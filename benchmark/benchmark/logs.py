@@ -5,7 +5,7 @@ from glob import glob
 from multiprocessing import Pool
 from os.path import basename, join
 from re import findall, search
-from statistics import mean, quantiles
+from statistics import mean, quantiles, stdev
 
 from benchmark.utils import Print
 
@@ -679,9 +679,15 @@ class LogParser:
         for v in sorted(self.queue_delay_by_validator.keys()):
             delays = [ms for d, ms in self.queue_delay_by_validator[v].items() if d in self.commits]
             latencies = [ms for d, ms in self.quorum_latency_by_validator[v].items() if d in self.commits]
+            delay_metrics = self._calculate_latency_metrics(delays)
+            latency_metrics = self._calculate_latency_metrics(latencies)
             result[v] = {
-                'queue_delay': mean(delays) if delays else 0,
-                'quorum_latency': mean(latencies) if latencies else 0,
+                'queue_delay_mean': delay_metrics['mean'],
+                'queue_delay_p95': delay_metrics['p95'],
+                'queue_delay_std': round(stdev(delays)) if len(delays) >= 2 else 0,
+                'quorum_latency_mean': latency_metrics['mean'],
+                'quorum_latency_p95': latency_metrics['p95'],
+                'quorum_latency_std': round(stdev(latencies)) if len(latencies) >= 2 else 0,
             }
         return result
 
@@ -795,14 +801,29 @@ class LogParser:
 
     def _format_quorum_timing_section(self):
         quorum_timing = self._per_validator_quorum_timing()
-        lines = [
-            '\n'
-            ' + PER-VALIDATOR QUORUM TIMING (mean, ms):\n'
-            ' Validator    Queue delay    Quorum latency\n'
-        ]
+        dw, lw = 7, 6
+        pair_w = dw + 1 + lw        # 14
+        group_header = (
+            f' {"":12}'
+            f'  {"mean":^{pair_w}}'
+            f'  {"p95":^{pair_w}}'
+            f'  {"std":^{pair_w}}\n'
+        )
+        sub_header = (
+            f' {"Validator":<12}'
+            f'  {"delay":>{dw}} {"lat":>{lw}}'
+            f'  {"delay":>{dw}} {"lat":>{lw}}'
+            f'  {"delay":>{dw}} {"lat":>{lw}}\n'
+        )
+        lines = ['\n + PER-VALIDATOR QUORUM TIMING (ms):\n', group_header, sub_header]
         for v in sorted(quorum_timing.keys()):
             t = quorum_timing[v]
-            lines.append(f' {v:<12} {round(t["queue_delay"]):<14,} {round(t["quorum_latency"]):,}\n')
+            lines.append(
+                f' {v:<12}'
+                f'  {round(t["queue_delay_mean"]):>{dw},} {round(t["quorum_latency_mean"]):>{lw},}'
+                f'  {round(t["queue_delay_p95"]):>{dw},} {round(t["quorum_latency_p95"]):>{lw},}'
+                f'  {t["queue_delay_std"]:>{dw},} {t["quorum_latency_std"]:>{lw},}\n'
+            )
         return ''.join(lines)
 
     def result(self):
