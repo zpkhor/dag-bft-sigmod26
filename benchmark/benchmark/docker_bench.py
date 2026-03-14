@@ -3,6 +3,7 @@ import json
 import os
 import socket
 import subprocess
+import sys
 from math import ceil
 from time import sleep, time as _now
 
@@ -451,9 +452,12 @@ networks:
 
             # Start containers.
             Print.info("Starting containers...")
+            _devnull = subprocess.DEVNULL if not sys.stdout.isatty() else None
             subprocess.run(
                 ["docker", "compose", "-f", "docker-compose.yml", "up", "-d"],
                 check=True,
+                stdout=_devnull,
+                stderr=_devnull,
             )
 
             with open(PathMaker.bench_params_file(), 'w') as f:
