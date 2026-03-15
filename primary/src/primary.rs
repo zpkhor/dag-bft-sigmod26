@@ -47,6 +47,8 @@ pub enum PrimaryWorkerMessage {
     Cleanup(Round),
     /// The primary indicates that these batches have been committed by consensus.
     CommittedBatches(Vec<Digest>),
+    /// Migration notices from consensus: reroute these accounts to new validators.
+    MigrationNotices(Vec<crate::messages::MigrationNotice>),
 }
 
 /// The messages sent by the workers to their primary.

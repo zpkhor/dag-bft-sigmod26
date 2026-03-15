@@ -57,7 +57,8 @@ pub fn committee() -> Committee {
                 )
             })
             .collect(),
-        latency_matrix: Vec::new(),
+        latency_matrix: BTreeMap::new(),
+        account_ranges: BTreeMap::new(),
     }
 }
 

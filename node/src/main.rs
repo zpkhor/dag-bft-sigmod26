@@ -9,7 +9,7 @@ use consensus::Consensus;
 use crypto::PublicKey;
 use env_logger::Env;
 use network::SimpleSender;
-use primary::{Certificate, Primary, PrimaryWorkerMessage};
+use primary::{Certificate, ConsensusOutput, Primary, PrimaryWorkerMessage};
 use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
@@ -93,8 +93,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     // Make the data store.
     let store = Store::new(store_path).context("Failed to create a store")?;
 
-    // Channels the sequence of certificates.
-    let (tx_output, rx_output) = channel(CHANNEL_CAPACITY);
+    // Channels the sequence of consensus output (certificates + migration notices).
+    let (tx_output, rx_output) = channel::<ConsensusOutput>(CHANNEL_CAPACITY);
 
     // Check whether to run a primary, a worker, or an entire authority.
     match matches.subcommand() {
@@ -139,8 +139,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     unreachable!();
 }
 
-/// Receives an ordered list of certificates and dispatches committed batch digests to our workers. Only for primary
-async fn analyze(mut rx_output: Receiver<Certificate>, committee: Committee, name: PublicKey) {
+/// Receives consensus output (certificates + migration notices) and dispatches to our workers. Only for primary
+async fn analyze(mut rx_output: Receiver<ConsensusOutput>, committee: Committee, name: PublicKey) {
     let mut network = SimpleSender::new();
 
     // Build a map from worker_id -> our worker's primary_to_worker address.
@@ -153,23 +153,47 @@ async fn analyze(mut rx_output: Receiver<Certificate>, committee: Committee, nam
         .map(|(id, addr)| (*id, addr.primary_to_worker))
         .collect();
 
-    while let Some(certificate) = rx_output.recv().await {
-        // Group committed batch digests by worker_id.
-        let mut per_worker: HashMap<WorkerId, Vec<_>> = HashMap::new();
-        for (digest, worker_id) in &certificate.header.payload {
-            per_worker
-                .entry(*worker_id)
-                .or_default()
-                .push(digest.clone());
-        }
+    while let Some(output) = rx_output.recv().await {
+        match output {
+            ConsensusOutput::Certificate(certificate) => {
+                // Group committed batch digests by worker_id.
+                let mut per_worker: HashMap<WorkerId, Vec<_>> = HashMap::new();
+                for (digest, worker_id) in &certificate.header.payload {
+                    per_worker
+                        .entry(*worker_id)
+                        .or_default()
+                        .push(digest.clone());
+                }
 
-        // Send CommittedBatches to each of our workers.
-        for (worker_id, digests) in per_worker {
-            if let Some(&address) = our_workers.get(&worker_id) {
-                let message = PrimaryWorkerMessage::CommittedBatches(digests);
-                let bytes = bincode::serialize(&message)
-                    .expect("Failed to serialize CommittedBatches");
-                network.send(address, Bytes::from(bytes)).await;
+                // Send CommittedBatches to each of our workers.
+                for (worker_id, digests) in per_worker {
+                    if let Some(&address) = our_workers.get(&worker_id) {
+                        let message = PrimaryWorkerMessage::CommittedBatches(digests);
+                        let bytes = bincode::serialize(&message)
+                            .expect("Failed to serialize CommittedBatches");
+                        network.send(address, Bytes::from(bytes)).await;
+                    }
+                }
+            }
+            ConsensusOutput::Migrations(notices) => {
+                // Distribute migration notices across workers by account_id.
+                let num_workers = our_workers.len() as u64;
+                assert!(num_workers > 0, "No workers configured");
+                let mut per_worker: HashMap<WorkerId, Vec<_>> = HashMap::new();
+                for notice in notices {
+                    let worker_id = (notice.account_id % num_workers) as WorkerId;
+                    per_worker.entry(worker_id).or_default().push(notice);
+                }
+                for (worker_id, worker_notices) in per_worker {
+                    if let Some(&address) = our_workers.get(&worker_id) {
+                        for chunk in worker_notices.chunks(primary::MIGRATION_CHUNK_SIZE) {
+                            let message = PrimaryWorkerMessage::MigrationNotices(chunk.to_vec());
+                            let bytes = bincode::serialize(&message)
+                                .expect("Failed to serialize MigrationNotices");
+                            network.send(address, Bytes::from(bytes)).await;
+                        }
+                    }
+                }
             }
         }
     }

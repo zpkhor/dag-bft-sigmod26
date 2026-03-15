@@ -271,3 +271,26 @@ impl PartialEq for Certificate {
         ret
     }
 }
+
+/// Max migration notices per serialized message to stay under codec frame limits.
+pub const MIGRATION_CHUNK_SIZE: usize = 5_000;
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MigrationNotice {
+    pub account_id: u64,
+    pub new_target: PublicKey, // TODO: can use validator_id as optimization
+}
+
+/// Wire format: worker -> client (includes sender for f+1 tracking)
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MigrationMessage {
+    pub sender: PublicKey,
+    pub notices: Vec<MigrationNotice>,
+}
+
+/// Output from consensus to application layer.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum ConsensusOutput {
+    Certificate(Certificate),
+    Migrations(Vec<MigrationNotice>),
+}

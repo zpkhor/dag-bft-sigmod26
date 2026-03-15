@@ -123,6 +123,37 @@ impl Synchronizer {
         }
     }
 
+    /// Forward migration notices to the affected clients via client_reply addresses.
+    async fn handle_migration_notices(&mut self, notices: Vec<primary::MigrationNotice>) {
+        // Group notices by home validator (= the client that needs to reroute)
+        let mut per_client: HashMap<PublicKey, Vec<primary::MigrationNotice>> =
+            HashMap::new();
+        for notice in notices {
+            if let Some(pk) = self.committee.home_validator(notice.account_id) {
+                per_client.entry(pk).or_default().push(notice);
+            }
+        }
+
+        for (client_validator, client_notices) in per_client {
+            if let Ok(addr) = self.committee.client_reply(&client_validator) {
+                info!(
+                    "Sending {} migration notices to client of validator {} at {} ({} chunks)",
+                    client_notices.len(), client_validator, addr,
+                    (client_notices.len() + primary::MIGRATION_CHUNK_SIZE - 1) / primary::MIGRATION_CHUNK_SIZE
+                );
+                for chunk in client_notices.chunks(primary::MIGRATION_CHUNK_SIZE) {
+                    let msg = primary::MigrationMessage {
+                        sender: self.name,
+                        notices: chunk.to_vec(),
+                    };
+                    let serialized = bincode::serialize(&msg)
+                        .expect("Failed to serialize MigrationMessage");
+                    self.network.send(addr, bytes::Bytes::from(serialized)).await;
+                }
+            }
+        }
+    }
+
     /// Main loop listening to the primary's messages.
     async fn run(&mut self) {
         let mut waiting = FuturesUnordered::new();
@@ -185,6 +216,9 @@ impl Synchronizer {
                     },
                     PrimaryWorkerMessage::CommittedBatches(digests) => {
                         self.handle_committed_batches(digests).await;
+                    },
+                    PrimaryWorkerMessage::MigrationNotices(notices) => {
+                        self.handle_migration_notices(notices).await;
                     },
                     PrimaryWorkerMessage::Cleanup(round) => {
                         // Keep track of the primary's round number.

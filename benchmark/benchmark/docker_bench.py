@@ -318,15 +318,11 @@ networks:
                 capacities.append(2200) # TODO: to be replaced by inferred broadcast capacity based on worker bandwidth and tx size tps_i=sum_worker_bw_bytes_i/tx_size/(num_nodes-1)
             committee.set_capacities(capacities)
             latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
-            sorted_names = sorted(committee.json['authorities'].keys())
-            name_to_idx = {name: i for i, name in enumerate(names)}
-            latency_matrix = [
-                [0 if name_to_idx[row_name] == name_to_idx[col_name] else latency_ms
-                 for col_name in sorted_names]
-                for row_name in sorted_names
-            ]
+            latency_matrix = {
+                name: {other: (0 if name == other else latency_ms) for other in names}
+                for name in names
+            }
             committee.set_latency_matrix(latency_matrix)
-            committee.print(PathMaker.committee_file())
 
             self.node_parameters.print(PathMaker.parameters_file())
 
@@ -362,6 +358,25 @@ networks:
                 acct_starts.append(s)
                 s += c
 
+            # Set account ranges in committee (keyed by public key)
+            account_ranges = {
+                name: (acct_starts[i], acct_counts[i])
+                for i, name in enumerate(names)
+            }
+            committee.set_account_ranges(account_ranges)
+            committee.print(PathMaker.committee_file())
+
+            # Build --validator-workers args for all validators
+            vw_args_parts = []
+            for name in names:
+                auth = committee.json['authorities'][name]
+                waddrs = "+".join(
+                    auth['workers'][wid]['transactions']
+                    for wid in sorted(auth['workers'].keys())
+                )
+                vw_args_parts.append(f"--validator-workers {name}:{waddrs}")
+            vw_args = " ".join(vw_args_parts)
+
             commands_per_validator = {}
             client_commands = {}
             running_rate = 0
@@ -391,11 +406,16 @@ networks:
 
                 num_workers = len(addresses)
                 client_id_val = i * num_workers
-                addrs_str = " ".join(worker_addrs)
+
+                own_name = names[i]
+                reply_addr = committee.json['authorities'][own_name]['client_reply']
+
                 c_cmd = (
-                    f"./benchmark_client {addrs_str} --size {self.tx_size} "
+                    f"./benchmark_client --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} "
-                    f"{account_args} --client-id {client_id_val}"
+                    f"{account_args} --client-id {client_id_val} "
+                    f"--reply-addr {reply_addr} --own-validator {own_name} "
+                    f"{vw_args}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 running_rate += validator_rates[i]

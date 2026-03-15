@@ -11,44 +11,6 @@ from benchmark.plot import Ploter, PlotError
 from benchmark.instance import InstanceManager
 from benchmark.remote import Bench, BenchError
 
-
-@task
-def local(ctx, debug=True):
-    ''' Run benchmarks on localhost '''
-    rate = int(os.environ.get('RATE', 50_000))
-    duration = int(os.environ.get('DURATION', 20))
-    warmup = int(os.environ.get('WARMUP', 0))
-    rate_weights_raw = os.environ.get('RATE_WEIGHTS')
-    rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
-    tokio_threads = int(os.environ.get('TOKIO_THREADS', 0))  # 0 = use tokio default (num_cpus)
-    check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
-    bench_params = {
-        'faults': 0,
-        'nodes': 4,
-        'workers': 1,
-        'rate': rate,
-        'tx_size': 512,
-        'duration': duration,
-        'rate_weights': rate_weights,
-        'warmup': warmup,
-    }
-    node_params = {
-        'header_size': 1_000,  # bytes
-        'max_header_delay': 200,  # ms
-        'gc_depth': 50,  # rounds
-        'sync_retry_delay': 10_000,  # ms
-        'sync_retry_nodes': 3,  # number of nodes
-        'batch_size': 500_000,  # bytes
-        'max_batch_delay': 200,  # ms
-        'tokio_threads': tokio_threads,
-    }
-    try:
-        ret = LocalBench(bench_params, node_params, check_mismatch=check_mismatch).run(debug)
-        print(ret.result())
-    except BenchError as e:
-        Print.error(e)
-
-
 @task
 def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
            cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):

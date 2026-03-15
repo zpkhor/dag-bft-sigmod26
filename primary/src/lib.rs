@@ -17,5 +17,5 @@ mod synchronizer;
 #[path = "tests/common.rs"]
 mod common;
 
-pub use crate::messages::{Certificate, Header, QuorumMetrics};
+pub use crate::messages::{Certificate, ConsensusOutput, Header, MigrationMessage, MigrationNotice, QuorumMetrics, MIGRATION_CHUNK_SIZE};
 pub use crate::primary::{Primary, PrimaryWorkerMessage, Round, WorkerPrimaryMessage};

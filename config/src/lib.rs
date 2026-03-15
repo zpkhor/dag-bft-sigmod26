@@ -146,12 +146,22 @@ pub struct Authority {
 pub struct Committee {
     pub authorities: BTreeMap<PublicKey, Authority>,
     #[serde(default)]
-    pub latency_matrix: Vec<Vec<u64>>,
+    pub latency_matrix: BTreeMap<PublicKey, BTreeMap<PublicKey, u64>>,
+    /// Per-validator (account_start, account_count), keyed by validator public key.
+    #[serde(default)]
+    pub account_ranges: BTreeMap<PublicKey, (u64, u64)>,
 }
 
 impl Import for Committee {}
 
 impl Committee {
+    /// Returns the public key of the validator whose account_range contains `account_id`, or None.
+    pub fn home_validator(&self, account_id: u64) -> Option<PublicKey> {
+        self.account_ranges.iter().find_map(|(pk, &(start, count))| {
+            if account_id >= start && account_id < start + count { Some(*pk) } else { None }
+        })
+    }
+
     /// Returns the number of authorities.
     pub fn size(&self) -> usize {
         self.authorities.len()

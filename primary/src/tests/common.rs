@@ -2,6 +2,7 @@
 use crate::messages::{Certificate, Header, Vote};
 use bytes::Bytes;
 use config::{Authority, Committee, PrimaryAddresses, WorkerAddresses};
+use std::collections::BTreeMap;
 use crypto::Hash as _;
 use crypto::{generate_keypair, PublicKey, SecretKey, Signature};
 use futures::sink::SinkExt as _;
@@ -65,7 +66,8 @@ pub fn committee() -> Committee {
                 )
             })
             .collect(),
-        latency_matrix: Vec::new(),
+        latency_matrix: BTreeMap::new(),
+        account_ranges: BTreeMap::new(),
     }
 }
 

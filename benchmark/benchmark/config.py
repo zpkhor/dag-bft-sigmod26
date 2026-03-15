@@ -1,6 +1,7 @@
 # Copyright(C) Facebook, Inc. and its affiliates.
 from json import dump, load
 from collections import OrderedDict
+import base64
 
 
 class ConfigError(Exception):
@@ -90,13 +91,24 @@ class Committee:
                 'capacity_by_bw': 0,
             }
 
+    def sorted_authority_names(self):
+        ''' Authority names in Rust BTreeMap byte order (sorted by decoded bytes, not base64 string). '''
+        return sorted(self.json['authorities'].keys(),
+                       key=lambda n: base64.b64decode(n))
+
     def set_latency_matrix(self, matrix):
-        ''' matrix[i][j] = latency in ms from client i to validator j.
-            i, j indexed by sorted authority name order (matches Rust BTreeMap order). '''
-        sorted_names = sorted(self.json['authorities'].keys())
-        assert len(matrix) == len(sorted_names)
-        assert all(len(row) == len(sorted_names) for row in matrix)
+        ''' matrix is dict: {pk_base64: {pk_base64: latency_ms, ...}, ...} '''
+        names = set(self.json['authorities'].keys())
+        assert set(matrix.keys()) == names
+        for pk in matrix:
+            assert set(matrix[pk].keys()) == names
         self.json['latency_matrix'] = matrix
+
+    def set_account_ranges(self, ranges):
+        ''' ranges is dict: {pk_base64: [start, count], ...} '''
+        names = set(self.json['authorities'].keys())
+        assert set(ranges.keys()) == names
+        self.json['account_ranges'] = {pk: list(v) for pk, v in ranges.items()}
 
     def set_capacities(self, capacities):
         ''' Set per-validator capacity (requests/sec). capacities is a list aligned

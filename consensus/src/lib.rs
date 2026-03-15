@@ -3,7 +3,7 @@ use config::{Committee, Stake};
 use crypto::Hash as _;
 use crypto::{Digest, PublicKey};
 use log::{debug, info, log_enabled, warn};
-use primary::{Certificate, Round};
+use primary::{Certificate, ConsensusOutput, MigrationNotice, Round};
 use std::cmp::max;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use tokio::sync::mpsc::{Receiver, Sender};
@@ -296,18 +296,17 @@ pub struct Consensus {
     /// Per-validator estimated max throughput (requests/sec). Initialized from the committee
     /// (derived from worker bandwidth and tx size) and later updated via control plane consensus.
     validator_capacities: HashMap<PublicKey, u64>,
-    /// Latency in ms between each (client_i, validator_j) pair.
-    /// Indexed by sorted authority order (matches BTreeMap iteration order).
+    /// Latency in ms between each (client_i, validator_j) pair, keyed by public key.
     /// Empty if committee did not provide latency data.
-    client_validator_latency: Vec<Vec<u64>>,
+    client_validator_latency: BTreeMap<PublicKey, BTreeMap<PublicKey, u64>>,
 
     /// Receives new certificates from the primary. The primary should send us new certificates only
     /// if it already sent us its whole history.
     rx_new_certificates: Receiver<Certificate>,
     /// Outputs the sequence of ordered certificates to the primary (for cleanup and feedback).
     tx_feedback: Sender<Certificate>,
-    /// Outputs the sequence of ordered certificates to the application layer.
-    tx_output: Sender<Certificate>,
+    /// Outputs the sequence of ordered certificates and migration notices to the application layer.
+    tx_output: Sender<ConsensusOutput>,
 
     /// The genesis certificates.
     genesis: Vec<Certificate>,
@@ -320,7 +319,7 @@ impl Consensus {
         gc_depth: Round,
         rx_new_certificates: Receiver<Certificate>,
         tx_feedback: Sender<Certificate>,
-        tx_output: Sender<Certificate>,
+        tx_output: Sender<ConsensusOutput>,
     ) {
         let validator_capacities: HashMap<PublicKey, u64> = committee
             .authorities
@@ -456,7 +455,7 @@ impl Consensus {
                     .await
                     .expect("Failed to send certificate to primary");
 
-                if let Err(e) = self.tx_output.send(certificate).await {
+                if let Err(e) = self.tx_output.send(ConsensusOutput::Certificate(certificate)).await {
                     warn!("Failed to output certificate: {}", e);
                 }
             }
