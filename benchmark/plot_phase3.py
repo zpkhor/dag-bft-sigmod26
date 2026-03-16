@@ -29,6 +29,7 @@ INCLUDED = ["balanced",
     "imbalance_rate_5",
     "imbalance_bw1",
     "imbalance_bw2",
+    "imbalance_bw3",
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
@@ -156,7 +157,7 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path], smooth: bool) ->
             for v_id, v_tps, v_mean in parse_per_validator_metrics(run_dir):
                 metrics_lines.append(f"  V{v_id}: {v_tps}tx/s  {v_mean}ms")
 
-        axes[0][col_idx].set_title(label, fontsize=10, fontweight="bold")
+        axes[2][col_idx].set_xlabel(label, fontsize=10, fontweight="bold")
 
         ax_text = axes[3][col_idx]
         ax_text.axis("off")
@@ -173,13 +174,13 @@ def plot_phase3(results_dir: Path, output_path: Optional[Path], smooth: bool) ->
     axes[2][0].set_ylabel("Queue delay (ms)")
 
     for col_idx in range(n_cols):
-        axes[2][col_idx].set_xlabel("Batch index")
         for row_idx in range(3):
             axes[row_idx][col_idx].grid(True, alpha=0.3)
             if axes[row_idx][col_idx].get_lines():
                 axes[row_idx][col_idx].legend(fontsize=6, loc="upper right")
 
-    fig.suptitle(results_dir.name, fontsize=12)
+    fig.text(0.5, 0.01, results_dir.name, ha="center", fontsize=12)
+    fig.tight_layout(rect=(0, 0.03, 1, 1))
 
     if output_path is None:
         benchmark_dir = Path(__file__).resolve().parent

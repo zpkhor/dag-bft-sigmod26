@@ -192,7 +192,6 @@ def plot_batches(path: Path, output_path: Optional[Path], smooth: bool) -> None:
 
     axes[0].set_ylabel("Batch size (B)")
     axes[0].grid(True, alpha=0.3)
-    axes[0].set_title(path.name)
     axes[0].legend(loc="upper right")
 
     axes[1].set_ylabel("Quorum latency (ms)")
@@ -206,7 +205,8 @@ def plot_batches(path: Path, output_path: Optional[Path], smooth: bool) -> None:
     if plotted_quorum_latency_logs > 0:
         axes[2].legend(loc="upper right")
 
-    fig.tight_layout()
+    fig.text(0.5, 0.01, path.name, ha="center", fontsize=10)
+    fig.tight_layout(rect=[0, 0.03, 1, 1])
 
     if output_path is None:
         output_path = default_output_path(path)
