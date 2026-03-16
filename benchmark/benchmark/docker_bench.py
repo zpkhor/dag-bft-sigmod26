@@ -315,7 +315,10 @@ networks:
             for i in range(nodes):
                 # worker_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
                 # capacities.append(int(worker_bw_bytes / self.tx_size / (nodes - 1)))
-                capacities.append(2200) # TODO: to be replaced by inferred broadcast capacity based on worker bandwidth and tx size tps_i=sum_worker_bw_bytes_i/tx_size/(num_nodes-1)
+                bw_mbit = self._parse_bw_mbit(self.bandwidths[i])
+                assert bw_mbit in (50, 30), f"Unexpected bandwidth {bw_mbit}mbit for validator {i}"
+                capacity = 2200 if bw_mbit == 50 else 1650
+                capacities.append(capacity) # TODO: to be replaced by inferred broadcast capacity based on worker bandwidth and tx size tps_i=sum_worker_bw_bytes_i/tx_size/(num_nodes-1)
             committee.set_capacities(capacities)
             latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
             latency_matrix = {
