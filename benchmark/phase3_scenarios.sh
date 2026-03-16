@@ -8,7 +8,7 @@ WARMUP=${WARMUP:-10}
 cd "$(dirname "$0")"
 RESULTS_DIR="$(pwd)/results/phase3_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260312_230816/merged_output.log
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260315_204913/merged_output.log
 
 check_certified_tps_consistency() {
     local run_dir="$1"
@@ -72,17 +72,9 @@ check_certified_tps_consistency() {
 }
 
 # Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS"
-# CONFIGS=(
-#     "balanced|50,50,50,50|1,1,1,1"
-#     "imbalance_rate|50,50,50,50|5,1,1,1"
-#     "imbalance_bw1|30,50,50,50|1,1,1,1"
-#     "imbalance_bw2|30,30,50,50|1,1,1,1"
-#     "imbalance_bw_rate|30,30,50,50|3,3,1,1"
-# )
 CONFIGS=(
     "balanced|50,50,50,50|1,1,1,1"
     "imbalance_rate_5|50,50,50,50|5,1,1,1"
-    "imbalance_rate_10|50,50,50,50|10,1,1,1"
     "imbalance_bw1|30,50,50,50|1,1,1,1"
     "imbalance_bw2|30,30,50,50|1,1,1,1"
     "imbalance_bw3|30,30,30,50|1,1,1,1"
@@ -100,7 +92,7 @@ for CONFIG in "${CONFIGS[@]}"; do
 done
 
 
-RATES=(2700 6500 8800)
+RATES=(2700 6500 8700)
 
 echo "Phase 3: Scenario comparison"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"

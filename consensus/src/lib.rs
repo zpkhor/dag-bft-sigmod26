@@ -18,6 +18,8 @@ const CERTIFIED_TPS_WINDOW_ROUNDS: Round = 20;
 struct CertifiedTpsTracker {
     /// Per-round, per-validator (created_at_ms, tx_count).
     rounds: HashMap<Round, HashMap<PublicKey, (u64, u64)>>,
+    /// Per-round, per-validator (sum_queue_delay_ms, batch_count).
+    quorum_stats: HashMap<Round, HashMap<PublicKey, (u64, u64)>>,
     window_rounds: Round,
 }
 
@@ -25,6 +27,7 @@ impl CertifiedTpsTracker {
     fn new(window_rounds: Round) -> Self {
         Self {
             rounds: HashMap::new(),
+            quorum_stats: HashMap::new(),
             window_rounds,
         }
     }
@@ -36,11 +39,39 @@ impl CertifiedTpsTracker {
         let round = certificate.round();
 
         self.rounds.entry(round).or_default().insert(origin, (created_at, tx_count));
+
+        let (sum_qd, batch_count) = certificate.header.quorum_metrics.values()
+            .fold((0u64, 0u64), |(sum, cnt), qm| (sum + qm.queue_delay_ms, cnt + 1));
+        if batch_count > 0 {
+            self.quorum_stats.entry(round).or_default()
+                .insert(origin, (sum_qd, batch_count));
+        }
     }
 
     /// Evict entries below min_round.
     fn evict(&mut self, min_round: Round) {
         self.rounds.retain(|&r, _| r >= min_round);
+        self.quorum_stats.retain(|&r, _| r >= min_round);
+    }
+
+    /// Average queue_delay_ms per validator over [stable_round - window, stable_round].
+    fn avg_queue_delay(&self, stable_round: Round) -> HashMap<PublicKey, f64> {
+        let min_round = stable_round.saturating_sub(self.window_rounds);
+        let mut totals: HashMap<PublicKey, (u64, u64)> = HashMap::new();
+        for (&round, validators) in &self.quorum_stats {
+            if round < min_round || round > stable_round {
+                continue;
+            }
+            for (pk, &(sum_qd, count)) in validators {
+                let entry = totals.entry(*pk).or_insert((0, 0));
+                entry.0 += sum_qd;
+                entry.1 += count;
+            }
+        }
+        totals.into_iter()
+            .filter(|(_, (_, count))| *count > 0)
+            .map(|(pk, (sum, count))| (pk, sum as f64 / count as f64))
+            .collect()
     }
 
     fn median_ts(validators: &HashMap<PublicKey, (u64, u64)>) -> u64 {
@@ -121,6 +152,228 @@ impl CertifiedTpsTracker {
     }
 }
 
+struct Migration {
+    from: PublicKey,
+    to: PublicKey,
+    rate: f64,
+    latency: u64,
+}
+
+/// Compute rerouting decisions: which donors should shed client load to which receivers.
+///
+/// Donors are identified by: spare capacity < threshold OR queue_delay >> median.
+/// Excess per donor is estimated as: estimated_input_rate - proportional_target.
+/// Receivers are filled greedily, preferring lowest latency.
+/// Per-account enumeration takes ranges from current_assignments (mutable — updated in place).
+fn compute_rerouting(
+    tps: &HashMap<PublicKey, f64>,
+    capacities: &HashMap<PublicKey, u64>,
+    avg_queue_delay: &HashMap<PublicKey, f64>,
+    latency_matrix: &BTreeMap<PublicKey, BTreeMap<PublicKey, u64>>,
+    sorted_keys: &[PublicKey],
+    current_assignments: &mut Vec<Vec<(u64, u64)>>,
+    f: usize,
+) -> Vec<MigrationNotice> {
+    let n = sorted_keys.len();
+    if n < 2 {
+        return vec![];
+    }
+
+    const SPARE_THRESHOLD: f64 = 50.0;
+    const QUEUE_DELAY_FACTOR: f64 = 3.0;
+    const HYSTERESIS_FRACTION: f64 = 0.10;
+
+    // Step 1: Compute spare capacity and congestion signal
+    let max_tps = tps.values().cloned().fold(0.0f64, f64::max);
+    let total_capacity: f64 = capacities.values().map(|&c| c as f64).sum();
+    if total_capacity <= 0.0 || max_tps <= 0.0 {
+        return vec![];
+    }
+
+    let spare: HashMap<PublicKey, f64> = sorted_keys.iter().map(|&pk| {
+        let t = tps.get(&pk).copied().unwrap_or(0.0);
+        let cap = capacities.get(&pk).copied().unwrap_or(0) as f64;
+        (pk, cap - t)
+    }).collect();
+
+    let median_qd = {
+        let mut qds: Vec<f64> = sorted_keys.iter()
+            .filter_map(|pk| avg_queue_delay.get(pk).copied())
+            .collect();
+        if qds.is_empty() {
+            return vec![];
+        }
+        qds.sort_by(|a, b| a.partial_cmp(b).unwrap());
+        qds[qds.len() / 2]
+    };
+
+    // Step 2: Classify donors and receivers
+    // Donor: at capacity (spare < threshold) OR congested (queue_delay >> median)
+    // Receiver: has spare AND not congested
+    let mut donors: Vec<PublicKey> = Vec::new();
+    let mut receiver_spare: HashMap<PublicKey, f64> = HashMap::new();
+
+    for &pk in sorted_keys {
+        let s = spare[&pk];
+        let qd = avg_queue_delay.get(&pk).copied().unwrap_or(0.0);
+        let congested = median_qd > 0.0 && qd > QUEUE_DELAY_FACTOR * median_qd;
+
+        if s < SPARE_THRESHOLD || congested {
+            donors.push(pk);
+        } else {
+            receiver_spare.insert(pk, s);
+        }
+    }
+
+    if donors.is_empty() || receiver_spare.is_empty() {
+        return vec![];
+    }
+
+    // Regime detection
+    if donors.len() > f {
+        info!(
+            "reroute: {} congested validators > f={}, quorum-limited",
+            donors.len(), f
+        );
+    }
+
+    // Step 3: Estimate excess per donor with hysteresis
+    // Each client sends ~ max_tps. Target load proportional to capacity share.
+    let mut donor_excess: Vec<(PublicKey, f64)> = donors.iter().filter_map(|&d| {
+        let cap = capacities.get(&d).copied().unwrap_or(0) as f64;
+        let target_load = max_tps * cap / total_capacity;
+        let excess = (max_tps - target_load).max(0.0);
+        let threshold = HYSTERESIS_FRACTION * cap;
+        if excess < threshold {
+            info!("reroute: validator {} excess {:.0} below hysteresis {:.0}, skipping", d, excess, threshold);
+            None
+        } else {
+            Some((d, excess))
+        }
+    }).collect();
+    if donor_excess.is_empty() {
+        return vec![];
+    }
+    donor_excess.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then_with(|| a.0.cmp(&b.0)));
+
+    // Step 4: Latency-aware greedy assignment (aggregate)
+    let pk_to_idx: HashMap<PublicKey, usize> = sorted_keys.iter()
+        .enumerate()
+        .map(|(i, pk)| (*pk, i))
+        .collect();
+
+    let get_latency = |from: &PublicKey, to: &PublicKey| -> u64 {
+        latency_matrix
+            .get(from)
+            .and_then(|row| row.get(to))
+            .copied()
+            .unwrap_or(0)
+    };
+
+    // Build (donor_index, donor, receiver, latency) pairs in deterministic order
+    let mut pairs: Vec<(usize, PublicKey, PublicKey, u64)> = Vec::new();
+    for (di, &(d, _)) in donor_excess.iter().enumerate() {
+        for &r in sorted_keys {
+            if receiver_spare.contains_key(&r) {
+                pairs.push((di, d, r, get_latency(&d, &r)));
+            }
+        }
+    }
+    pairs.sort_by(|a, b| a.3.cmp(&b.3));
+
+    let mut remaining_excess: Vec<f64> = donor_excess.iter().map(|(_, e)| *e).collect();
+    let mut remaining_spare = receiver_spare.clone();
+    let mut aggregate_migrations: Vec<Migration> = Vec::new();
+
+    for &(di, d, r, lat) in &pairs {
+        let excess = remaining_excess[di];
+        let avail = remaining_spare.get(&r).copied().unwrap_or(0.0);
+        if excess <= 0.0 || avail <= 0.0 {
+            continue;
+        }
+        let amount = excess.min(avail);
+        aggregate_migrations.push(Migration { from: d, to: r, rate: amount, latency: lat });
+        remaining_excess[di] -= amount;
+        *remaining_spare.get_mut(&r).unwrap() -= amount;
+    }
+
+    for (i, &remaining) in remaining_excess.iter().enumerate() {
+        if remaining > SPARE_THRESHOLD {
+            info!(
+                "reroute: validator {} has {:.0} tx/s unplaceable excess",
+                donor_excess[i].0, remaining
+            );
+        }
+    }
+
+    // Step 5: Per-account enumeration from current_assignments
+    // current_assignments[i] = list of (start, count) ranges currently assigned to validator i.
+    // Take ranges from donors and add to receivers, updating the state.
+    let mut per_account_migrations: Vec<MigrationNotice> = Vec::new();
+
+    for m in &aggregate_migrations {
+        let donor_tps = tps.get(&m.from).copied().unwrap_or(0.0);
+        if donor_tps <= 0.0 {
+            continue;
+        }
+        let donor_idx = pk_to_idx[&m.from];
+        let to_idx = pk_to_idx[&m.to];
+        if donor_idx >= current_assignments.len() || to_idx >= current_assignments.len() {
+            continue;
+        }
+
+        let total_assigned: u64 = current_assignments[donor_idx].iter().map(|(_, c)| c).sum();
+        if total_assigned == 0 {
+            continue;
+        }
+
+        let fraction = (m.rate / donor_tps).min(1.0);
+        let n_to_migrate = ((fraction * total_assigned as f64).ceil() as u64).min(total_assigned);
+
+        // Take ranges from the front of donor's assignments
+        let taken = take_ranges(&mut current_assignments[donor_idx], n_to_migrate);
+        let taken_total: u64 = taken.iter().map(|(_, c)| c).sum();
+
+        // Emit individual migration notices for taken accounts
+        for &(start, count) in &taken {
+            for i in 0..count {
+                per_account_migrations.push(MigrationNotice {
+                    account_id: start + i,
+                    new_target: m.to,
+                });
+            }
+        }
+
+        // Add taken ranges to receiver's assignments
+        current_assignments[to_idx].extend_from_slice(&taken);
+
+        info!(
+            "reroute: {:.0} tx/s ({}/{} accounts, {:.1}%) validator {} -> validator {} (latency: {}ms)",
+            m.rate, taken_total, total_assigned, fraction * 100.0, m.from, m.to, m.latency
+        );
+    }
+
+    per_account_migrations
+}
+
+/// Take up to `n` accounts from the front of a list of ranges, splitting if needed.
+fn take_ranges(ranges: &mut Vec<(u64, u64)>, n: u64) -> Vec<(u64, u64)> {
+    let mut taken = Vec::new();
+    let mut remaining = n;
+    while remaining > 0 && !ranges.is_empty() {
+        let (start, count) = ranges[0];
+        if count <= remaining {
+            taken.push(ranges.remove(0));
+            remaining -= count;
+        } else {
+            taken.push((start, remaining));
+            ranges[0] = (start + remaining, count - remaining);
+            remaining = 0;
+        }
+    }
+    taken
+}
+
 struct AccountCountsHistory {
     /// Per-round, per-validator account_counts extracted from certificates.
     /// Mirrors the DAG structure but stores only account_counts.
@@ -197,6 +450,24 @@ impl AccountCountsHistory {
             // debug!("stable_account_counts (safe_round={}) validator {}: total={} {:?}", safe_round, pk, total, counts);
             info!("stable_account_counts (safe_round={}) validator {}: total={} tx/s={:.1} tx/r={} tx/x={:.1}", safe_round, pk, total, tps, tpr, tpx);
         }
+    }
+
+    /// Aggregated per-validator account counts over [stable_round - window, stable_round].
+    fn stable_counts(&self, stable_round: Round, window: Round) -> HashMap<PublicKey, BTreeMap<u64, u64>> {
+        let min_round = stable_round.saturating_sub(window);
+        let mut result: HashMap<PublicKey, BTreeMap<u64, u64>> = HashMap::new();
+        for (&round, validators) in &self.dag {
+            if round < min_round || round > stable_round {
+                continue;
+            }
+            for (pk, (counts, _ts)) in validators {
+                let entry = result.entry(*pk).or_default();
+                for (acc, cnt) in counts {
+                    *entry.entry(*acc).or_insert(0) += cnt;
+                }
+            }
+        }
+        result
     }
 
     fn update(&mut self, certificate: &Certificate) {
@@ -357,6 +628,13 @@ impl Consensus {
             info!("Validator capacity: {} -> {} req/s", pk, cap);
         }
 
+        // Routing state: current_assignments[i] = list of (start, count) ranges assigned to validator i.
+        // Initialized from account_ranges, updated by compute_rerouting each evaluation round.
+        let mut current_assignments: Vec<Vec<(u64, u64)>> = self.committee.account_ranges
+            .iter()
+            .map(|(_, &(start, count))| vec![(start, count)])
+            .collect();
+
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_new_certificates.recv().await {
             info!("Processing {:?}", certificate);
@@ -370,6 +648,52 @@ impl Consensus {
                 account_history.log_stable(self.committee.size());
                 let stable_round = round.saturating_sub(2);
                 certified_tps_tracker.log(round, stable_round, &self.validator_capacities);
+
+                // Compute and log rerouting decisions
+                if let Some(tps) = certified_tps_tracker.get_tps(stable_round) {
+                    let avg_qd = certified_tps_tracker.avg_queue_delay(stable_round);
+                    let sorted_keys: Vec<PublicKey> = self.committee.authorities.keys().cloned().collect();
+                    let f = (self.committee.size() - 1) / 3;
+
+                    for &pk in &sorted_keys {
+                        let qd = avg_qd.get(&pk).copied().unwrap_or(0.0);
+                        info!("reroute_signal (round={}) validator {}: queue_delay={:.0}ms", round, pk, qd);
+                    }
+
+                    let migrations = compute_rerouting(
+                        &tps,
+                        &self.validator_capacities,
+                        &avg_qd,
+                        &self.client_validator_latency,
+                        &sorted_keys,
+                        &mut current_assignments,
+                        f,
+                    );
+                    if migrations.is_empty() {
+                        info!("reroute (round={}) no migration needed", round);
+                    } else {
+                        info!(
+                            "reroute (round={}) {} account migrations",
+                            round, migrations.len()
+                        );
+                        for m in migrations.iter().take(10) {
+                            info!(
+                                "reroute (round={}) account {} -> validator {}",
+                                round, m.account_id, m.new_target
+                            );
+                        }
+                        if migrations.len() > 10 {
+                            info!("reroute (round={}) ... and {} more", round, migrations.len() - 10);
+                        }
+                        // Send migration notices to application layer
+                        if let Err(e) = self.tx_output.send(
+                            ConsensusOutput::Migrations(migrations)
+                        ).await {
+                            warn!("Failed to send migration notices: {}", e);
+                        }
+                    }
+                }
+
                 certified_tps_tracker.evict(stable_round.saturating_sub(CERTIFIED_TPS_WINDOW_ROUNDS));
             }
             state
@@ -564,3 +888,4 @@ impl Consensus {
         ordered
     }
 }
+// TODO: develop our own algorithm if needed (after reviewing this algo)
