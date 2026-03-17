@@ -35,6 +35,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--validator-workers=<PAIR>... 'PUBKEY_BASE64:addr1+addr2 per validator'")
         .args_from_usage("--reply-addr=[ADDR] 'Address to listen for migration notices'")
         .args_from_usage("--own-validator=<KEY> 'Base64 public key of this client\\'s home validator'")
+        .args_from_usage("--round-robin 'Enable round-robin routing across all validators'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -97,6 +98,8 @@ async fn main() -> Result<()> {
         .map(|a| a.parse().context("Invalid --reply-addr"))
         .transpose()?;
 
+    let round_robin = matches.is_present("round-robin");
+
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
     ).context("Invalid --own-validator public key")?;
@@ -129,6 +132,10 @@ async fn main() -> Result<()> {
 
     let f_plus_one = (num_validators - 1) / 3 + 1;
 
+    if round_robin {
+        info!("Round-robin routing enabled across {} validators", num_validators);
+    }
+
     let client = Client {
         all_validators,
         size,
@@ -140,6 +147,7 @@ async fn main() -> Result<()> {
         reply_addr,
         own_validator,
         f_plus_one,
+        round_robin,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -160,6 +168,7 @@ struct Client {
     reply_addr: Option<SocketAddr>,
     own_validator: PublicKey,
     f_plus_one: usize,
+    round_robin: bool,
 }
 
 impl Client {
@@ -237,6 +246,15 @@ impl Client {
         let interval = interval(Duration::from_millis(BURST_DURATION));
         tokio::pin!(interval);
 
+        // For round-robin mode: sorted validator keys and per-account validator counter
+        let sorted_validators: Vec<PublicKey> = {
+            let mut keys: Vec<PublicKey> = validator_senders.keys().copied().collect();
+            keys.sort();
+            keys
+        };
+        let num_validators = sorted_validators.len();
+        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
+
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
 
@@ -247,13 +265,21 @@ impl Client {
             for x in 0..burst {
                 let account_id = self.account_start + rng.gen_range(0, self.num_accounts);
 
-                // Check routing table for this account
-                let target_pk = routing_table.read().unwrap().get(&account_id).copied();
-                let senders = match target_pk {
-                    Some(pk) if pk != own_validator => {
-                        validator_senders.get(&pk).unwrap_or(own_senders)
+                let senders = if self.round_robin {
+                    let v_idx = validator_rr.entry(account_id)
+                        .or_insert((account_id as usize) % num_validators);
+                    let target_pk = sorted_validators[*v_idx];
+                    *v_idx = (*v_idx + 1) % num_validators;
+                    &validator_senders[&target_pk]
+                } else {
+                    // Check routing table for this account
+                    let target_pk = routing_table.read().unwrap().get(&account_id).copied();
+                    match target_pk {
+                        Some(pk) if pk != own_validator => {
+                            validator_senders.get(&pk).unwrap_or(own_senders)
+                        }
+                        _ => own_senders,
                     }
-                    _ => own_senders,
                 };
 
                 let w_idx = {

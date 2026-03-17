@@ -25,7 +25,11 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
     bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
+    routing_mode = os.environ.get('ROUTING_MODE', '')
     baseline = os.environ.get('BASELINE', '0') == '1'
+    round_robin = routing_mode == 'round-robin'
+    if round_robin:
+        baseline = True
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     tc_netem_limit = int(os.environ.get('TC_NETEM_LIMIT', 0))
     tc_netem_limit_client = int(os.environ.get('TC_NETEM_LIMIT_CLIENT', 0))
@@ -62,6 +66,7 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
             baseline=baseline,
             tc_netem_limit=tc_netem_limit,
             tc_netem_limit_client=tc_netem_limit_client,
+            round_robin=round_robin,
         ).run(debug)
         print(ret.result())
     except BenchError as e:

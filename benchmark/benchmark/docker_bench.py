@@ -49,6 +49,7 @@ class DockerBench:
         baseline=False,
         tc_netem_limit=0,
         tc_netem_limit_client=0,
+        round_robin=False,
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -75,6 +76,7 @@ class DockerBench:
             self.bandwidths = [bandwidth] * nodes
 
         self.baseline = baseline
+        self.round_robin = round_robin
         self.primary_bw = primary_bw
         primary_mbit = self._parse_bw_mbit(primary_bw)
         self.worker_bws = []
@@ -428,12 +430,13 @@ networks:
                 own_name = names[i]
                 reply_addr = committee.json['authorities'][own_name]['client_reply']
 
+                rr_flag = " --round-robin" if self.round_robin else ""
                 c_cmd = (
                     f"./benchmark_client --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} "
                     f"{account_args} --client-id {client_id_val} "
                     f"--reply-addr {reply_addr} --own-validator {own_name} "
-                    f"{vw_args}"
+                    f"{vw_args}{rr_flag}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 running_rate += validator_rates[i]
