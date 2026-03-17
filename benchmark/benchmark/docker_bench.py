@@ -221,6 +221,10 @@ class DockerBench:
             services.append(service)
 
         # Client containers
+        max_bw = -1
+        for bw in self.bandwidths:
+            max_bw = max(max_bw, self._parse_bw_mbit(bw))
+        max_bw = self._format_bw(max_bw)
         for i in range(nodes):
             client_ip = client_ips[i]
             client_command = client_commands[i]
@@ -250,7 +254,7 @@ class DockerBench:
       - OWN_VALIDATOR_IP={own_validator_ip}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
-      - TC_BANDWIDTH={self.bandwidths[i]}
+      - TC_BANDWIDTH={max_bw}
       - WAIT_PORTS={client_wait_ports}"""
 
             services.append(service)
