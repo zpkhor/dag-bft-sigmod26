@@ -47,6 +47,8 @@ class DockerBench:
         primary_bw="500mbit",
         bandwidths=None,
         baseline=False,
+        tc_netem_limit=0,
+        tc_netem_limit_client=0,
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -59,6 +61,8 @@ class DockerBench:
         self.cpus_per_validator = cpus_per_validator
         self.lan_bandwidth = lan_bandwidth
         self.check_mismatch = check_mismatch
+        self.tc_netem_limit = tc_netem_limit
+        self.tc_netem_limit_client = tc_netem_limit_client
 
         # QoS bandwidth allocation
         nodes = self.bench_parameters.nodes[0]
@@ -197,6 +201,7 @@ class DockerBench:
       - ./.db-{i}-{w}:/app/.db-{i}-{w}:rw"""
 
             tokio_env = f"\n      - TOKIO_WORKER_THREADS={tokio_threads}" if tokio_threads > 0 else ""
+            netem_limit_env = f"\n      - TC_NETEM_LIMIT={self.tc_netem_limit}" if self.tc_netem_limit > 0 else ""
             service += f"""
     environment:
       - VALIDATOR_ID={i}
@@ -207,7 +212,7 @@ class DockerBench:
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
       - OWN_CLIENT_IP={client_ips[i]}
-      - PRIMARY_PORTS={primary_ports_str}{tokio_env}
+      - PRIMARY_PORTS={primary_ports_str}{tokio_env}{netem_limit_env}
       - PRIMARY_CMD={cmds['primary']}"""
 
             # Join worker commands with semicolons
@@ -236,6 +241,7 @@ class DockerBench:
                 c_start = i * slot + self.cpus_per_validator
                 client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 3}"'
 
+            netem_limit_client_env = f"\n      - TC_NETEM_LIMIT_CLIENT={self.tc_netem_limit_client}" if self.tc_netem_limit_client > 0 else ""
             service = f"""  client-{i}:
     image: {self.IMAGE_NAME}
     container_name: narwhal-client-{i}
@@ -255,7 +261,7 @@ class DockerBench:
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
       - TC_BANDWIDTH={max_bw}
-      - WAIT_PORTS={client_wait_ports}"""
+      - WAIT_PORTS={client_wait_ports}{netem_limit_client_env}"""
 
             services.append(service)
 # end of for loop

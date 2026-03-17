@@ -12,7 +12,7 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
         if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
             JITTER_ARG="$TC_JITTER"
         fi
-        tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+        tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT_CLIENT:-1000000}
 
         # Exempt own validator from latency (own validator is colocated)
         if [ -n "$OWN_VALIDATOR_IP" ]; then
@@ -34,7 +34,7 @@ elif [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
     if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
         JITTER_ARG="$TC_JITTER"
     fi
-    tc qdisc add dev eth0 parent 1:2 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT:-1000000}
+    tc qdisc add dev eth0 parent 1:2 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT_CLIENT:-1000000}
 
     echo "tc latency rules applied: own_validator=$OWN_VALIDATOR_IP (no delay), others=${TC_LATENCY} jitter=${TC_JITTER:-none}"
     tc qdisc show dev eth0

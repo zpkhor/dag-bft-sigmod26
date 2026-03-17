@@ -27,6 +27,8 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     baseline = os.environ.get('BASELINE', '0') == '1'
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
+    tc_netem_limit = int(os.environ.get('TC_NETEM_LIMIT', 0))
+    tc_netem_limit_client = int(os.environ.get('TC_NETEM_LIMIT_CLIENT', 0))
     bench_params = {
         'faults': 0,
         'nodes': 4,
@@ -58,6 +60,8 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
             primary_bw=primary_bw,
             bandwidths=bandwidths,
             baseline=baseline,
+            tc_netem_limit=tc_netem_limit,
+            tc_netem_limit_client=tc_netem_limit_client,
         ).run(debug)
         print(ret.result())
     except BenchError as e:
