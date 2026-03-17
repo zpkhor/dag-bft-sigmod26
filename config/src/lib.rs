@@ -79,6 +79,9 @@ pub struct Parameters {
     /// The delay after which the workers seal a batch of transactions, even if `max_batch_size`
     /// is not reached. Denominated in ms.
     pub max_batch_delay: u64,
+    /// When true, disables account_counts tracking and rerouting computation.
+    #[serde(default)]
+    pub baseline_mode: bool,
 }
 
 impl Default for Parameters {
@@ -91,6 +94,7 @@ impl Default for Parameters {
             sync_retry_nodes: 3,
             batch_size: 500_000,
             max_batch_delay: 100,
+            baseline_mode: false,
         }
     }
 }
@@ -139,6 +143,7 @@ pub struct Authority {
     pub client_reply: SocketAddr,
     /// Estimated max request throughput (requests/sec)
     /// Used as initial capacity; may be updated via control plane consensus.
+    #[serde(default)]
     pub capacity_by_bw: u64,
 }
 

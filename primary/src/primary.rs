@@ -158,6 +158,7 @@ impl Primary {
             /* rx_proposer */ rx_headers,
             tx_new_certificates,
             /* tx_proposer */ tx_parents,
+            parameters.baseline_mode,
         );
 
         // Keeps track of the latest consensus round and allows other tasks to clean up their their internal state

@@ -68,6 +68,8 @@ pub struct Core {
     network: ReliableSender,
     /// Keeps the cancel handlers of the messages we sent.
     cancel_handlers: HashMap<Round, Vec<CancelHandler>>,
+    /// When true, skip account_counts validation (baseline mode).
+    baseline_mode: bool,
 }
 
 impl Core {
@@ -86,6 +88,7 @@ impl Core {
         rx_proposer: Receiver<Header>,
         tx_new_certificates: Sender<Certificate>,
         tx_proposer: Sender<(Vec<Digest>, Round)>,
+        baseline_mode: bool,
     ) {
         tokio::spawn(async move {
             Self {
@@ -110,6 +113,7 @@ impl Core {
                 certificates_aggregators: HashMap::with_capacity(2 * gc_depth as usize),
                 network: ReliableSender::new(),
                 cancel_handlers: HashMap::with_capacity(2 * gc_depth as usize),
+                baseline_mode,
             }
             .run()
             .await;
@@ -181,7 +185,8 @@ impl Core {
         }
 
         // Verify that the header's account_counts matches the sum of per-batch counts we computed.
-        if header.author != self.name {
+        // Skipped in baseline mode: account_counts are not tracked.
+        if header.author != self.name && !self.baseline_mode {
             let mut expected: BTreeMap<u64, u64> = BTreeMap::new();
             for (digest, worker_id) in &header.payload {
                 let key = [digest.as_ref(), &worker_id.to_le_bytes()].concat();

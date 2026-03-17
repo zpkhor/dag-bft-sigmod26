@@ -581,6 +581,8 @@ pub struct Consensus {
 
     /// The genesis certificates.
     genesis: Vec<Certificate>,
+    /// When true, disables account_counts tracking and rerouting computation.
+    baseline_mode: bool,
 }
 
 impl Consensus {
@@ -591,6 +593,7 @@ impl Consensus {
         rx_new_certificates: Receiver<Certificate>,
         tx_feedback: Sender<Certificate>,
         tx_output: Sender<ConsensusOutput>,
+        baseline_mode: bool,
     ) {
         let validator_capacities: HashMap<PublicKey, u64> = committee
             .authorities
@@ -610,6 +613,7 @@ impl Consensus {
                 genesis: Certificate::genesis(&committee),
                 validator_capacities,
                 client_validator_latency,
+                baseline_mode,
             }
             .run()
             .await;
@@ -641,9 +645,11 @@ impl Consensus {
             let round = certificate.round();
 
             // Add the new certificate to the local storage.
-            account_history.update(&certificate);
-            certified_tps_tracker.record(&certificate);
-            if certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
+            if !self.baseline_mode {
+                account_history.update(&certificate);
+                certified_tps_tracker.record(&certificate);
+            }
+            if !self.baseline_mode && certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
                 // account_history.log();
                 account_history.log_stable(self.committee.size());
                 let stable_round = round.saturating_sub(2);

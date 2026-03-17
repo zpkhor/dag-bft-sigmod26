@@ -118,6 +118,7 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 rx_new_certificates,
                 tx_feedback,
                 tx_output,
+                parameters.baseline_mode,
             );
             analyze(rx_output, analyze_committee, name).await;
         }

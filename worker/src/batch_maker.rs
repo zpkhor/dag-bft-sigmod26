@@ -38,6 +38,8 @@ pub struct BatchMaker {
     current_batch_size: usize,
     /// A network sender to broadcast the batches to the other workers.
     network: ReliableSender,
+    /// When true, account_counts are not computed (baseline mode).
+    baseline_mode: bool,
 }
 
 impl BatchMaker {
@@ -47,6 +49,7 @@ impl BatchMaker {
         rx_transaction: Receiver<Transaction>,
         tx_message: Sender<QuorumWaiterMessage>,
         workers_addresses: Vec<(PublicKey, SocketAddr)>,
+        baseline_mode: bool,
     ) {
         tokio::spawn(async move {
             Self {
@@ -58,6 +61,7 @@ impl BatchMaker {
                 current_batch: Vec::with_capacity(batch_size * 2),
                 current_batch_size: 0,
                 network: ReliableSender::new(),
+                baseline_mode,
             }
             .run()
             .await;
@@ -104,11 +108,16 @@ impl BatchMaker {
         let txs: Vec<Transaction> = self.current_batch.drain(..).collect();
 
         // Build per-account tx counts from the first 8 bytes of each transaction.
-        let mut account_counts: BTreeMap<u64, u64> = BTreeMap::new();
-        for tx in &txs {
-            let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
-            *account_counts.entry(account_id).or_insert(0) += 1;
-        }
+        let account_counts: BTreeMap<u64, u64> = if self.baseline_mode {
+            BTreeMap::new()
+        } else {
+            let mut m = BTreeMap::new();
+            for tx in &txs {
+                let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+                *m.entry(account_id).or_insert(0) += 1;
+            }
+            m
+        };
 
         #[cfg(feature = "benchmark")]
         // Look for sample txs (type byte 0) and gather their counter and account_id.

@@ -25,6 +25,7 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
     bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
+    baseline = os.environ.get('BASELINE', '0') == '1'
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     bench_params = {
         'faults': 0,
@@ -56,6 +57,7 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
             check_mismatch=check_mismatch,
             primary_bw=primary_bw,
             bandwidths=bandwidths,
+            baseline=baseline,
         ).run(debug)
         print(ret.result())
     except BenchError as e:
