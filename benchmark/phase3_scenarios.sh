@@ -77,14 +77,10 @@ CONFIGS=(
     # "imbalance_rate_5|50,50,50,50|5,1,1,1|1|"
     # "imbalance_bw1|30,50,50,50|1,1,1,1|1|"
     # "imbalance_bw2|30,30,50,50|1,1,1,1|1|"
-    "balanced_ns3|50,50,50,50|1,1,1,1|3|"
-    "imbalance_rate_5_ns3|50,50,50,50|5,1,1,1|3|"
-    "imbalance_bw1_ns3|30,50,50,50|1,1,1,1|3|"
-    "imbalance_bw2_ns3|30,30,50,50|1,1,1,1|3|"
-    "balanced_rr|50,50,50,50|1,1,1,1|3|round-robin"
-    "imbalance_rate_5_rr|50,50,50,50|5,1,1,1|3|round-robin"
-    "imbalance_bw1_rr|30,50,50,50|1,1,1,1|3|round-robin"
-    "imbalance_bw2_rr|30,30,50,50|1,1,1,1|3|round-robin"
+    "imbalance_bw1_ns3|10,50,50,50|1,1,1,1|3|"
+    "imbalance_bw2_ns3|10,10,50,50|1,1,1,1|3|"
+    "imbalance_bw1_rr|10,50,50,50|1,1,1,1|3|round-robin"
+    "imbalance_bw2_rr|10,10,50,50|1,1,1,1|3|round-robin"
 )
 
 # Validate unique labels
