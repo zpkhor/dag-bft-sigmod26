@@ -18,18 +18,32 @@ from plot_worker_batches import (
 COLUMN_ORDER = [
     "balanced",
     "imbalance_rate_5",
-    "imbalance_rate_10",
     "imbalance_bw1",
     "imbalance_bw2",
-    "imbalance_bw3",
+    "balanced_ns3",
+    "imbalance_rate_5_ns3",
+    "imbalance_bw1_ns3",
+    "imbalance_bw2_ns3",
+    "balanced_rr",
+    "imbalance_rate_5_rr",
+    "imbalance_bw1_rr",
+    "imbalance_bw2_rr",
 ]
 
 
-INCLUDED = ["balanced",
+INCLUDED = [
+    "balanced",
     "imbalance_rate_5",
     "imbalance_bw1",
     "imbalance_bw2",
-    "imbalance_bw3",
+    "balanced_ns3",
+    "imbalance_rate_5_ns3",
+    "imbalance_bw1_ns3",
+    "imbalance_bw2_ns3",
+    "balanced_rr",
+    "imbalance_rate_5_rr",
+    "imbalance_bw1_rr",
+    "imbalance_bw2_rr",
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")

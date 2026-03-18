@@ -8,7 +8,7 @@ WARMUP=${WARMUP:-10}
 cd "$(dirname "$0")"
 RESULTS_DIR="$(pwd)/results/phase3_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260315_204913/merged_output.log
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase3_20260317_224527/merged_output.log
 
 check_certified_tps_consistency() {
     local run_dir="$1"
@@ -71,13 +71,20 @@ check_certified_tps_consistency() {
     rm -rf "$tmpdir"
 }
 
-# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS"
+# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NUM_SENDERS|ROUTING_MODE"
 CONFIGS=(
-    "balanced|50,50,50,50|1,1,1,1"
-    "imbalance_rate_5|50,50,50,50|5,1,1,1"
-    "imbalance_bw1|30,50,50,50|1,1,1,1"
-    "imbalance_bw2|30,30,50,50|1,1,1,1"
-    "imbalance_bw3|30,30,30,50|1,1,1,1"
+    # "balanced|50,50,50,50|1,1,1,1|1|"
+    # "imbalance_rate_5|50,50,50,50|5,1,1,1|1|"
+    # "imbalance_bw1|30,50,50,50|1,1,1,1|1|"
+    # "imbalance_bw2|30,30,50,50|1,1,1,1|1|"
+    "balanced_ns3|50,50,50,50|1,1,1,1|3|"
+    "imbalance_rate_5_ns3|50,50,50,50|5,1,1,1|3|"
+    "imbalance_bw1_ns3|30,50,50,50|1,1,1,1|3|"
+    "imbalance_bw2_ns3|30,30,50,50|1,1,1,1|3|"
+    "balanced_rr|50,50,50,50|1,1,1,1|3|round-robin"
+    "imbalance_rate_5_rr|50,50,50,50|5,1,1,1|3|round-robin"
+    "imbalance_bw1_rr|30,50,50,50|1,1,1,1|3|round-robin"
+    "imbalance_bw2_rr|30,30,50,50|1,1,1,1|3|round-robin"
 )
 
 # Validate unique labels
@@ -92,7 +99,7 @@ for CONFIG in "${CONFIGS[@]}"; do
 done
 
 
-RATES=(2700 6500 8700)
+RATES=(2700 6500 8800)
 
 echo "Phase 3: Scenario comparison"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
@@ -100,7 +107,7 @@ echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS <<< "$CONFIG"
+    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NUM_SENDERS ROUTING_MODE <<< "$CONFIG"
 
     for RATE in "${RATES[@]}"; do
         for RETRY in $(seq 1 "$RETRIES"); do
@@ -108,11 +115,11 @@ for CONFIG in "${CONFIGS[@]}"; do
             mkdir -p "$RUN_DIR"
 
             echo ""
-            echo "--- $LABEL | bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS rate=$RATE Run: $RETRY/$RETRIES ---"
+            echo "--- $LABEL | bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS rate=$RATE ns=$NUM_SENDERS rr=$ROUTING_MODE Run: $RETRY/$RETRIES ---"
 
-            CMD="BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit"
+            CMD="BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP NUM_SENDERS=$NUM_SENDERS ROUTING_MODE=$ROUTING_MODE fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit"
             echo "CMD: $CMD" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
+            OUTPUT=$(BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP NUM_SENDERS=$NUM_SENDERS ROUTING_MODE=$ROUTING_MODE fab docker --cpus-per-validator=12 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             mv logs "$RUN_DIR/logs" 2>/dev/null || true
