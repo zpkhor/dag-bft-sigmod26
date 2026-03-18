@@ -50,7 +50,10 @@ class DockerBench:
         tc_netem_limit=0,
         tc_netem_limit_client=0,
         round_robin=False,
+        num_senders=1,
     ):
+        assert num_senders >= 1, "num_senders must be at least 1"
+        self.num_senders = num_senders
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
             self.node_parameters = NodeParameters(node_parameters_dict)
@@ -431,12 +434,13 @@ networks:
                 reply_addr = committee.json['authorities'][own_name]['client_reply']
 
                 rr_flag = " --round-robin" if self.round_robin else ""
+                senders_flag = f" --num-senders {self.num_senders}" if self.num_senders > 1 else ""
                 c_cmd = (
                     f"./benchmark_client --size {self.tx_size} "
                     f"--rate {validator_rates[i]} --nodes {nodes_arg} "
                     f"{account_args} --client-id {client_id_val} "
                     f"--reply-addr {reply_addr} --own-validator {own_name} "
-                    f"{vw_args}{rr_flag}"
+                    f"{vw_args}{rr_flag}{senders_flag}"
                 )
                 c_cmd += f" 2> /logs/client-{i}-0.log"
                 running_rate += validator_rates[i]

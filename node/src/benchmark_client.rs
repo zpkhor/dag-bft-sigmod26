@@ -11,7 +11,8 @@ use futures::sink::SinkExt as _;
 use futures::stream::StreamExt as _;
 use log::{info, warn};
 use primary::MigrationMessage;
-use rand::Rng;
+use rand::rngs::StdRng;
+use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
@@ -36,6 +37,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--reply-addr=[ADDR] 'Address to listen for migration notices'")
         .args_from_usage("--own-validator=<KEY> 'Base64 public key of this client\\'s home validator'")
         .args_from_usage("--round-robin 'Enable round-robin routing across all validators'")
+        .args_from_usage("--num-senders=[INT] 'Number of independent sender tasks (default 1)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -99,6 +101,12 @@ async fn main() -> Result<()> {
         .transpose()?;
 
     let round_robin = matches.is_present("round-robin");
+    let num_senders = matches
+        .value_of("num-senders")
+        .unwrap_or("1")
+        .parse::<usize>()
+        .context("num-senders must be a positive integer")?;
+    assert!(num_senders > 0, "num-senders must be at least 1");
 
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
@@ -148,6 +156,7 @@ async fn main() -> Result<()> {
         own_validator,
         f_plus_one,
         round_robin,
+        num_senders,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -169,22 +178,11 @@ struct Client {
     own_validator: PublicKey,
     f_plus_one: usize,
     round_robin: bool,
+    num_senders: usize,
 }
 
 impl Client {
-    pub async fn send(&self) -> Result<()> {
-        if self.size < 17 {
-            return Err(anyhow::Error::msg(
-                "Transaction size must be at least 17 bytes (8 prefix + 1 type + 8 counter)",
-            ));
-        }
-        if self.num_accounts == 0 {
-            return Err(anyhow::Error::msg(
-                "num-accounts must be greater than 0",
-            ));
-        }
-
-        // Connect to all validators' workers.
+    async fn connect_all_validators(&self) -> Result<HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>>> {
         let mut validator_senders: HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>> = HashMap::new();
         for (pk, addrs) in &self.all_validators {
             let mut senders = Vec::new();
@@ -207,9 +205,22 @@ impl Client {
             }
             validator_senders.insert(*pk, senders);
         }
+        Ok(validator_senders)
+    }
 
-        // Routing table: account_id -> target validator pk.
-        // Accounts not in the table go to own validator (default).
+    pub async fn send(&self) -> Result<()> {
+        if self.size < 17 {
+            return Err(anyhow::Error::msg(
+                "Transaction size must be at least 17 bytes (8 prefix + 1 type + 8 counter)",
+            ));
+        }
+        if self.num_accounts == 0 {
+            return Err(anyhow::Error::msg(
+                "num-accounts must be greater than 0",
+            ));
+        }
+
+        // Routing table: account_id -> target validator pk (shared across all senders).
         let routing_table: Arc<RwLock<HashMap<u64, PublicKey>>> = Arc::new(RwLock::new(HashMap::new()));
 
         // Spawn migration notice listener if configured.
@@ -223,97 +234,60 @@ impl Client {
             });
         }
 
-        self.send_with_routing(validator_senders, routing_table).await
-    }
-
-    async fn send_with_routing(
-        &self,
-        validator_senders: HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>>,
-        routing_table: Arc<RwLock<HashMap<u64, PublicKey>>>,
-    ) -> Result<()> {
-        const PRECISION: u64 = 20;
-        const BURST_DURATION: u64 = 1000 / PRECISION;
-
-        let own_validator = self.own_validator;
-        let own_senders = &validator_senders[&own_validator];
-        let num_workers = own_senders.len();
-        let burst = self.rate / PRECISION;
-        let mut tx = BytesMut::with_capacity(self.size);
-        let mut counter = 0u64;
-        let mut rng = rand::thread_rng();
-        let mut r = rng.gen();
-        let mut worker_rr: HashMap<u64, usize> = HashMap::new();
-        let interval = interval(Duration::from_millis(BURST_DURATION));
-        tokio::pin!(interval);
-
-        // For round-robin mode: sorted validator keys and per-account validator counter
-        let sorted_validators: Vec<PublicKey> = {
-            let mut keys: Vec<PublicKey> = validator_senders.keys().copied().collect();
-            keys.sort();
-            keys
-        };
-        let num_validators = sorted_validators.len();
-        let mut validator_rr: HashMap<u64, usize> = HashMap::new();
+        let k = self.num_senders;
+        let base_shard_accounts = self.num_accounts / k as u64;
+        let base_shard_rate = self.rate / k as u64;
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
+        info!("Spawning {} sender tasks", k);
 
-        'main: loop {
-            interval.as_mut().tick().await;
-            let now = Instant::now();
+        const PRECISION: u64 = 20;
+        const BURST_DURATION: u64 = 1000 / PRECISION;
 
-            for x in 0..burst {
-                let account_id = self.account_start + rng.gen_range(0, self.num_accounts);
+        let mut handles = Vec::new();
+        for i in 0..k {
+            let shard_account_start = self.account_start + i as u64 * base_shard_accounts;
+            let shard_num_accounts = if i == k - 1 {
+                self.num_accounts - (k as u64 - 1) * base_shard_accounts
+            } else {
+                base_shard_accounts
+            };
+            let shard_rate = if i == k - 1 {
+                self.rate - (k as u64 - 1) * base_shard_rate
+            } else {
+                base_shard_rate
+            };
 
-                let senders = if self.round_robin {
-                    let v_idx = validator_rr.entry(account_id)
-                        .or_insert((account_id as usize) % num_validators);
-                    let target_pk = sorted_validators[*v_idx];
-                    *v_idx = (*v_idx + 1) % num_validators;
-                    &validator_senders[&target_pk]
-                } else {
-                    // Check routing table for this account
-                    let target_pk = routing_table.read().unwrap().get(&account_id).copied();
-                    match target_pk {
-                        Some(pk) if pk != own_validator => {
-                            validator_senders.get(&pk).unwrap_or(own_senders)
-                        }
-                        _ => own_senders,
-                    }
-                };
+            // Each shard opens its own TCP connections
+            let validator_senders = self.connect_all_validators().await?;
+            let rt = routing_table.clone();
+            let is_sample_shard = i == 0;
+            let own_validator = self.own_validator;
+            let round_robin = self.round_robin;
+            let size = self.size;
+            let client_id = self.client_id;
+            let stagger_ms = BURST_DURATION * i as u64 / k as u64;
 
-                let w_idx = {
-                    let entry = worker_rr.entry(account_id).or_insert((account_id as usize) % num_workers);
-                    let w = *entry;
-                    *entry = (w + 1) % num_workers;
-                    w
-                };
+            handles.push(tokio::spawn(async move {
+                sleep(Duration::from_millis(stagger_ms)).await;
+                send_shard(
+                    validator_senders,
+                    rt,
+                    own_validator,
+                    round_robin,
+                    shard_account_start,
+                    shard_num_accounts,
+                    shard_rate,
+                    size,
+                    client_id,
+                    is_sample_shard,
+                ).await
+            }));
+        }
 
-                tx.put_u64(account_id); // bytes 0-7: account_id prefix
-                if x == counter % burst {
-                    // NOTE: This log entry is used to compute performance.
-                    info!("Sending sample transaction {} account {} client {}", counter, account_id, self.client_id);
-
-                    tx.put_u8(0u8); // Sample txs start with 0.
-                    tx.put_u64(counter); // This counter identifies the tx.
-                } else {
-                    r += 1;
-                    tx.put_u8(1u8); // Standard txs start with 1.
-                    tx.put_u64(r); // Ensures all clients send different txs.
-                };
-
-                tx.resize(self.size, 0u8);
-                let bytes = tx.split().freeze();
-                if let Err(e) = senders[w_idx].send(bytes) {
-                    warn!("Failed to queue transaction: {}", e);
-                    break 'main;
-                }
-            }
-            if now.elapsed().as_millis() > BURST_DURATION as u128 {
-                // NOTE: This log entry is used to compute performance.
-                warn!("Transaction rate too high for this client");
-            }
-            counter += 1;
+        for h in handles {
+            h.await??;
         }
         Ok(())
     }
@@ -330,6 +304,107 @@ impl Client {
         }))
         .await;
     }
+}
+
+async fn send_shard(
+    validator_senders: HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>>,
+    routing_table: Arc<RwLock<HashMap<u64, PublicKey>>>,
+    own_validator: PublicKey,
+    round_robin: bool,
+    account_start: u64,
+    num_accounts: u64,
+    rate: u64,
+    size: usize,
+    client_id: u64,
+    is_sample_shard: bool,
+) -> Result<()> {
+    const PRECISION: u64 = 20;
+    const BURST_DURATION: u64 = 1000 / PRECISION;
+
+    let own_senders = &validator_senders[&own_validator];
+    let num_workers = own_senders.len();
+    let mut tx = BytesMut::with_capacity(size);
+    let mut counter = 0u64;
+    let mut rng = StdRng::from_entropy();
+    let mut r: u64 = rng.gen();
+    let mut worker_rr: HashMap<u64, usize> = HashMap::new();
+    let interval = interval(Duration::from_millis(BURST_DURATION));
+    tokio::pin!(interval);
+    // Cumulative send count to avoid truncation loss from rate/PRECISION.
+    // On tick `counter`, send exactly `rate*(counter+1)/PRECISION - rate*counter/PRECISION` txs.
+    let mut total_sent = 0u64;
+
+    // For round-robin mode: sorted validator keys and per-account validator counter
+    let sorted_validators: Vec<PublicKey> = {
+        let mut keys: Vec<PublicKey> = validator_senders.keys().copied().collect();
+        keys.sort();
+        keys
+    };
+    let num_validators = sorted_validators.len();
+    let mut validator_rr: HashMap<u64, usize> = HashMap::new();
+
+    'main: loop {
+        interval.as_mut().tick().await;
+        let now = Instant::now();
+
+        let next_total = rate * (counter + 1) / PRECISION;
+        let burst = next_total - total_sent;
+
+        for x in 0..burst {
+            let account_id = account_start + rng.gen_range(0, num_accounts);
+
+            let senders = if round_robin {
+                let v_idx = validator_rr.entry(account_id)
+                    .or_insert((account_id as usize) % num_validators);
+                let target_pk = sorted_validators[*v_idx];
+                *v_idx = (*v_idx + 1) % num_validators;
+                &validator_senders[&target_pk]
+            } else {
+                // Check routing table for this account
+                let target_pk = routing_table.read().unwrap().get(&account_id).copied();
+                match target_pk {
+                    Some(pk) if pk != own_validator => {
+                        validator_senders.get(&pk).unwrap_or(own_senders)
+                    }
+                    _ => own_senders,
+                }
+            };
+
+            let w_idx = {
+                let entry = worker_rr.entry(account_id).or_insert((account_id as usize) % num_workers);
+                let w = *entry;
+                *entry = (w + 1) % num_workers;
+                w
+            };
+
+            tx.put_u64(account_id); // bytes 0-7: account_id prefix
+            if is_sample_shard && burst > 0 && x == counter % burst {
+                // NOTE: This log entry is used to compute performance.
+                info!("Sending sample transaction {} account {} client {}", counter, account_id, client_id);
+
+                tx.put_u8(0u8); // Sample txs start with 0.
+                tx.put_u64(counter); // This counter identifies the tx.
+            } else {
+                r += 1;
+                tx.put_u8(1u8); // Standard txs start with 1.
+                tx.put_u64(r); // Ensures all clients send different txs.
+            };
+
+            tx.resize(size, 0u8);
+            let bytes = tx.split().freeze();
+            if let Err(e) = senders[w_idx].send(bytes) {
+                warn!("Failed to queue transaction: {}", e);
+                break 'main;
+            }
+        }
+        total_sent = next_total;
+        if now.elapsed().as_millis() > BURST_DURATION as u128 {
+            // NOTE: This log entry is used to compute performance.
+            warn!("Transaction rate too high for this client");
+        }
+        counter += 1;
+    }
+    Ok(())
 }
 
 /// Listen for migration notices from validators, track f+1 matching, update routing table.
