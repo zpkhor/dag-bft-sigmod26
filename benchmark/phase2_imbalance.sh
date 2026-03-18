@@ -3,13 +3,13 @@
 # Set RATES env var based on Phase 1 results (~30%, ~70%, ~90% of saturation).
 set -euo pipefail
 
-RATES=(${RATES:-6000 3000})
-RATE_WEIGHTS_LIST=("1,1,1,1" "10,1,1,1") # /home/zpkhor/narwhal-validator/benchmark/results/phase2_20260310_160943/merged_output.log
-# RATE_WEIGHTS_LIST=("1,1,1,1" "2,1,1,1" "10,1,1,1" "20,1,1,1" "100,1,1,1")
+RATES=(${RATES:-16000 11800 5000})
+RATE_WEIGHTS_LIST=("1,1,1,1" "1.5,1,1,1" "5,1,1,1")
 # RATE_WEIGHTS_LIST=("2,2,1,1" "6,6,1,1" "7,7,7,1")
 RETRIES=2
 DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-5}
+NUM_SENDERS=${NUM_SENDERS:-4}
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
@@ -33,8 +33,8 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            echo "CMD: RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --bandwidth=50mbit --latency=100ms --primary-bw=10mbit 2>&1) || true
+            echo "CMD: RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
@@ -50,6 +50,12 @@ for RATE in "${RATES[@]}"; do
         done
     done
 done
+
+echo ""
+echo "==========================================="
+echo "Plotting combined phase2 figure..."
+python plot_phase2.py "$RESULTS_DIR" -o "$RESULTS_DIR/phase2.png" || \
+    echo "WARNING: combined plot failed"
 
 echo ""
 echo "==========================================="

@@ -9,8 +9,8 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
         # cannot drop primary packets.
         tc qdisc add dev eth0 root handle 1: htb default 20
         tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
-        tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_BANDWIDTH prio 0
-        tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_BANDWIDTH prio 1
+        tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_PRIMARY_BW prio 0
+        tc class add dev eth0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_WORKER_BW prio 1
 
         if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
             JITTER_ARG=""
@@ -73,8 +73,8 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
     if [ -n "$PRIMARY_PORTS" ]; then
         tc qdisc add dev ifb0 root handle 1: htb default 20
         tc class add dev ifb0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
-        tc class add dev ifb0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_BANDWIDTH prio 0
-        tc class add dev ifb0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_BANDWIDTH prio 1
+        tc class add dev ifb0 parent 1:1 classid 1:10 htb rate $TC_PRIMARY_BW ceil $TC_PRIMARY_BW prio 0
+        tc class add dev ifb0 parent 1:1 classid 1:20 htb rate $TC_WORKER_BW ceil $TC_WORKER_BW prio 1
         tc qdisc add dev ifb0 parent 1:10 handle 10: pfifo limit 100000
         tc qdisc add dev ifb0 parent 1:20 handle 20: pfifo limit 100000
 

@@ -2,7 +2,7 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(1000 15000 20000 22000)
+RATES=(1000 5000 11800 16800)
 LATENCIES=(100 200)
 BASELINES=("" "1")
 RETRIES=2
@@ -32,8 +32,8 @@ for RATE in "${RATES[@]}"; do
                 echo ""
                 echo "--- Rate: $RATE tx/s, Latency: ${LATENCY}ms, Baseline: ${BASELINE:-0}, Run: $RETRY/$RETRIES ---"
 
-                echo "CMD: RATE=$RATE BASELINE=${BASELINE:-0} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=100mbit --latency=${LATENCY}ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
-                OUTPUT=$(RATE=$RATE BASELINE=$BASELINE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --bandwidth=100mbit --latency="${LATENCY}ms" --primary-bw=25mbit 2>&1) || true
+                echo "CMD: RATE=$RATE BASELINE=${BASELINE:-0} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=${LATENCY}ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+                OUTPUT=$(RATE=$RATE BASELINE=$BASELINE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency="${LATENCY}ms" --primary-bw=25mbit 2>&1) || true
                 echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
                 # Copy logs for this run

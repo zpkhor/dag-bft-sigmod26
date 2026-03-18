@@ -23,10 +23,11 @@ def parse_block(block):
     duration = find(r'\bDURATION=(\S+)', cmd_line)
     warmup = find(r'\bWARMUP=(\S+)', cmd_line)
     cpus_per_validator = find(r'--cpus-per-validator=(\S+)', cmd_line)
-    bandwidth = find(r'--bandwidth=(\S+)', cmd_line)
-    bandwidths_mbps = find(r'\bBANDWIDTHS_MBPS=(\S+)', cmd_line, keep_commas=True)
+    worker_bw = find(r'--worker-bw=(\S+)', cmd_line)
+    workers_bw_mbps = find(r'\bWORKER_BANDWIDTHS_MBPS=(\S+)', cmd_line, keep_commas=True)
     latency = find(r'--latency=(\S+)', cmd_line)
     primary_bw = find(r'--primary-bw=(\S+)', cmd_line)
+    baseline = find(r'\bBASELINE=(\S+)', cmd_line)
 
     committee_size = find(r'Committee size:\s*([\d,]+)\s*node', block)
     input_rate = find(r'Input rate:\s*([\d,]+)\s*tx/s', block)
@@ -47,14 +48,14 @@ def parse_block(block):
 
     # Per-validator TPS, mean latency, and p95 from PER-VALIDATOR COMMIT METRICS
     # Lines look like: " 0            647           52,615       65,234       0"
-    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+\d+', block, re.MULTILINE)
+    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+\d+\s*$', block, re.MULTILINE)
     per_validator_tps = ','.join(m[1].replace(',', '') for m in validator_metrics)
     per_validator_latency = ','.join(m[2].replace(',', '') for m in validator_metrics)
     per_validator_p95 = ','.join(m[3].replace(',', '') for m in validator_metrics)
 
     return [
         duration, open_loop, rate_weights, num_senders, routing_mode, warmup,
-        cpus_per_validator, bandwidth, bandwidths_mbps, latency, primary_bw,
+        cpus_per_validator, worker_bw, workers_bw_mbps, latency, primary_bw, baseline,
         committee_size, input_rate, tx_size_B,
         commit_lat_mean_ms, commit_lat_p95_ms,
         consensus_tps, consensus_bps,
@@ -67,7 +68,7 @@ def parse_block(block):
 
 HEADER = [
     'duration', 'open_loop', 'rate_weights', 'num_senders', 'routing_mode', 'warmup',
-    'cpus_per_validator', 'bandwidth', 'bandwidths_mbps', 'latency', 'primary_bw',
+    'cpus_per_validator', 'worker_bw', 'workers_bw_mbps', 'latency', 'primary_bw', 'baseline',
     'committee_size', 'input_rate', 'tx_size_B',
     'commit_lat_mean_ms', 'commit_lat_p95_ms',
     'consensus_tps', 'consensus_bps',
@@ -79,21 +80,23 @@ HEADER = [
 
 EXCLUDE_HEADER = [
     'open_loop',
-    # 'rate_weights',
+    'rate_weights',
+    'num_senders',
+    'routing_mode',
     'cpus_per_validator',
-    'latency',
-    'bandwidth',
-    # 'bandwidths_mbps',
+    # 'latency',
+    'worker_bw',
+    'workers_bw_mbps',
     'primary_bw',
     'tx_size_B',
-    # 'duration',
+    'duration',
     'warmup',
     'consensus_tps', 'consensus_bps',
     'committee_size',
     # 'tx_size_B',
     # 'consensus_tps',
     # 'consensus_bps',
-    # 'committed_bps',
+    'committed_bps',
     # 'cmd',
 ]
 

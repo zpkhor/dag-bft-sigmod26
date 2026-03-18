@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 
 
 WINDOW_SIZE = 20
+SKIP_NUM_BATCHES = 15
 
 
 def moving_average(values: List[float], window: int) -> List[float]:
@@ -106,7 +107,7 @@ def plot_worker_log(
 
     Returns (plotted_batches, plotted_quorum).
     """
-    batches = extract_batches(worker_log)
+    batches = extract_batches(worker_log)[SKIP_NUM_BATCHES:]
     if not batches:
         return False, False
 

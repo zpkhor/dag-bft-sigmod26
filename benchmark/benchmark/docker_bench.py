@@ -38,14 +38,14 @@ class DockerBench:
         self,
         bench_parameters_dict,
         node_parameters_dict,
-        bandwidth="10gbit",
+        worker_bw="100mbit",
         latency="0ms",
         jitter="0ms",
         cpus_per_validator=0,
         lan_bandwidth="100gbit",
         check_mismatch=False,
         primary_bw="500mbit",
-        bandwidths=None,
+        worker_bandwidths=None,
         baseline=False,
         tc_netem_limit=0,
         tc_netem_limit_client=0,
@@ -70,27 +70,27 @@ class DockerBench:
 
         # QoS bandwidth allocation
         nodes = self.bench_parameters.nodes[0]
-        if bandwidths is not None:
-            assert len(bandwidths) == nodes, (
-                f"BANDWIDTHS_MBPS has {len(bandwidths)} entries but nodes={nodes}"
+        if worker_bandwidths is not None:
+            assert len(worker_bandwidths) == nodes, (
+                f"WORKER_BANDWIDTHS_MBPS has {len(worker_bandwidths)} entries but nodes={nodes}"
             )
-            self.bandwidths = bandwidths
+            self.worker_bandwidths = worker_bandwidths
         else:
-            self.bandwidths = [bandwidth] * nodes
+            self.worker_bandwidths = [worker_bw] * nodes
 
         self.baseline = baseline
         self.round_robin = round_robin
         self.primary_bw = primary_bw
         primary_mbit = self._parse_bw_mbit(primary_bw)
         self.worker_bws = []
-        for i, bw in enumerate(self.bandwidths):
-            total_mbit = self._parse_bw_mbit(bw)
-            worker_mbit = total_mbit - primary_mbit
+        self.total_bws = []
+        for i, wbw in enumerate(self.worker_bandwidths):
+            worker_mbit = self._parse_bw_mbit(wbw)
             assert worker_mbit > 0, (
-                f"primary_bw ({primary_bw}={primary_mbit}mbit) must be less than "
-                f"bandwidth for validator {i} ({bw}={total_mbit}mbit)"
+                f"worker_bw for validator {i} ({wbw}={worker_mbit}mbit) must be > 0"
             )
             self.worker_bws.append(self._format_bw(worker_mbit))
+            self.total_bws.append(self._format_bw(primary_mbit + worker_mbit))
 
     @staticmethod
     def _parse_bw_mbit(bw_str):
@@ -210,7 +210,7 @@ class DockerBench:
             service += f"""
     environment:
       - VALIDATOR_ID={i}
-      - TC_BANDWIDTH={self.bandwidths[i]}
+      - TC_BANDWIDTH={self.total_bws[i]}
       - TC_PRIMARY_BW={self.primary_bw}
       - TC_WORKER_BW={self.worker_bws[i]}
       - TC_LATENCY={self.latency}
@@ -232,7 +232,7 @@ class DockerBench:
 
         # Client containers
         max_bw = -1
-        for bw in self.bandwidths:
+        for bw in self.total_bws:
             max_bw = max(max_bw, self._parse_bw_mbit(bw))
         max_bw = self._format_bw(max_bw)
         for i in range(nodes):
@@ -328,17 +328,12 @@ networks:
                 names, self.BASE_PORT, self.workers, container_ips, client_ips
             )
             
-            bw_capacity = {100: 4400, 50: 2200, 30: 1650, 10: 900} # TODO
-
             if not self.baseline:
                 capacities = [] # max tps/validator
                 for i in range(nodes):
-                    # worker_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
-                    # capacities.append(int(worker_bw_bytes / self.tx_size / (nodes - 1)))
-                    bw_mbit = self._parse_bw_mbit(self.bandwidths[i])
-                    assert bw_mbit in bw_capacity, f"Unexpected bandwidth {bw_mbit}mbit for validator {i}"
-                    capacity = bw_capacity[bw_mbit]
-                    capacities.append(capacity) # TODO: to be replaced by inferred broadcast capacity based on worker bandwidth and tx size tps_i=sum_worker_bw_bytes_i/tx_size/(num_nodes-1)
+                    workers_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
+                    capacity = int(workers_bw_bytes / (self.tx_size + 44) / (nodes - 1) * 0.9) # 40 TCP/IP + 4 length-prefix codec
+                    capacities.append(capacity)
                 committee.set_capacities(capacities)
             latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
             latency_matrix = {

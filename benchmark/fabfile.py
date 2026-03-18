@@ -1,4 +1,3 @@
-# Copyright(C) Facebook, Inc. and its affiliates.
 import json
 import os
 from fabric import task
@@ -12,7 +11,7 @@ from benchmark.instance import InstanceManager
 from benchmark.remote import Bench, BenchError
 
 @task
-def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
+def docker(ctx, debug=False, worker_bw='10gbit', latency='0ms', jitter='0ms',
            cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):
     ''' Run benchmarks in Docker containers with tc bandwidth shaping '''
     rate = int(os.environ.get('RATE', 50_000))
@@ -22,8 +21,8 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
-    bandwidths_mbps_raw = os.environ.get('BANDWIDTHS_MBPS')
-    bandwidths = [f"{int(v)}mbit" for v in bandwidths_mbps_raw.split(',')] if bandwidths_mbps_raw else None
+    worker_bandwidths_mbps_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
+    worker_bandwidths = [f"{int(v)}mbit" for v in worker_bandwidths_mbps_raw.split(',')] if worker_bandwidths_mbps_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     routing_mode = os.environ.get('ROUTING_MODE', '')
     baseline = os.environ.get('BASELINE', '0') == '1'
@@ -58,12 +57,12 @@ def docker(ctx, debug=False, bandwidth='10gbit', latency='0ms', jitter='0ms',
     try:
         ret = DockerBench(
             bench_params, node_params,
-            bandwidth=bandwidth, latency=latency, jitter=jitter,
+            worker_bw=worker_bw, latency=latency, jitter=jitter,
             cpus_per_validator=int(cpus_per_validator),
             lan_bandwidth=lan_bandwidth,
             check_mismatch=check_mismatch,
             primary_bw=primary_bw,
-            bandwidths=bandwidths,
+            worker_bandwidths=worker_bandwidths,
             baseline=baseline,
             tc_netem_limit=tc_netem_limit,
             tc_netem_limit_client=tc_netem_limit_client,
