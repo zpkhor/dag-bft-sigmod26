@@ -23,6 +23,7 @@ async fn hash_and_store() {
         rx_batch,
         tx_digest,
         true,
+        true, // baseline_mode
     );
 
     // Send a batch to the `Processor`.

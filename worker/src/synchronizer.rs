@@ -108,7 +108,7 @@ impl Synchronizer {
                 .expect("Failed to read committed batch from store");
 
             let txs = match bincode::deserialize::<WorkerMessage>(&batch_data) {
-                Ok(WorkerMessage::Batch((txs, _counts))) => txs,
+                Ok(WorkerMessage::Batch(txs)) => txs,
                 _ => {
                     panic!("Failed to read committed batch {}", digest);
                 }

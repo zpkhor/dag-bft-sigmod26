@@ -174,7 +174,6 @@ impl Worker {
                 .iter()
                 .map(|(name, addresses)| (*name, addresses.worker_to_worker))
                 .collect(),
-            self.parameters.baseline_mode,
         );
 
         // The `QuorumWaiter` waits for 2f authorities to acknowledge reception of the batch. It then forwards
@@ -194,6 +193,7 @@ impl Worker {
             /* rx_batch */ rx_processor,
             /* tx_digest */ tx_primary,
             /* own_batch */ true,
+            self.parameters.baseline_mode,
         );
 
         info!(
@@ -239,6 +239,7 @@ impl Worker {
             /* rx_batch */ rx_processor,
             /* tx_digest */ tx_primary,
             /* own_batch */ false,
+            self.parameters.baseline_mode,
         );
 
         info!(

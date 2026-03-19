@@ -33,29 +33,31 @@ impl Processor {
         tx_digest: Sender<SerializedBatchDigestMessage>,
         // Whether we are processing our own batches or the batches of other nodes.
         own_digest: bool,
+        // When true, account_counts are not computed (baseline mode).
+        baseline_mode: bool,
     ) {
         tokio::spawn(async move {
             while let Some((batch, quorum_metrics)) = rx_batch.recv().await {
                 // Hash the batch.
                 let digest = Digest(Sha512::digest(&batch).as_ref()[..32].try_into().unwrap());
 
-                // Extract account_counts before moving batch into store.
-                let account_counts = match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
-                    Ok(crate::worker::WorkerMessage::Batch((txs, counts))) => {
-                        if own_digest {
-                            counts
-                        } else {
-                            let mut recomputed = std::collections::BTreeMap::new();
+                // Compute account_counts from transactions.
+                let account_counts = if baseline_mode {
+                    std::collections::BTreeMap::new()
+                } else {
+                    match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
+                        Ok(crate::worker::WorkerMessage::Batch(txs)) => {
+                            let mut counts = std::collections::BTreeMap::new();
                             for tx in &txs {
                                 if tx.len() >= 8 {
                                     let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
-                                    *recomputed.entry(account_id).or_insert(0) += 1;
+                                    *counts.entry(account_id).or_insert(0) += 1;
                                 }
                             }
-                            recomputed
+                            counts
                         }
+                        _ => std::collections::BTreeMap::new(),
                     }
-                    _ => std::collections::BTreeMap::new(),
                 };
 
                 // Store the batch.
