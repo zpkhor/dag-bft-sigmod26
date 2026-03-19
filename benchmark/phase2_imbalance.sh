@@ -33,8 +33,8 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            echo "CMD: RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit 2>&1) || true
+            echo "CMD: BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run

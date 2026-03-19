@@ -69,8 +69,8 @@ def discover_runs(results_dir: Path) -> Dict[RunKey, List[Tuple[int, Path]]]:
 
 
 def sort_keys(keys: Set[RunKey]) -> List[RunKey]:
-    # Higher rate first, then alphabetical weights_tag within same rate.
-    return sorted(keys, key=lambda k: (-k[0], k[1]))
+    # Lower rate first (left), then lower first-weight first within same rate.
+    return sorted(keys, key=lambda k: (k[0], float(k[1].split('_')[0])))
 
 
 def parse_metrics(run_dir: Path) -> Tuple[str, str]:

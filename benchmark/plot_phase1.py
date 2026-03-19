@@ -22,10 +22,10 @@ PER_VALIDATOR_SECTION_RE = re.compile(
 )
 PER_VALIDATOR_ROW_RE = re.compile(r"^\s+(\d+)\s+([\d,]+)\s+([\d,]+)", re.MULTILINE)
 
-# rate_15000_latency_100ms_baseline_0_run_1
-RUN_DIR_RE = re.compile(r"^rate_(\d+)_latency_(\d+)ms_baseline_(\d+)_run_(\d+)$")
+# rate_15000_bw_75mbit_baseline_0_run_1
+RUN_DIR_RE = re.compile(r"^rate_(\d+)_bw_(\d+)mbit_baseline_(\d+)_run_(\d+)$")
 
-RunKey = Tuple[int, int, int]  # (rate, latency_ms, baseline)
+RunKey = Tuple[int, int, int]  # (rate, bw_mbit, baseline)
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "results_dir",
-        help="Path to a phase1 results directory containing rate_*_latency_*ms_baseline_*_run_* subdirectories",
+        help="Path to a phase1 results directory containing rate_*_bw_*mbit_baseline_*_run_* subdirectories",
     )
     parser.add_argument(
         "-o",
@@ -50,7 +50,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def discover_runs(results_dir: Path) -> Dict[RunKey, List[Tuple[int, Path]]]:
-    """Returns {(rate, latency_ms, baseline): [(run_number, run_dir), ...]} sorted by run number."""
+    """Returns {(rate, bw_mbit, baseline): [(run_number, run_dir), ...]} sorted by run number."""
     groups: Dict[RunKey, List[Tuple[int, Path]]] = {}
     for subdir in sorted(results_dir.iterdir()):
         if not subdir.is_dir():
@@ -59,10 +59,10 @@ def discover_runs(results_dir: Path) -> Dict[RunKey, List[Tuple[int, Path]]]:
         if not match:
             continue
         rate = int(match.group(1))
-        latency_ms = int(match.group(2))
+        bw_mbit = int(match.group(2))
         baseline = int(match.group(3))
         run_num = int(match.group(4))
-        key: RunKey = (rate, latency_ms, baseline)
+        key: RunKey = (rate, bw_mbit, baseline)
         groups.setdefault(key, []).append((run_num, subdir))
     for key in groups:
         groups[key].sort(key=lambda x: x[0])
@@ -106,7 +106,7 @@ def plot_phase1(results_dir: Path, output_path: Optional[Path], smooth: bool) ->
     groups = discover_runs(results_dir)
     if not groups:
         raise ValueError(
-            f"No rate_*_latency_*ms_baseline_*_run_* subdirectories found in {results_dir}"
+            f"No rate_*_bw_*mbit_baseline_*_run_* subdirectories found in {results_dir}"
         )
 
     columns = sort_keys(set(groups.keys()))
@@ -122,8 +122,8 @@ def plot_phase1(results_dir: Path, output_path: Optional[Path], smooth: bool) ->
     )
     axes = [[fig.add_subplot(gs[row, col]) for col in range(n_cols)] for row in range(4)]
 
-    for col_idx, (rate, latency_ms, baseline) in enumerate(columns):
-        runs = groups[(rate, latency_ms, baseline)]
+    for col_idx, (rate, bw_mbit, baseline) in enumerate(columns):
+        runs = groups[(rate, bw_mbit, baseline)]
         metrics_lines = []
 
         for run_num, run_dir in runs:
@@ -143,7 +143,7 @@ def plot_phase1(results_dir: Path, output_path: Optional[Path], smooth: bool) ->
             for v_id, v_tps, v_mean in parse_per_validator_metrics(run_dir):
                 metrics_lines.append(f"  V{v_id}: {v_tps}tx/s  {v_mean}ms")
 
-        col_title = f"rate={rate}  lat={latency_ms}ms  base={baseline}"
+        col_title = f"rate={rate}  bw={bw_mbit}mbit  base={baseline}"
         axes[2][col_idx].set_xlabel(col_title, fontsize=10, fontweight="bold")
 
         ax_text = axes[3][col_idx]
