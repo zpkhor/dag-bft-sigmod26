@@ -2,9 +2,9 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(15000 15100 15200) # RATES=(5000 11800 15100 16000)
+RATES=(5000 11800 15100)
 BWS=(75)
-BASELINES=("1")
+ROUTING_MODES=("" "round-robin")
 RETRIES=2
 DURATION=${DURATION:-80}
 WARMUP=${WARMUP:-8}
@@ -17,23 +17,23 @@ cd "$(dirname "$0")"
 echo "Phase 1: Saturation sweep (balanced load)"
 echo "Rates: ${RATES[*]}"
 echo "BWs: ${BWS[*]}mbit"
-echo "Baselines: ${BASELINES[*]}"
+echo "Routing modes: ${ROUTING_MODES[*]}"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
 echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for RATE in "${RATES[@]}"; do
     for BW in "${BWS[@]}"; do
-        for BASELINE in "${BASELINES[@]}"; do
+        for ROUTING_MODE in "${ROUTING_MODES[@]}"; do
             for RETRY in $(seq 1 "$RETRIES"); do
-                RUN_DIR="$RESULTS_DIR/rate_${RATE}_bw_${BW}mbit_baseline_${BASELINE:-0}_run_${RETRY}"
+                RUN_DIR="$RESULTS_DIR/rate_${RATE}_bw_${BW}mbit_routing_${ROUTING_MODE:-none}_run_${RETRY}"
                 mkdir -p "$RUN_DIR"
 
                 echo ""
-                echo "--- Rate: $RATE tx/s, BW: ${BW}mbit, Baseline: ${BASELINE:-0}, Run: $RETRY/$RETRIES ---"
+                echo "--- Rate: $RATE tx/s, BW: ${BW}mbit, RoutingMode: ${ROUTING_MODE:-none}, Run: $RETRY/$RETRIES ---"
 
-                echo "CMD: RATE=$RATE BASELINE=${BASELINE:-0} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=${BW}mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
-                OUTPUT=$(RATE=$RATE BASELINE=$BASELINE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw="${BW}mbit" --latency=100ms --primary-bw=25mbit 2>&1) || true
+                echo "CMD: RATE=$RATE ROUTING_MODE=${ROUTING_MODE} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=${BW}mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+                OUTPUT=$(RATE=$RATE ROUTING_MODE=$ROUTING_MODE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw="${BW}mbit" --latency=100ms --primary-bw=25mbit 2>&1) || true
                 echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
                 # Copy logs for this run
@@ -41,7 +41,7 @@ for RATE in "${RATES[@]}"; do
 
                 # Check for errors/panics
                 if echo "$OUTPUT" | grep -qiE 'panic|error|failed'; then
-                    echo "WARNING: Errors detected in rate=$RATE bw=${BW}mbit baseline=${BASELINE:-0} run=$RETRY"
+                    echo "WARNING: Errors detected in rate=$RATE bw=${BW}mbit routing=${ROUTING_MODE:-none} run=$RETRY"
                     echo "$OUTPUT" | grep -iE 'panic|error|failed' > "$RUN_DIR/errors.log"
                 fi
 
