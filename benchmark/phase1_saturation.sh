@@ -2,15 +2,15 @@
 # Phase 1: Sweep rates with balanced load to find saturation point.
 set -euo pipefail
 
-RATES=(5000 11800 15100)
+RATES=(11800 14800 15000 15100)
 BWS=(75)
 ROUTING_MODES=("" "round-robin")
-RETRIES=2
+RETRIES=3
 DURATION=${DURATION:-80}
 WARMUP=${WARMUP:-8}
 RESULTS_DIR="$(pwd)/results/phase1_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
-OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
+OUTPUT_LOG="$RESULTS_DIR/merged_output.log" # hilbit2:/home/zpkhor/narwhal/benchmark/results/phase1_20260320_182449/merged_output.log
 
 cd "$(dirname "$0")"
 
@@ -32,8 +32,8 @@ for RATE in "${RATES[@]}"; do
                 echo ""
                 echo "--- Rate: $RATE tx/s, BW: ${BW}mbit, RoutingMode: ${ROUTING_MODE:-none}, Run: $RETRY/$RETRIES ---"
 
-                echo "CMD: RATE=$RATE ROUTING_MODE=${ROUTING_MODE} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=${BW}mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
-                OUTPUT=$(RATE=$RATE ROUTING_MODE=$ROUTING_MODE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw="${BW}mbit" --latency=100ms --primary-bw=25mbit 2>&1) || true
+                echo "CMD: BASELINE=1 RATE=$RATE ROUTING_MODE=${ROUTING_MODE} DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw=${BW}mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+                OUTPUT=$(BASELINE=1 RATE=$RATE ROUTING_MODE=$ROUTING_MODE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=16 --worker-bw="${BW}mbit" --latency=100ms --primary-bw=25mbit 2>&1) || true
                 echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
                 # Copy logs for this run
