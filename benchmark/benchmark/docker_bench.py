@@ -4,7 +4,6 @@ import os
 import socket
 import subprocess
 import sys
-from math import ceil
 from time import sleep, time as _now
 
 from benchmark.commands import CommandMaker
@@ -164,7 +163,7 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports, primary_ports_str):
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str):
         """Generate docker-compose.yml programmatically."""
         services = []
         for i in range(nodes):
@@ -216,7 +215,7 @@ class DockerBench:
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
-      - OWN_CLIENT_IP={client_ips[i]}
+      - OWN_CLIENT_IP={client_ip}
       - PRIMARY_PORTS={primary_ports_str}{tokio_env}{netem_limit_env}
       - PRIMARY_CMD={cmds['primary']}"""
 
@@ -230,26 +229,23 @@ class DockerBench:
 
             services.append(service)
 
-        # Client containers
+        # Single client container
         max_bw = -1
         for bw in self.total_bws:
             max_bw = max(max_bw, self._parse_bw_mbit(bw))
         max_bw = self._format_bw(max_bw)
-        for i in range(nodes):
-            client_ip = client_ips[i]
-            client_command = client_commands[i]
-            own_validator_ip = container_ips[i]
 
-            client_cpuset = ""
-            if self.cpus_per_validator > 0:
-                slot = self.cpus_per_validator + 4
-                c_start = i * slot + self.cpus_per_validator
-                client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 3}"'
+        client_cpuset = ""
+        if self.cpus_per_validator > 0:
+            slot = self.cpus_per_validator + 4
+            c_start = nodes * slot
+            client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 4 * nodes - 1}"'
 
-            netem_limit_client_env = f"\n      - TC_NETEM_LIMIT_CLIENT={self.tc_netem_limit_client}" if self.tc_netem_limit_client > 0 else ""
-            service = f"""  client-{i}:
+        netem_limit_client_env = f"\n      - TC_NETEM_LIMIT_CLIENT={self.tc_netem_limit_client}" if self.tc_netem_limit_client > 0 else ""
+        validator_ips_str = " ".join(container_ips)
+        service = f"""  client-0:
     image: {self.IMAGE_NAME}
-    container_name: narwhal-client-{i}
+    container_name: narwhal-client-0
     working_dir: /app
     cap_add:
       - NET_ADMIN{client_cpuset}
@@ -262,14 +258,15 @@ class DockerBench:
       - ./logs:/logs:rw
     environment:
       - CLIENT_CMD={client_command}
-      - OWN_VALIDATOR_IP={own_validator_ip}
+      - NUM_REGIONS={nodes}
+      - VALIDATOR_IPS={validator_ips_str}
       - TC_LATENCY={self.latency}
       - TC_JITTER={self.jitter}
       - TC_BANDWIDTH={max_bw}
       - WAIT_PORTS={client_wait_ports}{netem_limit_client_env}"""
 
-            services.append(service)
-# end of for loop
+        services.append(service)
+
         compose = f"""services:
 {chr(10).join(services)}
 
@@ -323,9 +320,9 @@ networks:
 
             names = [x.name for x in keys]
             container_ips = [self._container_ip(i) for i in range(nodes)]
-            client_ips = [f"172.20.0.{10 + nodes + i}" for i in range(nodes)]
+            client_ip = f"172.20.0.{10 + nodes}"
             committee = DockerCommittee(
-                names, self.BASE_PORT, self.workers, container_ips, client_ips
+                names, self.BASE_PORT, self.workers, container_ips, client_ip
             )
             
             if not self.baseline:
@@ -354,19 +351,11 @@ networks:
 
             # Build commands for each validator (paths relative to /app/ inside container)
             workers_addresses = committee.workers_addresses(self.faults)
-            weights = self.rate_weights or [1] * len(workers_addresses)
-            total_weight = sum(weights)
-            validator_rates = [ceil(rate * w / total_weight) for w in weights]
-            excess = sum(validator_rates) - rate
-            if excess > 0:
-                max_idx = weights.index(max(weights))
-                validator_rates[max_idx] -= excess
 
             v = "-vvv" if debug else "-vv"
 
             num_accounts = self.bench_parameters.num_accounts
-            total_clients = nodes
-            account_weights = self.bench_parameters.account_weights or [1] * total_clients
+            account_weights = self.bench_parameters.account_weights or [1] * nodes
             total_aw = sum(account_weights)
             acct_counts = [num_accounts * w // total_aw for w in account_weights]
             remainder = num_accounts - sum(acct_counts)
@@ -397,9 +386,38 @@ networks:
                 vw_args_parts.append(f"--validator-workers {name}:{waddrs}")
             vw_args = " ".join(vw_args_parts)
 
+            # Build --account-ranges args for all validators
+            ar_args_parts = []
+            for name in names:
+                start, count = account_ranges[name]
+                ar_args_parts.append(f"--account-ranges {name}:{start}:{count}")
+            ar_args = " ".join(ar_args_parts)
+
+            # Build --rate-weights aligned with sorted validator order
+            weights = self.rate_weights or [1] * nodes
+            sorted_names = committee.sorted_authority_names()
+            name_to_idx = {name: i for i, name in enumerate(names)}
+            sorted_weights = [weights[name_to_idx[n]] for n in sorted_names]
+            rate_weights_str = ",".join(str(w) for w in sorted_weights)
+
+            # All worker transaction addresses (for single client --nodes and WAIT_PORTS)
+            all_worker_addrs = [addr for addresses in workers_addresses for _, addr in addresses]
+            all_nodes_arg = " ".join(all_worker_addrs)
+
+            reply_addr = list(committee.json['authorities'].values())[0]['client_reply']
+
+            rr_flag = " --round-robin" if self.round_robin else ""
+            senders_flag = f" --num-senders {self.num_senders}" if self.num_senders > 1 else ""
+            client_command = (
+                f"./benchmark_client --size {self.tx_size} "
+                f"--rate {rate} --nodes {all_nodes_arg} "
+                f"{ar_args} --rate-weights {rate_weights_str} "
+                f"--reply-addr {reply_addr} --own-validator {names[0]} "
+                f"{vw_args}{rr_flag}{senders_flag}"
+                f" 2> /logs/client-0-0.log"
+            )
+
             commands_per_validator = {}
-            client_commands = {}
-            running_rate = 0
             for i, addresses in enumerate(workers_addresses):
                 primary_cmd = (
                     f"./node {v} run --keys .node-{i}.json --committee .committee.json "
@@ -408,8 +426,7 @@ networks:
                 )
 
                 worker_cmds = []
-
-                for id, address in addresses:
+                for id, _ in addresses:
                     w_cmd = (
                         f"./node {v} run --keys .node-{i}.json --committee .committee.json "
                         f"--store .db-{i}-{id} --parameters .parameters.json worker --id {id}"
@@ -417,40 +434,10 @@ networks:
                     w_cmd += f" 2> /logs/worker-{i}-{id}.log"
                     worker_cmds.append(w_cmd)
 
-                worker_addrs = [addr for _, addr in addresses]
-                nodes_arg = " ".join(worker_addrs)
-
-                acct_start = acct_starts[i]
-                acct_count = acct_counts[i]
-                account_args = f"--account-start {acct_start} --num-accounts {acct_count}"
-
-                num_workers = len(addresses)
-                client_id_val = i * num_workers
-
-                own_name = names[i]
-                reply_addr = committee.json['authorities'][own_name]['client_reply']
-
-                rr_flag = " --round-robin" if self.round_robin else ""
-                senders_flag = f" --num-senders {self.num_senders}" if self.num_senders > 1 else ""
-                c_cmd = (
-                    f"./benchmark_client --size {self.tx_size} "
-                    f"--rate {validator_rates[i]} --nodes {nodes_arg} "
-                    f"{account_args} --client-id {client_id_val} "
-                    f"--reply-addr {reply_addr} --own-validator {own_name} "
-                    f"{vw_args}{rr_flag}{senders_flag}"
-                )
-                c_cmd += f" 2> /logs/client-{i}-0.log"
-                running_rate += validator_rates[i]
-
                 commands_per_validator[i] = {
                     "primary": primary_cmd,
                     "workers": worker_cmds,
                 }
-                client_commands[i] = c_cmd
-
-            assert abs(running_rate - rate) <= len(
-                workers_addresses
-            ), f"Running rate {running_rate} deviates too much from target rate {rate}"
 
             # Compute remote wait ports for each validator.
             wait_ports_per_validator = {}
@@ -459,12 +446,7 @@ networks:
                     committee.remote_addresses(name)
                 )
 
-            # All worker transaction addresses across all validators (for client wait).
-            all_tx_addrs = []
-            for auth in committee.json['authorities'].values():
-                for worker in auth['workers'].values():
-                    all_tx_addrs.append(worker['transactions'])
-            client_wait_ports = " ".join(all_tx_addrs)
+            client_wait_ports = all_nodes_arg
 
             # Extract all primary_to_primary ports for QoS classification
             primary_ports = []
@@ -486,7 +468,7 @@ networks:
                 Print.info("Docker image up to date, skipping build.")
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_commands, client_ips, container_ips, client_wait_ports, primary_ports_str)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str)
 
             # Start containers.
             Print.info("Starting containers...")

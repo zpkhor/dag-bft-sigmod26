@@ -197,8 +197,8 @@ class LogParser:
 
         misses = len(findall(r'rate too high', log))
 
-        tmp = findall(r'\[(.*Z) .* sample transaction (\d+) account (\d+) client (\d+)', log)
-        samples = {(int(s), int(a)): self._to_posix(t) for t, s, a, c in tmp}
+        tmp = findall(r'\[(.*Z) .* sample transaction (\d+) account (\d+)', log)
+        samples = {(int(s), int(a)): self._to_posix(t) for t, s, a in tmp}
 
         return size, rate, start, misses, samples
 

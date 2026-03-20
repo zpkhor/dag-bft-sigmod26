@@ -196,15 +196,14 @@ class LocalCommittee(Committee):
 
 
 class DockerCommittee(Committee):
-    def __init__(self, names, port, workers, container_ips, client_ips):
+    def __init__(self, names, port, workers, container_ips, client_ip):
         assert isinstance(names, list)
         assert all(isinstance(x, str) for x in names)
         assert isinstance(port, int)
         assert isinstance(workers, int) and workers > 0
         assert isinstance(container_ips, list)
         assert len(container_ips) == len(names)
-        assert isinstance(client_ips, list)
-        assert len(client_ips) == len(names)
+        assert isinstance(client_ip, str)
 
         # Build addresses with container IPs for all hosts (primary + workers)
         addresses = OrderedDict(
@@ -213,8 +212,11 @@ class DockerCommittee(Committee):
         )
         super().__init__(addresses, port)
 
+        # All authorities share a single client_reply address
+        first_reply_port = list(self.json['authorities'].values())[0]['client_reply'].split(':')[1]
+
         # Override intra-validator addresses to 127.0.0.1
-        for name, client_ip in zip(names, client_ips):
+        for name in names:
             auth = self.json['authorities'][name]
             # worker_to_primary is intra-validator
             addr = auth['primary']['worker_to_primary']
@@ -225,9 +227,8 @@ class DockerCommittee(Committee):
                 addr = worker['primary_to_worker']
                 worker['primary_to_worker'] = f'127.0.0.1:{addr.split(":")[1]}'
 
-            # client_reply points to client container
-            addr = auth['client_reply']
-            auth['client_reply'] = f'{client_ip}:{addr.split(":")[1]}'
+            # client_reply points to single client container
+            auth['client_reply'] = f'{client_ip}:{first_reply_port}'
 
     def remote_addresses(self, name):
         ''' Returns host:port pairs for all listening ports of other validators

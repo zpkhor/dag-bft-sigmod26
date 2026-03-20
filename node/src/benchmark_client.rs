@@ -15,6 +15,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
+use std::os::unix::io::AsRawFd;
 use std::sync::{Arc, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
@@ -30,14 +31,13 @@ async fn main() -> Result<()> {
         .args_from_usage("--size=<INT> 'The size of each transaction in bytes'")
         .args_from_usage("--rate=<INT> 'The rate (txs/s) at which to send the transactions'")
         .args_from_usage("--nodes=[ADDR]... 'Network addresses that must be reachable before starting the benchmark.'")
-        .args_from_usage("--account-start=[INT] 'The first account_id for this client'")
-        .args_from_usage("--num-accounts=[INT] 'Number of accounts for this client (default 1000000)'")
-        .args_from_usage("--client-id=[INT] 'Unique client identifier (validator_index * num_workers + worker_index)'")
+        .args_from_usage("--account-ranges=<PAIR>... 'PUBKEY_BASE64:start:count per validator'")
+        .args_from_usage("--rate-weights=[WEIGHTS] 'Comma-separated rate weights per region (default: equal)'")
         .args_from_usage("--validator-workers=<PAIR>... 'PUBKEY_BASE64:addr1+addr2 per validator'")
         .args_from_usage("--reply-addr=[ADDR] 'Address to listen for migration notices'")
         .args_from_usage("--own-validator=<KEY> 'Base64 public key of this client\\'s home validator'")
         .args_from_usage("--round-robin 'Enable round-robin routing across all validators'")
-        .args_from_usage("--num-senders=[INT] 'Number of independent sender tasks (default 1)'")
+        .args_from_usage("--num-senders=[INT] 'Number of independent sender tasks per region (default 1)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -62,21 +62,35 @@ async fn main() -> Result<()> {
         .map(|x| x.parse::<SocketAddr>())
         .collect::<Result<Vec<_>, _>>()
         .context("Invalid socket address format")?;
-    let account_start = matches
-        .value_of("account-start")
-        .unwrap_or("0")
-        .parse::<u64>()
-        .context("account-start must be a non-negative integer")?;
-    let num_accounts = matches
-        .value_of("num-accounts")
-        .unwrap_or("1000000")
-        .parse::<u64>()
-        .context("num-accounts must be a non-negative integer")?;
-    let client_id = matches
-        .value_of("client-id")
-        .unwrap_or("0")
-        .parse::<u64>()
-        .context("client-id must be a non-negative integer")?;
+
+    // Parse --account-ranges: each value is "PUBKEY_BASE64:start:count"
+    let mut account_ranges: HashMap<PublicKey, (u64, u64)> = HashMap::new();
+    if let Some(pairs) = matches.values_of("account-ranges") {
+        for pair in pairs {
+            let parts: Vec<&str> = pair.splitn(3, ':').collect();
+            assert!(
+                parts.len() == 3,
+                "Invalid --account-ranges format '{}', expected PUBKEY:start:count", pair
+            );
+            let pk = PublicKey::decode_base64(parts[0])
+                .context(format!("Invalid public key in --account-ranges: {}", parts[0]))?;
+            let start = parts[1].parse::<u64>()
+                .context(format!("Invalid start in --account-ranges: {}", parts[1]))?;
+            let count = parts[2].parse::<u64>()
+                .context(format!("Invalid count in --account-ranges: {}", parts[2]))?;
+            account_ranges.insert(pk, (start, count));
+        }
+    }
+
+    // Parse --rate-weights: comma-separated floats
+    let rate_weights: Vec<f64> = matches
+        .value_of("rate-weights")
+        .map(|s| {
+            s.split(',')
+                .map(|w| w.parse::<f64>().expect("rate-weights must be numbers"))
+                .collect()
+        })
+        .unwrap_or_default();
 
     // Parse --validator-workers: each value is "PUBKEY_BASE64:addr1+addr2"
     // Note: '+' separator because clap treats ',' as a value delimiter.
@@ -128,13 +142,46 @@ async fn main() -> Result<()> {
         );
     }
 
+    // Validate account_ranges covers all validators
+    for pk in all_validators.keys() {
+        assert!(
+            account_ranges.contains_key(pk),
+            "--account-ranges must include entry for validator {}",
+            pk
+        );
+    }
+
+    // Default rate_weights to equal if empty
+    let rate_weights = if rate_weights.is_empty() {
+        vec![1.0f64; num_validators]
+    } else {
+        assert!(
+            rate_weights.len() == num_validators,
+            "rate-weights length ({}) must match number of validators ({})",
+            rate_weights.len(), num_validators
+        );
+        rate_weights
+    };
+
     // NOTE: This log entry is used to compute performance.
     info!("Transactions size: {} B", size);
 
     // NOTE: This log entry is used to compute performance.
     info!("Transactions rate: {} tx/s", rate);
 
-    info!("Account range: {} to {} ({} accounts)", account_start, account_start + num_accounts - 1, num_accounts);
+    let sorted_validators: Vec<PublicKey> = {
+        let mut keys: Vec<PublicKey> = all_validators.keys().copied().collect();
+        keys.sort();
+        keys
+    };
+
+    for (i, pk) in sorted_validators.iter().enumerate() {
+        let (start, count) = account_ranges[pk];
+        info!(
+            "Region {}: accounts {}..{} ({} accounts), rate_weight={}",
+            i, start, start + count - 1, count, rate_weights[i]
+        );
+    }
 
     info!("{} validators, {} workers each, own={}", num_validators, num_workers, own_validator);
 
@@ -146,14 +193,13 @@ async fn main() -> Result<()> {
 
     let client = Client {
         all_validators,
+        sorted_validators,
         size,
         rate,
         nodes,
-        account_start,
-        num_accounts,
-        client_id,
+        account_ranges,
+        rate_weights,
         reply_addr,
-        own_validator,
         f_plus_one,
         round_robin,
         num_senders,
@@ -168,28 +214,48 @@ async fn main() -> Result<()> {
 
 struct Client {
     all_validators: HashMap<PublicKey, Vec<SocketAddr>>,
+    sorted_validators: Vec<PublicKey>,
     size: usize,
     rate: u64,
     nodes: Vec<SocketAddr>,
-    account_start: u64,
-    num_accounts: u64,
-    client_id: u64,
+    account_ranges: HashMap<PublicKey, (u64, u64)>,
+    rate_weights: Vec<f64>,
     reply_addr: Option<SocketAddr>,
-    own_validator: PublicKey,
     f_plus_one: usize,
     round_robin: bool,
     num_senders: usize,
 }
 
 impl Client {
-    async fn connect_all_validators(&self) -> Result<HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>>> {
+    async fn connect_all_validators(&self, region_id: usize) -> Result<HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>>> {
+        let num_validators = self.sorted_validators.len();
         let mut validator_senders: HashMap<PublicKey, Vec<mpsc::UnboundedSender<Bytes>>> = HashMap::new();
-        for (pk, addrs) in &self.all_validators {
+        for (v_idx, pk) in self.sorted_validators.iter().enumerate() {
+            let addrs = &self.all_validators[pk];
             let mut senders = Vec::new();
             for addr in addrs {
                 let stream = TcpStream::connect(addr)
                     .await
                     .context(format!("failed to connect to validator worker {}", addr))?;
+
+                // Set SO_MARK for per-region per-validator TC classification
+                let fd = stream.as_raw_fd();
+                let mark: u32 = (region_id * num_validators + v_idx + 1) as u32;
+                unsafe {
+                    let ret = libc::setsockopt(
+                        fd,
+                        libc::SOL_SOCKET,
+                        libc::SO_MARK,
+                        &mark as *const _ as *const libc::c_void,
+                        std::mem::size_of::<u32>() as libc::socklen_t,
+                    );
+                    assert!(
+                        ret == 0,
+                        "setsockopt SO_MARK failed: {}",
+                        std::io::Error::last_os_error()
+                    );
+                }
+
                 let transport = Framed::new(stream, LengthDelimitedCodec::new());
                 let (chan_tx, mut chan_rx) = mpsc::unbounded_channel::<Bytes>();
                 tokio::spawn(async move {
@@ -214,11 +280,6 @@ impl Client {
                 "Transaction size must be at least 17 bytes (8 prefix + 1 type + 8 counter)",
             ));
         }
-        if self.num_accounts == 0 {
-            return Err(anyhow::Error::msg(
-                "num-accounts must be greater than 0",
-            ));
-        }
 
         // Routing table: account_id -> target validator pk (shared across all senders).
         let routing_table: Arc<RwLock<HashMap<u64, PublicKey>>> = Arc::new(RwLock::new(HashMap::new()));
@@ -234,56 +295,74 @@ impl Client {
             });
         }
 
+        let num_regions = self.sorted_validators.len();
+        let total_weight: f64 = self.rate_weights.iter().sum();
         let k = self.num_senders;
-        let base_shard_accounts = self.num_accounts / k as u64;
-        let base_shard_rate = self.rate / k as u64;
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
-        info!("Spawning {} sender tasks", k);
+        info!(
+            "Spawning {} regions x {} sub-shards = {} total sender tasks",
+            num_regions, k, num_regions * k
+        );
 
         const PRECISION: u64 = 20;
         const BURST_DURATION: u64 = 1000 / PRECISION;
+        let total_shards = num_regions * k;
 
+        let mut base_region_rate_sum: u64 = 0;
         let mut handles = Vec::new();
-        for i in 0..k {
-            let shard_account_start = self.account_start + i as u64 * base_shard_accounts;
-            let shard_num_accounts = if i == k - 1 {
-                self.num_accounts - (k as u64 - 1) * base_shard_accounts
-            } else {
-                base_shard_accounts
-            };
-            let shard_rate = if i == k - 1 {
-                self.rate - (k as u64 - 1) * base_shard_rate
-            } else {
-                base_shard_rate
-            };
+        for (region_id, &region_pk) in self.sorted_validators.iter().enumerate() {
+            let (acct_start, acct_count) = self.account_ranges[&region_pk];
+            assert!(acct_count > 0, "account count for region {} must be > 0", region_id);
 
-            // Each shard opens its own TCP connections
-            let validator_senders = self.connect_all_validators().await?;
-            let rt = routing_table.clone();
-            let is_sample_shard = i == 0;
-            let own_validator = self.own_validator;
-            let round_robin = self.round_robin;
-            let size = self.size;
-            let client_id = self.client_id;
-            let stagger_ms = BURST_DURATION * i as u64 / k as u64;
+            // Last region gets remainder to ensure exact sum = self.rate
+            let region_rate = if region_id == num_regions - 1 {
+                self.rate - base_region_rate_sum
+            } else {
+                (self.rate as f64 * self.rate_weights[region_id] / total_weight) as u64
+            };
+            base_region_rate_sum += region_rate;
 
-            handles.push(tokio::spawn(async move {
-                sleep(Duration::from_millis(stagger_ms)).await;
-                send_shard(
-                    validator_senders,
-                    rt,
-                    own_validator,
-                    round_robin,
-                    shard_account_start,
-                    shard_num_accounts,
-                    shard_rate,
-                    size,
-                    client_id,
-                    is_sample_shard,
-                ).await
-            }));
+            let base_sub_rate = region_rate / k as u64;
+            let base_sub_accounts = acct_count / k as u64;
+
+            for sub in 0..k {
+                let shard_acct_start = acct_start + sub as u64 * base_sub_accounts;
+                let shard_acct_count = if sub == k - 1 {
+                    acct_count - (k as u64 - 1) * base_sub_accounts
+                } else {
+                    base_sub_accounts
+                };
+                let shard_rate = if sub == k - 1 {
+                    region_rate - (k as u64 - 1) * base_sub_rate
+                } else {
+                    base_sub_rate
+                };
+
+                let validator_senders = self.connect_all_validators(region_id).await?;
+                let rt = routing_table.clone();
+                let is_sample_shard = sub == 0;
+                let round_robin = self.round_robin;
+                let size = self.size;
+                let shard_idx = region_id * k + sub;
+                let stagger_ms = BURST_DURATION * shard_idx as u64 / total_shards as u64; // add info! log to check this
+
+                handles.push(tokio::spawn(async move {
+                    sleep(Duration::from_millis(stagger_ms)).await;
+                    send_shard(
+                        validator_senders,
+                        rt,
+                        region_pk,
+                        round_robin,
+                        shard_acct_start,
+                        shard_acct_count,
+                        shard_rate,
+                        size,
+                        is_sample_shard,
+                    ).await
+                }));
+            }
         }
 
         for h in handles {
@@ -315,7 +394,6 @@ async fn send_shard(
     num_accounts: u64,
     rate: u64,
     size: usize,
-    client_id: u64,
     is_sample_shard: bool,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
@@ -380,7 +458,7 @@ async fn send_shard(
             tx.put_u64(account_id); // bytes 0-7: account_id prefix
             if is_sample_shard && burst > 0 && x == counter % burst {
                 // NOTE: This log entry is used to compute performance.
-                info!("Sending sample transaction {} account {} client {}", counter, account_id, client_id);
+                info!("Sending sample transaction {} account {}", counter, account_id);
 
                 tx.put_u8(0u8); // Sample txs start with 0.
                 tx.put_u64(counter); // This counter identifies the tx.

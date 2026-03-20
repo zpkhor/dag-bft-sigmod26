@@ -1,42 +1,43 @@
 #!/bin/bash
 set -e
 
-# Apply TC egress shaping on eth0
-if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
-    tc qdisc add dev eth0 root handle 1: htb default 10
+# SO_MARK-based per-region per-validator TC shaping
+if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ] && [ -n "$NUM_REGIONS" ]; then
+    N=$NUM_REGIONS
+
+    tc qdisc add dev eth0 root handle 1: htb default 99
     tc class add dev eth0 parent 1: classid 1:1 htb rate $TC_BANDWIDTH
-    tc class add dev eth0 parent 1:1 classid 1:10 htb rate $TC_BANDWIDTH ceil $TC_BANDWIDTH
 
-    if [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
-        JITTER_ARG=""
-        if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
-            JITTER_ARG="$TC_JITTER"
-        fi
-        tc qdisc add dev eth0 parent 1:10 handle 10: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT_CLIENT:-1000000}
+    # Default class (unmatched traffic): no latency
+    tc class add dev eth0 parent 1:1 classid 1:99 htb rate 1mbit ceil $TC_BANDWIDTH
 
-        # Exempt own validator from latency (own validator is colocated)
-        if [ -n "$OWN_VALIDATOR_IP" ]; then
-            tc class add dev eth0 parent 1:1 classid 1:20 htb rate 1mbit ceil $TC_BANDWIDTH
-            tc filter add dev eth0 parent 1:0 protocol ip u32 match ip dst ${OWN_VALIDATOR_IP}/32 flowid 1:20
-            echo "tc: exempt own validator $OWN_VALIDATOR_IP from latency"
-        fi
-    fi
-
-    echo "tc rules applied: bandwidth=$TC_BANDWIDTH latency=${TC_LATENCY:-none} jitter=${TC_JITTER:-none}"
-    tc qdisc show dev eth0
-elif [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
-    # Latency only (no bandwidth cap) — keep prio approach
-    tc qdisc add dev eth0 root handle 1: prio bands 2 priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1
-    # Band 0: own validator — no delay
-    tc filter add dev eth0 parent 1: protocol ip u32 match ip dst ${OWN_VALIDATOR_IP}/32 flowid 1:1
-    # Band 1 (default): other validators — add latency
     JITTER_ARG=""
     if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
         JITTER_ARG="$TC_JITTER"
     fi
-    tc qdisc add dev eth0 parent 1:2 handle 20: netem delay $TC_LATENCY $JITTER_ARG limit ${TC_NETEM_LIMIT_CLIENT:-1000000}
+    NETEM_LIMIT=${TC_NETEM_LIMIT_CLIENT:-1000000}
 
-    echo "tc latency rules applied: own_validator=$OWN_VALIDATOR_IP (no delay), others=${TC_LATENCY} jitter=${TC_JITTER:-none}"
+    for region_id in $(seq 0 $((N-1))); do
+        for v_idx in $(seq 0 $((N-1))); do
+            mark=$(( region_id * N + v_idx + 1 ))
+            classid=$(( mark + 10 ))
+
+            tc class add dev eth0 parent 1:1 classid 1:$classid htb rate 1mbit ceil $TC_BANDWIDTH
+
+            # fw filter matches SO_MARK on packets
+            tc filter add dev eth0 parent 1:0 protocol ip prio 1 \
+                handle $mark fw flowid 1:$classid
+
+            if [ "$region_id" != "$v_idx" ] && [ -n "$TC_LATENCY" ] && [ "$TC_LATENCY" != "0ms" ]; then
+                # Remote: add latency
+                tc qdisc add dev eth0 parent 1:$classid handle $classid: \
+                    netem delay $TC_LATENCY $JITTER_ARG limit $NETEM_LIMIT
+            fi
+            # Local (region_id == v_idx): no netem, packets pass through HTB only
+        done
+    done
+
+    echo "tc: SO_MARK shaping for $N regions x $N validators"
     tc qdisc show dev eth0
 fi
 
