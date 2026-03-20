@@ -15,7 +15,7 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ] && [ -n "$NUM_REGIONS" ]
     if [ -n "$TC_JITTER" ] && [ "$TC_JITTER" != "0ms" ]; then
         JITTER_ARG="$TC_JITTER"
     fi
-    NETEM_LIMIT=${TC_NETEM_LIMIT_CLIENT:-1000000}
+    NETEM_LIMIT=${TC_NETEM_LIMIT_CLIENT:-1000}
 
     for region_id in $(seq 0 $((N-1))); do
         for v_idx in $(seq 0 $((N-1))); do
