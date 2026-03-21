@@ -17,7 +17,6 @@ def parse_block(block):
 
     open_loop = find(r'\bOPEN_LOOP=(\S+)', cmd_line)
     rate_weights = find(r'\bRATE_WEIGHTS=(\S+)', cmd_line, keep_commas=True)
-    num_senders = find(r'\bNUM_SENDERS=(\S+)', cmd_line)
     routing_mode = find(r'\bROUTING_MODE=(\S+)', cmd_line)
     rate = find(r'\bRATE=(\S+)', cmd_line)
     duration = find(r'\bDURATION=(\S+)', cmd_line)
@@ -54,7 +53,7 @@ def parse_block(block):
     per_validator_p95 = ','.join(m[3].replace(',', '') for m in validator_metrics)
 
     return [
-        duration, open_loop, rate_weights, num_senders, routing_mode, warmup,
+        duration, open_loop, rate_weights, routing_mode, warmup,
         cpus_per_validator, worker_bw, workers_bw_mbps, latency, primary_bw, baseline,
         committee_size, input_rate, tx_size_B,
         commit_lat_mean_ms, commit_lat_p95_ms,
@@ -67,7 +66,7 @@ def parse_block(block):
 
 
 HEADER = [
-    'duration', 'open_loop', 'rate_weights', 'num_senders', 'routing_mode', 'warmup',
+    'duration', 'open_loop', 'rate_weights', 'routing_mode', 'warmup',
     'cpus_per_validator', 'worker_bw', 'workers_bw_mbps', 'latency', 'primary_bw', 'baseline',
     'committee_size', 'input_rate', 'tx_size_B',
     'commit_lat_mean_ms', 'commit_lat_p95_ms',
@@ -81,10 +80,9 @@ HEADER = [
 EXCLUDE_HEADER = [
     'open_loop',
     'rate_weights',
-    'num_senders',
     'routing_mode',
     'cpus_per_validator',
-    # 'latency',
+    'latency',
     'worker_bw',
     'workers_bw_mbps',
     'primary_bw',

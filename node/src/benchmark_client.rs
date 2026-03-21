@@ -37,7 +37,6 @@ async fn main() -> Result<()> {
         .args_from_usage("--reply-addr=[ADDR] 'Address to listen for migration notices'")
         .args_from_usage("--own-validator=<KEY> 'Base64 public key of this client\\'s home validator'")
         .args_from_usage("--round-robin 'Enable round-robin routing across all validators'")
-        .args_from_usage("--num-senders=[INT] 'Number of independent sender tasks per region (default 1)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -115,12 +114,6 @@ async fn main() -> Result<()> {
         .transpose()?;
 
     let round_robin = matches.is_present("round-robin");
-    let num_senders = matches
-        .value_of("num-senders")
-        .unwrap_or("1")
-        .parse::<usize>()
-        .context("num-senders must be a positive integer")?;
-    assert!(num_senders > 0, "num-senders must be at least 1");
 
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
@@ -202,7 +195,6 @@ async fn main() -> Result<()> {
         reply_addr,
         f_plus_one,
         round_robin,
-        num_senders,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -223,7 +215,6 @@ struct Client {
     reply_addr: Option<SocketAddr>,
     f_plus_one: usize,
     round_robin: bool,
-    num_senders: usize,
 }
 
 impl Client {
@@ -297,18 +288,13 @@ impl Client {
 
         let num_regions = self.sorted_validators.len();
         let total_weight: f64 = self.rate_weights.iter().sum();
-        let k = self.num_senders;
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
-        info!(
-            "Spawning {} regions x {} sub-shards = {} total sender tasks",
-            num_regions, k, num_regions * k
-        );
+        info!("Spawning {} sender tasks (1 per region)", num_regions);
 
         const PRECISION: u64 = 20;
         const BURST_DURATION: u64 = 1000 / PRECISION;
-        let total_shards = num_regions * k;
 
         let mut base_region_rate_sum: u64 = 0;
         let mut handles = Vec::new();
@@ -324,45 +310,25 @@ impl Client {
             };
             base_region_rate_sum += region_rate;
 
-            let base_sub_rate = region_rate / k as u64;
-            let base_sub_accounts = acct_count / k as u64;
+            let validator_senders = self.connect_all_validators(region_id).await?;
+            let rt = routing_table.clone();
+            let round_robin = self.round_robin;
+            let size = self.size;
+            let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
-            for sub in 0..k {
-                let shard_acct_start = acct_start + sub as u64 * base_sub_accounts;
-                let shard_acct_count = if sub == k - 1 {
-                    acct_count - (k as u64 - 1) * base_sub_accounts
-                } else {
-                    base_sub_accounts
-                };
-                let shard_rate = if sub == k - 1 {
-                    region_rate - (k as u64 - 1) * base_sub_rate
-                } else {
-                    base_sub_rate
-                };
-
-                let validator_senders = self.connect_all_validators(region_id).await?;
-                let rt = routing_table.clone();
-                let is_sample_shard = sub == 0;
-                let round_robin = self.round_robin;
-                let size = self.size;
-                let shard_idx = region_id * k + sub;
-                let stagger_ms = BURST_DURATION * shard_idx as u64 / total_shards as u64; // add info! log to check this
-
-                handles.push(tokio::spawn(async move {
-                    sleep(Duration::from_millis(stagger_ms)).await;
-                    send_shard(
-                        validator_senders,
-                        rt,
-                        region_pk,
-                        round_robin,
-                        shard_acct_start,
-                        shard_acct_count,
-                        shard_rate,
-                        size,
-                        is_sample_shard,
-                    ).await
-                }));
-            }
+            handles.push(tokio::spawn(async move {
+                sleep(Duration::from_millis(stagger_ms)).await;
+                send_shard(
+                    validator_senders,
+                    rt,
+                    region_pk,
+                    round_robin,
+                    acct_start,
+                    acct_count,
+                    region_rate,
+                    size,
+                ).await
+            }));
         }
 
         for h in handles {
@@ -394,7 +360,6 @@ async fn send_shard(
     num_accounts: u64,
     rate: u64,
     size: usize,
-    is_sample_shard: bool,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
@@ -456,7 +421,7 @@ async fn send_shard(
             };
 
             tx.put_u64(account_id); // bytes 0-7: account_id prefix
-            if is_sample_shard && burst > 0 && x == counter % burst {
+            if burst > 0 && x == counter % burst {
                 // NOTE: This log entry is used to compute performance.
                 info!("Sending sample transaction {} account {}", counter, account_id);
 

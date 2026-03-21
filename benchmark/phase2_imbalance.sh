@@ -9,7 +9,6 @@ RATE_WEIGHTS_LIST=("1,1,1,1" "1.5,1,1,1" "5,1,1,1")
 RETRIES=2
 DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-5}
-NUM_SENDERS=${NUM_SENDERS:-4}
 RESULTS_DIR="results/phase2_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
@@ -33,8 +32,8 @@ for RATE in "${RATES[@]}"; do
             echo ""
             echo "--- Rate: $RATE tx/s, Weights: $WEIGHTS, Run: $RETRY/$RETRIES ---"
 
-            echo "CMD: BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS NUM_SENDERS=$NUM_SENDERS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit 2>&1) || true
+            echo "CMD: BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP RATE_WEIGHTS=$WEIGHTS fab docker --cpus-per-validator=16 --worker-bw=75mbit --latency=100ms --primary-bw=25mbit 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
             # Copy logs for this run
