@@ -61,6 +61,14 @@ class CommandMaker:
         return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {client_id_arg}'
 
     @staticmethod
+    def remote_cleanup():
+        """Cleanup for remote machines (home dir). Only removes narwhal-specific
+        files, not all .*.json (which would nuke ~/.claude.json etc.)."""
+        return (
+            'rm -rf .db-* ; rm -f .node-*.json .committee.json .parameters.json'
+        )
+
+    @staticmethod
     def kill():
         return 'tmux kill-server'
 

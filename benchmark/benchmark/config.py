@@ -249,6 +249,65 @@ class DockerCommittee(Committee):
         return addrs
 
 
+class CloudLabCommittee(Committee):
+    """Committee for CloudLab deployments (single shared LAN, single client).
+
+    Address assignment:
+        primary_to_primary:   validator IP (inter-validator)
+        worker_to_primary:    127.0.0.1 (intra-validator, same machine)
+        primary_to_worker:    127.0.0.1 (intra-validator, same machine)
+        transactions:         validator IP (client connects over LAN)
+        worker_to_worker:     validator IP (inter-validator)
+        client_reply:         client IP
+    """
+    def __init__(self, names, port, workers, validator_ips, client_ip):
+        assert isinstance(names, list)
+        assert all(isinstance(x, str) for x in names)
+        assert isinstance(port, int)
+        assert isinstance(workers, int) and workers > 0
+        assert isinstance(client_ip, str)
+        n = len(names)
+        assert len(validator_ips) == n
+
+        addresses = OrderedDict(
+            (name, [v_ip] * (1 + workers))
+            for name, v_ip in zip(names, validator_ips)
+        )
+        super().__init__(addresses, port)
+
+        # Override intra-validator to 127.0.0.1, set client_reply to single client IP
+        first_reply_port = list(self.json['authorities'].values())[0]['client_reply'].split(':')[1]
+        for name in names:
+            auth = self.json['authorities'][name]
+
+            addr = auth['primary']['worker_to_primary']
+            auth['primary']['worker_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
+
+            for worker in auth['workers'].values():
+                addr = worker['primary_to_worker']
+                worker['primary_to_worker'] = f'127.0.0.1:{addr.split(":")[1]}'
+
+            auth['client_reply'] = f'{client_ip}:{first_reply_port}'
+
+    def remote_addresses(self, name):
+        """Returns host:port pairs for all listening ports of other validators
+        (excludes 127.0.0.1 addresses and the given validator)."""
+        addrs = []
+        for auth_name, auth in self.json['authorities'].items():
+            if auth_name == name:
+                continue
+            for addr in [auth['primary']['primary_to_primary'],
+                         auth['primary']['worker_to_primary']]:
+                if not addr.startswith('127.0.0.1:'):
+                    addrs.append(addr)
+            for worker in auth['workers'].values():
+                for key in ['primary_to_worker', 'worker_to_worker']:
+                    addr = worker[key]
+                    if not addr.startswith('127.0.0.1:'):
+                        addrs.append(addr)
+        return addrs
+
+
 class NodeParameters:
     def __init__(self, json):
         inputs = []

@@ -246,3 +246,33 @@ class InstanceManager:
             f"{text}"
             "----------------------------------------------------------------\n"
         )
+
+
+class CloudLabInstanceManager:
+    """Wraps a parsed CloudLab manifest for topology discovery."""
+
+    def __init__(self, manifest):
+        self.manifest = manifest
+
+    @classmethod
+    def make(cls, manifest_file, username):
+        from benchmark.manifest import Manifest
+        return cls(Manifest.load(manifest_file, username))
+
+    def num_validators(self):
+        return len(self.manifest.validators)
+
+    def validator_ssh_hosts(self):
+        return [v['ssh_host'] for v in self.manifest.validators]
+
+    def client_ssh_hosts(self):
+        return [c['ssh_host'] for c in self.manifest.clients]
+
+    def all_ssh_hosts(self):
+        return self.validator_ssh_hosts() + self.client_ssh_hosts()
+
+    def validator_ips(self):
+        return [v['ip'] for v in self.manifest.validators]
+
+    def client_ips(self):
+        return [c['ip'] for c in self.manifest.clients]
