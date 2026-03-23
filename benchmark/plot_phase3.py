@@ -16,34 +16,26 @@ from plot_worker_batches import (
 
 
 COLUMN_ORDER = [
-    "balanced",
-    "imbalance_rate_5",
-    "imbalance_bw1",
-    "imbalance_bw2",
-    "balanced_ns3",
-    "imbalance_rate_5_ns3",
-    "imbalance_bw1_ns3",
-    "imbalance_bw2_ns3",
-    "balanced_rr",
-    "imbalance_rate_5_rr",
-    "imbalance_bw1_rr",
-    "imbalance_bw2_rr",
+    "balanced_bsl0",
+    "balanced_bsl1",
+    "imbalance_rate_5_bsl0",
+    "imbalance_rate_5_bsl1",
+    "imbalance_bw1_bsl0",
+    "imbalance_bw1_bsl1",
+    "imbalance_bw2_bsl0",
+    "imbalance_bw2_bsl1",
 ]
 
 
 INCLUDED = [
-    "balanced",
-    "imbalance_rate_5",
-    "imbalance_bw1",
-    "imbalance_bw2",
-    "balanced_ns3",
-    "imbalance_rate_5_ns3",
-    "imbalance_bw1_ns3",
-    "imbalance_bw2_ns3",
-    "balanced_rr",
-    "imbalance_rate_5_rr",
-    "imbalance_bw1_rr",
-    "imbalance_bw2_rr",
+    "balanced_bsl0",
+    "balanced_bsl1",
+    "imbalance_rate_5_bsl0",
+    "imbalance_rate_5_bsl1",
+    "imbalance_bw1_bsl0",
+    "imbalance_bw1_bsl1",
+    "imbalance_bw2_bsl0",
+    "imbalance_bw2_bsl1",
 ]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
@@ -53,7 +45,7 @@ PER_VALIDATOR_SECTION_RE = re.compile(
 )
 PER_VALIDATOR_ROW_RE = re.compile(r"^\s+(\d+)\s+([\d,]+)\s+([\d,]+)", re.MULTILINE)
 
-RUN_DIR_RE = re.compile(r"^(.+)_rate(\d+)_run_(\d+)$")
+RUN_DIR_RE = re.compile(r"^(.+)_rate(\d+)_bsl(\d+)_run_(\d+)$")
 
 
 def parse_args() -> argparse.Namespace:
@@ -86,7 +78,8 @@ def discover_runs(results_dir: Path) -> Dict[Tuple[str, int], List[Tuple[int, Pa
         match = RUN_DIR_RE.match(subdir.name)
         if not match:
             continue
-        label, rate, run_num = match.group(1), int(match.group(2)), int(match.group(3))
+        label, rate, bsl, run_num = match.group(1), int(match.group(2)), match.group(3), int(match.group(4))
+        label = f"{label}_bsl{bsl}"
         groups.setdefault((label, rate), []).append((run_num, subdir))
     for key in groups:
         groups[key].sort(key=lambda x: x[0])
