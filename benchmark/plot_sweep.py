@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+"""Generic sweep plotter. Auto-discovers <label>_run_<N> subdirectories."""
 import argparse
 import re
 from pathlib import Path
@@ -14,16 +15,16 @@ RUN_DIR_RE = re.compile(r"^(.+)_run_(\d+)$")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Plot all phase3 CloudLab runs in a single combined figure."
+        description="Plot all sweep runs in a single combined figure."
     )
     parser.add_argument(
         "results_dir",
-        help="Path to a phase3_cloudlab results directory containing *_run_* subdirectories",
+        help="Path to a results directory containing *_run_* subdirectories",
     )
     parser.add_argument(
         "-o",
         "--output",
-        help="Output image path. Defaults to benchmark/<results_dir_name>-phase3-cloudlab.png",
+        help="Output image path. Defaults to benchmark/<results_dir_name>-sweep.png",
     )
     parser.add_argument(
         "--no-smooth",
@@ -63,7 +64,7 @@ def main() -> int:
     columns = [(label, groups[label]) for label in labels]
 
     output_path = Path(args.output) if args.output else (
-        Path(__file__).resolve().parent / f"{results_dir.name}-phase3-cloudlab.png"
+        Path(__file__).resolve().parent / f"{results_dir.name}-sweep.png"
     )
 
     plot_experiment(results_dir, output_path, not args.no_smooth, columns, lambda d: d)
