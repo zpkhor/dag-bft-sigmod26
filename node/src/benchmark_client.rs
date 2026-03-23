@@ -363,6 +363,8 @@ async fn send_shard(
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
+    const RAMPUP_SECS: u64 = 2;
+    const RAMPUP_TICKS: u64 = RAMPUP_SECS * PRECISION; // 80 ticks = 4s
 
     let own_senders = &validator_senders[&own_validator];
     let num_workers = own_senders.len();
@@ -390,7 +392,14 @@ async fn send_shard(
         interval.as_mut().tick().await;
         let now = Instant::now();
 
-        let next_total = rate * (counter + 1) / PRECISION;
+        // Linear ramp-up from 0 to full rate over RAMPUP_SECS seconds.
+        // Cumulative = rate * T^2 / (2 * RAMPUP_SECS) where T = (counter+1)/PRECISION.
+        // After ramp: ramp contributed rate * RAMPUP_SECS / 2 total txs.
+        let next_total = if counter < RAMPUP_TICKS {
+            rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * RAMPUP_SECS)
+        } else {
+            rate * RAMPUP_SECS / 2 + rate * (counter + 1 - RAMPUP_TICKS) / PRECISION
+        };
         let burst = next_total - total_sent;
 
         for x in 0..burst {
