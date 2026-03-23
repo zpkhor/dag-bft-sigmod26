@@ -21,9 +21,7 @@ import geni.portal as portal
 import geni.rspec.pg as RSpec
 
 NUM_VALIDATORS = 4
-PRIMARY_BW = 25000   # Kbps, consensus traffic (same for all validators)
-WORKER_BWS = [25000, 25000, 75000, 75000]  # Kbps, batch traffic per validator
-NODE_BWS = [PRIMARY_BW + w for w in WORKER_BWS]  # total per validator: [50000, 100000, 100000, 100000]
+NODE_BWS = [25000, 75000, 75000, 75000]  # Kbps per validator; shared between client and worker traffic
 NODE_LAT = 25     # 25ms per interface -> 50ms one-way -> 100ms RTT between nodes
 # Extra one-way delay added on client egress to remote validators via SO_MARK tc.
 # region-i to own node-i RTT: 0 + 25 + 25 + 0 = 50ms

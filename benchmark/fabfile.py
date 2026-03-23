@@ -216,8 +216,8 @@ def cloudlab(ctx, debug=False,
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     primary_bw_kbps = int(os.environ.get('PRIMARY_BW_KBPS', 25000))
-    worker_bws_raw = os.environ.get('WORKER_BWS_KBPS')
-    worker_bws_kbps = [int(v) for v in worker_bws_raw.split(',')] if worker_bws_raw else [75000, 75000, 75000, 75000]
+    worker_bws_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
+    worker_bws_kbps = [int(v) * 1000 for v in worker_bws_raw.split(',')] if worker_bws_raw else [75000, 75000, 75000, 75000]
     routing_mode = os.environ.get('ROUTING_MODE', '')
     baseline = os.environ.get('BASELINE', '0') == '1'
     round_robin = routing_mode == 'round-robin'
