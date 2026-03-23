@@ -1,5 +1,6 @@
-# Bash commands
+# Bash commands and python run
 `source activate narwhal39 && cargo build --release --features benchmark`: Compile
+`source activate narwhal39`: before running python 
 
 `narwhal-cloudlab-smallbank/` is another fork repo, please ignore
 
@@ -51,12 +52,18 @@
 # Comment Writing Guidelines
 - Do NOT comment the obvious - comments should not simply repeat what the code does.
 
+# Shell scripts (*.sh) Editing Conventions
+- When editing, verify variable names match exactly what's already used in the `benchmark/fabfile.py` Grep for existing usage before introducing variable references.
+- Print abs path over relative path
+
+
 # Dev note
 - Don't run tests at all, I will handle testing manually.
 - This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility. We are mainly using docker and cloudlab in benchmark/fabfile.py
 - When editing existing code, don't "improve" adjacent code, comments, or formatting. If you notice unrelated dead code, mention it don't delete it.
 - Don't remove any TODO when editing files
 - `benchmark/fabfile.py` is the entrypoint and contains environ vars that flow through `benchmark/benchmark/docker_bench.py` and `benchmark/benchmark/config.py` and `config/src/lib.rs` to control the behavior of program, when making any edit always check if these need to be updated
+- After editing `benchmark/fabfile.py` that change env var, check if the *.sh needs to be updated
 - `benchmark/benchmark/cloudlab_bench.py` is used to deploy the experiment on multi-instances. After editing please check and inform if anything need to be updated
 - When editing python file, please DO NOT use None as default arg (always use positional args over keyword args)
 - I prefer hardfail (assert, panic) rather than warning or silence continue or skipping
