@@ -169,7 +169,7 @@ class DockerBench:
 
             cpuset = ""
             if self.cpus_per_validator > 0:
-                slot = self.cpus_per_validator + 4
+                slot = self.cpus_per_validator
                 start = i * slot
                 end = start + self.cpus_per_validator - 1
                 cpuset = f'\n    cpuset: "{start}-{end}"'
@@ -234,9 +234,9 @@ class DockerBench:
 
         client_cpuset = ""
         if self.cpus_per_validator > 0:
-            slot = self.cpus_per_validator + 4
+            slot = self.cpus_per_validator
             c_start = nodes * slot
-            client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 4 * nodes - 1}"'
+            client_cpuset = f'\n    cpuset: "{c_start}-{c_start + 2 * nodes - 1}"'
 
         netem_limit_client_env = f"\n      - TC_NETEM_LIMIT_CLIENT={self.tc_netem_limit_client}" if self.tc_netem_limit_client > 0 else ""
         validator_ips_str = " ".join(container_ips)

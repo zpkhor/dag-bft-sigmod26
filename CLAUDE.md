@@ -1,13 +1,13 @@
 # Bash commands
 `source activate narwhal39 && cargo build --release --features benchmark`: Compile
 
-`narwhal-cloudlab-smallbank/` is another fork repo, it shares same base branch with this repo, it has cloudlab deploy code
+`narwhal-cloudlab-smallbank/` is another fork repo, please ignore
 
 # Architecture
 - Narwhal is a BFT system with a **two-tier process architecture**:
   - **Tier 1 (Primary)**: One per validator (handles consensus)
   - **Tier 2 (Workers)**: Multiple per validator (handle transaction batching and receival of batch from others)
-- The number of client and validator are same. In docker mode, the client runs in its own dedicated container with 4 pinned CPUs adjacent (directly after) its validator's CPU range, with 0ms tc latency to the validator.
+- In docker mode, all validators receive requests from the same single client that runs in its own dedicated container, with different latency tc shaping.
 - The client sends into unbounded mpsc to include queueing delay for latency. Backpressure from the worker's bounded tx_batch_maker channel propagates through TCP but only grows the unbounded channel in memory — the client's send() never blocks. The signal for overload is client misses due to the packet drop of limited interface queue length
 - Local bench runs all processes on one machine, clock drift is not an issue
 
@@ -53,10 +53,11 @@
 
 # Dev note
 - Don't run tests at all, I will handle testing manually.
-- This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility. We are mainly using docker in benchmark/fabfile.py
+- This is a experimental branch to study performance impact due to validator load imbalance, no need to worry about breaking things and maintaining backwards compatibility. We are mainly using docker and cloudlab in benchmark/fabfile.py
 - When editing existing code, don't "improve" adjacent code, comments, or formatting. If you notice unrelated dead code, mention it don't delete it.
 - Don't remove any TODO when editing files
 - `benchmark/fabfile.py` is the entrypoint and contains environ vars that flow through `benchmark/benchmark/docker_bench.py` and `benchmark/benchmark/config.py` and `config/src/lib.rs` to control the behavior of program, when making any edit always check if these need to be updated
+- `benchmark/benchmark/cloudlab_bench.py` is used to deploy the experiment on multi-instances. After editing please check and inform if anything need to be updated
 - When editing python file, please DO NOT use None as default arg (always use positional args over keyword args)
 - I prefer hardfail (assert, panic) rather than warning or silence continue or skipping
 
