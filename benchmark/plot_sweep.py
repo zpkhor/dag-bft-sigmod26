@@ -17,10 +17,10 @@ LABEL_RATE_RE = re.compile(r"^(.+)_r(\d+)$")
 
 CONFIG_ORDER = [
     "balanced",
-    "imbalance_rate_5",
-    "imbalance_bw1",
-    "imbalance_bw2",
-    "imbalance_bw3",
+    "imbalanced",
+    "imbalanced_bw1",
+    "imbalanced_bw2",
+    "imbalanced_bw3",
 ]
 
 
@@ -86,6 +86,8 @@ def main() -> int:
 
     labels = sorted(groups.keys(), key=label_sort_key)
     columns = [(label, groups[label]) for label in labels]
+    # print(labels)
+    # return 0
 
     output_path = Path(args.output) if args.output else (
         Path(__file__).resolve().parent / f"{results_dir.name}-sweep.png"

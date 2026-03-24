@@ -28,10 +28,10 @@ OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 # Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS"
 CONFIGS=(
     "balanced|75,75,75,75|1,1,1,1"
-    "imbalance_rate_5|75,75,75,75|5,1,1,1"
-    "imbalance_bw1|25,75,75,75|1,1,1,1"
-    "imbalance_bw2|25,25,75,75|1,1,1,1"
-    "imbalance_bw3|25,25,25,75|1,1,1,1"
+    "imbalanced|75,75,75,75|5,1,1,1"
+    "imbalanced_bw1|25,75,75,75|1,1,1,1"
+    "imbalanced_bw2|25,25,75,75|1,1,1,1"
+    "imbalanced_bw3|25,25,25,75|1,1,1,1"
 )
 
 RATES=(4800 11800 15100)
