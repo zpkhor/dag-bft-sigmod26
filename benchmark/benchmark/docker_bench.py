@@ -162,6 +162,14 @@ class DockerBench:
 
     def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str):
         """Generate docker-compose.yml programmatically."""
+        # Halve latency for netem: egress-only delay on both endpoints means
+        # each side contributes half the RTT (self.latency is the target RTT).
+        if self.latency not in ('0ms', ''):
+            half_lat_ms = int(self.latency.rstrip('ms')) // 2
+            tc_latency = f'{half_lat_ms}ms'
+        else:
+            tc_latency = self.latency
+
         services = []
         for i in range(nodes):
             ip = self._container_ip(i)
@@ -209,7 +217,7 @@ class DockerBench:
       - TC_BANDWIDTH={self.total_bws[i]}
       - TC_PRIMARY_BW={self.primary_bw}
       - TC_WORKER_BW={self.worker_bws[i]}
-      - TC_LATENCY={self.latency}
+      - TC_LATENCY={tc_latency}
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
       - OWN_CLIENT_IP={client_ip}
@@ -257,7 +265,7 @@ class DockerBench:
       - CLIENT_CMD={client_command}
       - NUM_REGIONS={nodes}
       - VALIDATOR_IPS={validator_ips_str}
-      - TC_LATENCY={self.latency}
+      - TC_LATENCY={tc_latency}
       - TC_JITTER={self.jitter}
       - TC_BANDWIDTH={max_bw}
       - WAIT_PORTS={client_wait_ports}{netem_limit_client_env}"""

@@ -14,7 +14,9 @@ from benchmark.cloudlab_bench import CloudLabBench, CloudLabInstaller
 @task
 def docker(ctx, debug=False, worker_bw='10gbit', latency='0ms', jitter='0ms',
            cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):
-    ''' Run benchmarks in Docker containers with tc bandwidth shaping '''
+    ''' Run benchmarks in Docker containers with tc bandwidth shaping.
+        latency: target RTT between validators (e.g. '100ms'), not one-way delay.
+    '''
     rate = int(os.environ.get('RATE', 50_000))
     duration = int(os.environ.get('DURATION', 20))
     warmup = int(os.environ.get('WARMUP', 0))
