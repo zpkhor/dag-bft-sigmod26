@@ -291,6 +291,14 @@ class CloudLabBench:
             }
             committee.set_latency_matrix(latency_matrix)
 
+            if not self.baseline:
+                capacities = []
+                for i in range(nodes):
+                    workers_bw_bytes = self.worker_bws_kbps[i] * 1000 / 8
+                    capacity = int(workers_bw_bytes / (self.tx_size + 44) / (nodes - 1) * 0.9)
+                    capacities.append(capacity)
+                committee.set_capacities(capacities)
+
             if self.baseline:
                 self.node_parameters.json['baseline_mode'] = True
             self.node_parameters.print(PathMaker.parameters_file())
