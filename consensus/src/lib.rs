@@ -12,8 +12,12 @@ use tokio::sync::mpsc::{Receiver, Sender};
 #[path = "tests/consensus_tests.rs"]
 pub mod consensus_tests;
 
-const WINDOW_SIZE: Round = 30;
-const CERTIFIED_TPS_WINDOW_ROUNDS: Round = 20;
+/// How many rounds of account history and TPS data to retain for tracking.
+const TRACKING_WINDOW: Round = 30;
+/// How often (in rounds) to evaluate rerouting decisions.
+/// Must be >= TRACKING_WINDOW so post-migration data is reflected before re-evaluating.
+const REROUTE_INTERVAL: Round = 50;
+const _: () = assert!(REROUTE_INTERVAL >= TRACKING_WINDOW);
 
 struct CertifiedTpsTracker {
     /// Per-round, per-validator (created_at_ms, tx_count).
@@ -152,24 +156,17 @@ impl CertifiedTpsTracker {
     }
 }
 
-struct Migration {
-    from: PublicKey,
-    to: PublicKey,
-    rate: f64,
-    latency: u64,
-}
-
 /// Compute rerouting decisions: which donors should shed client load to which receivers.
 ///
 /// Donors are identified by: spare capacity < threshold OR queue_delay >> median.
 /// Excess per donor is estimated as: estimated_input_rate - proportional_target.
-/// Receivers are filled greedily, preferring lowest latency.
+/// Receivers are selected per-account, preferring lowest client-to-receiver latency.
 /// Per-account enumeration takes ranges from current_assignments (mutable — updated in place).
 fn compute_rerouting(
     tps: &HashMap<PublicKey, f64>,
     capacities: &HashMap<PublicKey, u64>,
     avg_queue_delay: &HashMap<PublicKey, f64>,
-    latency_matrix: &BTreeMap<PublicKey, BTreeMap<PublicKey, u64>>,
+    account_latency: &HashMap<u64, BTreeMap<PublicKey, u64>>,
     sorted_keys: &[PublicKey],
     current_assignments: &mut Vec<Vec<(u64, u64)>>,
     f: usize,
@@ -256,69 +253,20 @@ fn compute_rerouting(
     }
     donor_excess.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap().then_with(|| a.0.cmp(&b.0)));
 
-    // Step 4: Latency-aware greedy assignment (aggregate)
+    // Step 4: Per-account latency-aware receiver selection
     let pk_to_idx: HashMap<PublicKey, usize> = sorted_keys.iter()
         .enumerate()
         .map(|(i, pk)| (*pk, i))
         .collect();
 
-    let get_latency = |from: &PublicKey, to: &PublicKey| -> u64 {
-        latency_matrix
-            .get(from)
-            .and_then(|row| row.get(to))
-            .copied()
-            .unwrap_or(0)
-    };
-
-    // Build (donor_index, donor, receiver, latency) pairs in deterministic order
-    let mut pairs: Vec<(usize, PublicKey, PublicKey, u64)> = Vec::new();
-    for (di, &(d, _)) in donor_excess.iter().enumerate() {
-        for &r in sorted_keys {
-            if receiver_spare.contains_key(&r) {
-                pairs.push((di, d, r, get_latency(&d, &r)));
-            }
-        }
-    }
-    pairs.sort_by(|a, b| a.3.cmp(&b.3));
-
-    let mut remaining_excess: Vec<f64> = donor_excess.iter().map(|(_, e)| *e).collect();
     let mut remaining_spare = receiver_spare.clone();
-    let mut aggregate_migrations: Vec<Migration> = Vec::new();
-
-    for &(di, d, r, lat) in &pairs {
-        let excess = remaining_excess[di];
-        let avail = remaining_spare.get(&r).copied().unwrap_or(0.0);
-        if excess <= 0.0 || avail <= 0.0 {
-            continue;
-        }
-        let amount = excess.min(avail);
-        aggregate_migrations.push(Migration { from: d, to: r, rate: amount, latency: lat });
-        remaining_excess[di] -= amount;
-        *remaining_spare.get_mut(&r).unwrap() -= amount;
-    }
-
-    for (i, &remaining) in remaining_excess.iter().enumerate() {
-        if remaining > SPARE_THRESHOLD {
-            info!(
-                "reroute: validator {} has {:.0} tx/s unplaceable excess",
-                donor_excess[i].0, remaining
-            );
-        }
-    }
-
-    // Step 5: Per-account enumeration from current_assignments
-    // current_assignments[i] = list of (start, count) ranges currently assigned to validator i.
-    // Take ranges from donors and add to receivers, updating the state.
     let mut per_account_migrations: Vec<MigrationNotice> = Vec::new();
 
-    for m in &aggregate_migrations {
-        let donor_tps = tps.get(&m.from).copied().unwrap_or(0.0);
+    for &(donor_pk, excess) in &donor_excess {
+        let donor_idx = pk_to_idx[&donor_pk];
+        assert!(donor_idx < current_assignments.len());
+        let donor_tps = tps.get(&donor_pk).copied().unwrap_or(0.0);
         if donor_tps <= 0.0 {
-            continue;
-        }
-        let donor_idx = pk_to_idx[&m.from];
-        let to_idx = pk_to_idx[&m.to];
-        if donor_idx >= current_assignments.len() || to_idx >= current_assignments.len() {
             continue;
         }
 
@@ -327,30 +275,73 @@ fn compute_rerouting(
             continue;
         }
 
-        let fraction = (m.rate / donor_tps).min(1.0);
+        // remaining_spare is in tx/s; tps_per_account converts account count to tx/s
+        let tps_per_account = donor_tps / total_assigned as f64;
+        let fraction = (excess / donor_tps).min(1.0);
         let n_to_migrate = ((fraction * total_assigned as f64).ceil() as u64).min(total_assigned);
 
-        // Take ranges from the front of donor's assignments
         let taken = take_ranges(&mut current_assignments[donor_idx], n_to_migrate);
-        let taken_total: u64 = taken.iter().map(|(_, c)| c).sum();
+        let accounts: Vec<u64> = taken.iter()
+            .flat_map(|&(start, count)| start..(start + count))
+            .collect();
 
-        // Emit individual migration notices for taken accounts
-        for &(start, count) in &taken {
-            for i in 0..count {
-                per_account_migrations.push(MigrationNotice {
-                    account_id: start + i,
-                    new_target: m.to,
-                });
+        let mut migrated_count: u64 = 0;
+        for &acct in &accounts {
+            let latencies = account_latency.get(&acct);
+            let best_receiver = remaining_spare.iter()
+                .filter(|(_, spare)| **spare >= tps_per_account)
+                .min_by_key(|(pk, _)| {
+                    latencies.map(|l| l.get(pk).copied().unwrap_or(u64::MAX)).unwrap_or(u64::MAX)
+                })
+                .map(|(pk, _)| *pk);
+
+            match best_receiver {
+                Some(recv_pk) => {
+                    per_account_migrations.push(MigrationNotice {
+                        account_id: acct,
+                        new_target: recv_pk,
+                    });
+                    *remaining_spare.get_mut(&recv_pk).unwrap() -= tps_per_account;
+                    current_assignments[pk_to_idx[&recv_pk]].push((acct, 1));
+                    migrated_count += 1;
+                }
+                None => {
+                    let remaining = &accounts[migrated_count as usize..];
+                    for chunk in remaining.chunk_by(|a, b| *b == *a + 1) {
+                        current_assignments[donor_idx].push((chunk[0], chunk.len() as u64));
+                    }
+                    info!(
+                        "reroute: no receiver capacity, {} accounts unplaceable for donor {}",
+                        remaining.len(), donor_pk
+                    );
+                    break;
+                }
             }
         }
 
-        // Add taken ranges to receiver's assignments
-        current_assignments[to_idx].extend_from_slice(&taken);
-
         info!(
-            "reroute: {:.0} tx/s ({}/{} accounts, {:.1}%) validator {} -> validator {} (latency: {}ms)",
-            m.rate, taken_total, total_assigned, fraction * 100.0, m.from, m.to, m.latency
+            "reroute: migrated {}/{} accounts ({:.1}%) from donor {}",
+            migrated_count, total_assigned, fraction * 100.0, donor_pk
         );
+    }
+
+    // Coalesce fragmented (acct, 1) entries in current_assignments into contiguous ranges
+    for ranges in current_assignments.iter_mut() {
+        if ranges.len() <= 1 {
+            continue;
+        }
+        ranges.sort_by_key(|&(start, _)| start);
+        let mut merged: Vec<(u64, u64)> = Vec::new();
+        for &(start, count) in ranges.iter() {
+            if let Some(last) = merged.last_mut() {
+                if last.0 + last.1 == start {
+                    last.1 += count;
+                    continue;
+                }
+            }
+            merged.push((start, count));
+        }
+        *ranges = merged;
     }
 
     per_account_migrations
@@ -490,8 +481,8 @@ impl AccountCountsHistory {
 
         // Evict the round that just fell outside the window, subtracting its counts
         // from past_account_counts for every validator that had a certificate there.
-        if round >= WINDOW_SIZE {
-            if let Some(evicted) = self.dag.remove(&(round - WINDOW_SIZE)) {
+        if round >= TRACKING_WINDOW {
+            if let Some(evicted) = self.dag.remove(&(round - TRACKING_WINDOW)) {
                 for (validator, (old_counts, _)) in &evicted {
                     if let Some(past) = self.past_account_counts.get_mut(validator) {
                         for (acc, cnt) in old_counts {
@@ -624,7 +615,7 @@ impl Consensus {
         // The consensus state (everything else is immutable).
         let mut state = State::new(self.genesis.clone());
         let mut account_history = AccountCountsHistory::new();
-        let mut certified_tps_tracker = CertifiedTpsTracker::new(CERTIFIED_TPS_WINDOW_ROUNDS);
+        let mut certified_tps_tracker = CertifiedTpsTracker::new(TRACKING_WINDOW);
 
         let mut cap_entries: Vec<(PublicKey, u64)> = self.validator_capacities.iter().map(|(pk, c)| (*pk, *c)).collect();
         cap_entries.sort_by_key(|(pk, _)| *pk);
@@ -639,6 +630,21 @@ impl Consensus {
             .map(|(_, &(start, count))| vec![(start, count)])
             .collect();
 
+        // Build per-account latency map: account_id -> Arc<BTreeMap<validator, latency_ms>>.
+        // Each account's home region determines its latency to each validator.
+        // Arc avoids cloning the same BTreeMap for every account in a region.
+        let account_latency: HashMap<u64, BTreeMap<PublicKey, u64>> = {
+            let mut m = HashMap::new();
+            for (&pk, &(start, count)) in &self.committee.account_ranges {
+                let row = self.client_validator_latency.get(&pk)
+                    .expect("latency_matrix missing entry for validator");
+                for acct in start..(start + count) {
+                    m.insert(acct, row.clone());
+                }
+            }
+            m
+        };
+
         // Listen to incoming certificates.
         while let Some(certificate) = self.rx_new_certificates.recv().await {
             info!("Processing {:?}", certificate);
@@ -649,7 +655,7 @@ impl Consensus {
                 account_history.update(&certificate);
                 certified_tps_tracker.record(&certificate);
             }
-            if !self.baseline_mode && certificate.origin() == self.name && round % WINDOW_SIZE == 0 {
+            if !self.baseline_mode && certificate.origin() == self.name && round % REROUTE_INTERVAL == 0 {
                 // account_history.log();
                 account_history.log_stable(self.committee.size());
                 let stable_round = round.saturating_sub(2);
@@ -670,7 +676,7 @@ impl Consensus {
                         &tps,
                         &self.validator_capacities,
                         &avg_qd,
-                        &self.client_validator_latency,
+                        &account_latency,
                         &sorted_keys,
                         &mut current_assignments,
                         f,
@@ -700,7 +706,7 @@ impl Consensus {
                     }
                 }
 
-                certified_tps_tracker.evict(stable_round.saturating_sub(CERTIFIED_TPS_WINDOW_ROUNDS));
+                certified_tps_tracker.evict(stable_round.saturating_sub(TRACKING_WINDOW));
             }
             state
                 .dag
