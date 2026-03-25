@@ -12,8 +12,8 @@ from benchmark.remote import Bench, BenchError
 from benchmark.cloudlab_bench import CloudLabBench, CloudLabInstaller
 
 @task
-def docker(ctx, debug=False, worker_bw='10gbit', latency='0ms', jitter='0ms',
-           cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='500mbit'):
+def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
+           cpus_per_validator=0, lan_bandwidth='100gbit', primary_bw='25mbit'):
     ''' Run benchmarks in Docker containers with tc bandwidth shaping.
         latency: target RTT between validators (e.g. '100ms'), not one-way delay.
     '''

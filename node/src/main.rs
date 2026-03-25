@@ -9,7 +9,7 @@ use consensus::Consensus;
 use crypto::PublicKey;
 use env_logger::Env;
 use network::SimpleSender;
-use primary::{Certificate, ConsensusOutput, Primary, PrimaryWorkerMessage};
+use primary::{ConsensusOutput, Primary, PrimaryWorkerMessage};
 use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};

@@ -912,8 +912,6 @@ class LogParser:
                 sections.append(self._format_stage_matrix(
                     'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p99, ms)', 'p99', stage_data
                 ))
-
-        sections.append(self._format_dag_timeline())
         sections.append(self._format_certified_tps_timeline())
         sections.append(self._format_warnings_section())
         sections.append('-----------------------------------------\n')
