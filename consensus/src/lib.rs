@@ -161,14 +161,14 @@ impl CertifiedTpsTracker {
 /// Donors are identified by: spare capacity < threshold OR queue_delay >> median.
 /// Excess per donor is estimated as: estimated_input_rate - proportional_target.
 /// Receivers are selected per-account, preferring lowest client-to-receiver latency.
-/// Per-account enumeration takes ranges from current_assignments (mutable — updated in place).
+/// Per-account enumeration uses current_assignments (mutable — updated in place).
 fn compute_rerouting(
     tps: &HashMap<PublicKey, f64>,
     capacities: &HashMap<PublicKey, u64>,
     avg_queue_delay: &HashMap<PublicKey, f64>,
     account_latency: &HashMap<u64, BTreeMap<PublicKey, u64>>,
     sorted_keys: &[PublicKey],
-    current_assignments: &mut Vec<Vec<(u64, u64)>>,
+    current_assignments: &mut Vec<HashSet<u64>>,
     f: usize,
 ) -> Vec<MigrationNotice> {
     let n = sorted_keys.len();
@@ -270,7 +270,7 @@ fn compute_rerouting(
             continue;
         }
 
-        let total_assigned: u64 = current_assignments[donor_idx].iter().map(|(_, c)| c).sum();
+        let total_assigned: u64 = current_assignments[donor_idx].len() as u64;
         if total_assigned == 0 {
             continue;
         }
@@ -280,10 +280,14 @@ fn compute_rerouting(
         let fraction = (excess / donor_tps).min(1.0);
         let n_to_migrate = ((fraction * total_assigned as f64).ceil() as u64).min(total_assigned);
 
-        let taken = take_ranges(&mut current_assignments[donor_idx], n_to_migrate);
-        let accounts: Vec<u64> = taken.iter()
-            .flat_map(|&(start, count)| start..(start + count))
+        let accounts: Vec<u64> = current_assignments[donor_idx]
+            .iter()
+            .copied()
+            .take(n_to_migrate as usize)
             .collect();
+        for &acct in &accounts {
+            current_assignments[donor_idx].remove(&acct);
+        }
 
         let mut migrated_count: u64 = 0;
         for &acct in &accounts {
@@ -302,13 +306,13 @@ fn compute_rerouting(
                         new_target: recv_pk,
                     });
                     *remaining_spare.get_mut(&recv_pk).unwrap() -= tps_per_account;
-                    current_assignments[pk_to_idx[&recv_pk]].push((acct, 1));
+                    current_assignments[pk_to_idx[&recv_pk]].insert(acct);
                     migrated_count += 1;
                 }
                 None => {
                     let remaining = &accounts[migrated_count as usize..];
-                    for chunk in remaining.chunk_by(|a, b| *b == *a + 1) {
-                        current_assignments[donor_idx].push((chunk[0], chunk.len() as u64));
+                    for &acct in remaining {
+                        current_assignments[donor_idx].insert(acct);
                     }
                     info!(
                         "reroute: no receiver capacity, {} accounts unplaceable for donor {}",
@@ -325,44 +329,7 @@ fn compute_rerouting(
         );
     }
 
-    // Coalesce fragmented (acct, 1) entries in current_assignments into contiguous ranges
-    for ranges in current_assignments.iter_mut() {
-        if ranges.len() <= 1 {
-            continue;
-        }
-        ranges.sort_by_key(|&(start, _)| start);
-        let mut merged: Vec<(u64, u64)> = Vec::new();
-        for &(start, count) in ranges.iter() {
-            if let Some(last) = merged.last_mut() {
-                if last.0 + last.1 == start {
-                    last.1 += count;
-                    continue;
-                }
-            }
-            merged.push((start, count));
-        }
-        *ranges = merged;
-    }
-
     per_account_migrations
-}
-
-/// Take up to `n` accounts from the front of a list of ranges, splitting if needed.
-fn take_ranges(ranges: &mut Vec<(u64, u64)>, n: u64) -> Vec<(u64, u64)> {
-    let mut taken = Vec::new();
-    let mut remaining = n;
-    while remaining > 0 && !ranges.is_empty() {
-        let (start, count) = ranges[0];
-        if count <= remaining {
-            taken.push(ranges.remove(0));
-            remaining -= count;
-        } else {
-            taken.push((start, remaining));
-            ranges[0] = (start + remaining, count - remaining);
-            remaining = 0;
-        }
-    }
-    taken
 }
 
 struct AccountCountsHistory {
@@ -623,11 +590,11 @@ impl Consensus {
             info!("Validator capacity: {} -> {} req/s", pk, cap);
         }
 
-        // Routing state: current_assignments[i] = list of (start, count) ranges assigned to validator i.
+        // Routing state: current_assignments[i] = set of account IDs assigned to validator i.
         // Initialized from account_ranges, updated by compute_rerouting each evaluation round.
-        let mut current_assignments: Vec<Vec<(u64, u64)>> = self.committee.account_ranges
+        let mut current_assignments: Vec<HashSet<u64>> = self.committee.account_ranges
             .iter()
-            .map(|(_, &(start, count))| vec![(start, count)])
+            .map(|(_, &(start, count))| (start..start + count).collect())
             .collect();
 
         // Build per-account latency map: account_id -> Arc<BTreeMap<validator, latency_ms>>.
