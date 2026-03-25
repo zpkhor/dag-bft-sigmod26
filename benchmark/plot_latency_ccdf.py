@@ -43,7 +43,7 @@ def parse_args():
     )
     parser.add_argument(
         '-o', '--output',
-        help='Output image path. Defaults to benchmark/<name>-latency-cdf.png',
+        help='Output image path. Defaults to benchmark/<name>-latency-{cdf|ccdf}.png',
     )
     parser.add_argument(
         '--faults', type=int, default=0,
@@ -357,12 +357,14 @@ def main():
     else:
         fig = plot_single_run(path1, path2, args)
 
+    dist_name = 'cdf' if args.cdf else 'ccdf'
+
     if args.output:
         output_path = Path(args.output)
     elif path2:
-        output_path = BENCHMARK_DIR / f'{path1.name}_vs_{path2.name}-latency-cdf.png'
+        output_path = BENCHMARK_DIR / f'{path1.name}_vs_{path2.name}-latency-{dist_name}.png'
     else:
-        output_path = BENCHMARK_DIR / f'{path1.name}-latency-cdf.png'
+        output_path = BENCHMARK_DIR / f'{path1.name}-latency-{dist_name}.png'
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(str(output_path), dpi=200, bbox_inches='tight')
