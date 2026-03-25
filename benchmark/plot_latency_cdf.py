@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import argparse
 import re
 import sys
@@ -62,6 +61,10 @@ def parse_args():
         '--per-validator', action='store_true',
         help='(Single-run mode only) Overlay one CDF curve per validator',
     )
+    parser.add_argument(
+        '--cdf', action='store_true',
+        help='Plot CDF instead of default tail-latency CCDF',
+    )
     return parser.parse_args()
 
 
@@ -95,6 +98,10 @@ def extract_per_validator_latencies_ms(parser):
     assert isinstance(parser.faults, int), 'faults must be an int to compute threshold'
     threshold = parser.faults + 1
 
+    global_sent = {}
+    for sent in parser.sent_samples:
+        global_sent.update(sent)
+
     result = {}
     for v in sorted(parser.sample_to_batch_by_validator.keys()):
         v_sent = {}
@@ -107,6 +114,8 @@ def extract_per_validator_latencies_ms(parser):
                 if batch_id not in parser.commits:
                     continue
                 send_time = v_sent.get(key)
+                if send_time is None:
+                    send_time = global_sent.get(key)
                 if send_time is None or send_time < parser.effective_start:
                     continue
                 timestamps = parser.committed_times_by_batch.get(batch_id, [])
@@ -169,6 +178,17 @@ def cdf_xy(latencies_ms):
     return sorted_lat, y
 
 
+def ccdf_xy(latencies_ms):
+    sorted_lat = sorted(latencies_ms)
+    n = len(sorted_lat)
+    y = [1 - (i / n) for i in range(1, n + 1)]
+    return sorted_lat, y
+
+
+def dist_xy(latencies_ms, use_cdf):
+    return cdf_xy(latencies_ms) if use_cdf else ccdf_xy(latencies_ms)
+
+
 def add_percentile_markers(ax, latencies_ms):
     sorted_lat = sorted(latencies_ms)
     n = len(sorted_lat)
@@ -220,23 +240,24 @@ def plot_sweep(path1, groups1, path2, groups2, args):
             if rate in config_rate1.get(config, {}):
                 lat = _pool_latencies(config_rate1, config, rate, load_run_latencies, args.faults, args.warmup, args.duration)
                 assert lat, f'No latencies for config={config!r} rate={rate!r} in path1'
-                x, y = cdf_xy(lat)
+                x, y = dist_xy(lat, args.cdf)
                 lbl = f'{rate_label} base' if groups2 else f'{rate_label}  n={len(lat)}'
                 ax.plot(x, y, color=color, linestyle='-', linewidth=1.5, label=lbl)
 
             if groups2 and rate in config_rate2.get(config, {}):
                 lat = _pool_latencies(config_rate2, config, rate, load_run_latencies, args.faults, args.warmup, args.duration)
                 assert lat, f'No latencies for config={config!r} rate={rate!r} in path2'
-                x, y = cdf_xy(lat)
+                x, y = dist_xy(lat, args.cdf)
                 ax.plot(x, y, color=color, linestyle='--', linewidth=1.5, label=f'{rate_label} lb')
 
         ax.set_title(config)
         ax.set_ylim(0, 1.02)
+        ax.set_xscale('log')
         ax.legend(loc='lower right')
         ax.grid(True, alpha=0.3)
         ax.set_xlabel('Latency (ms)')
 
-    axes[0].set_ylabel('CDF')
+    axes[0].set_ylabel('CDF' if args.cdf else 'CCDF')
     if groups2:
         fig.suptitle(f'{path1.name}  (solid)  vs  {path2.name}  (dashed)')
     else:
@@ -266,19 +287,19 @@ def plot_single_run(path1, path2, args):
             for v in all_validators:
                 color = v_color[v]
                 if v in per_v1 and per_v1[v]:
-                    x, y = cdf_xy(per_v1[v])
+                    x, y = dist_xy(per_v1[v], args.cdf)
                     ax.plot(x, y, color=color, linestyle='-', linewidth=1.2, alpha=0.8, label=f'v{v} base')
                 if v in per_v2 and per_v2[v]:
-                    x, y = cdf_xy(per_v2[v])
+                    x, y = dist_xy(per_v2[v], args.cdf)
                     ax.plot(x, y, color=color, linestyle='--', linewidth=1.2, alpha=0.8, label=f'v{v} lb')
-            x, y = cdf_xy(lat1)
+            x, y = dist_xy(lat1, args.cdf)
             ax.plot(x, y, color='black', linestyle='-', linewidth=2.5, alpha=0.9, label='global base')
-            x, y = cdf_xy(lat2)
+            x, y = dist_xy(lat2, args.cdf)
             ax.plot(x, y, color='black', linestyle='--', linewidth=2.5, alpha=0.9, label='global lb')
         else:
-            x, y = cdf_xy(lat1)
+            x, y = dist_xy(lat1, args.cdf)
             ax.plot(x, y, linestyle='-', linewidth=1.5, label=path1.name)
-            x, y = cdf_xy(lat2)
+            x, y = dist_xy(lat2, args.cdf)
             ax.plot(x, y, linestyle='--', linewidth=1.5, label=path2.name)
 
         ax.set_title(f'{path1.name}  (solid)  vs  {path2.name}  (dashed)')
@@ -291,20 +312,21 @@ def plot_single_run(path1, path2, args):
                 sorted_lat = sorted(lat)
                 mean_ms = sum(lat) / len(lat)
                 p95 = sorted_lat[min(int(0.95 * len(sorted_lat)), len(sorted_lat) - 1)]
-                x, y = cdf_xy(lat)
+                x, y = dist_xy(lat, args.cdf)
                 ax.plot(x, y, linewidth=1.5, alpha=0.8, label=f'v{v}  mean={mean_ms:.0f}ms  p95={p95:.0f}ms')
-            x, y = cdf_xy(lat1)
+            x, y = dist_xy(lat1, args.cdf)
             ax.plot(x, y, linewidth=2.5, linestyle='--', alpha=0.9, label='global')
         else:
-            x, y = cdf_xy(lat1)
+            x, y = dist_xy(lat1, args.cdf)
             ax.plot(x, y, linewidth=1.5, label='global')
             add_percentile_markers(ax, lat1)
 
         ax.set_title(path1.name)
 
     ax.set_xlabel('Latency (ms)')
-    ax.set_ylabel('CDF')
+    ax.set_ylabel('CDF' if args.cdf else 'CCDF')
     ax.set_ylim(0, 1.02)
+    ax.set_xscale('log')
     ax.grid(True, alpha=0.3)
     ax.legend(loc='lower right')
     fig.tight_layout()
