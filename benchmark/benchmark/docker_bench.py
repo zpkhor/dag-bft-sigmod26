@@ -337,7 +337,7 @@ networks:
                     capacity = int(workers_bw_bytes / (self.tx_size + 44) / (nodes - 1) * 0.9) # 40 TCP/IP + 4 length-prefix codec
                     capacities.append(capacity)
                 committee.set_capacities(capacities)
-            latency_ms = int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0
+            latency_ms = (int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0) // 2
             latency_matrix = {
                 name: {other: (0 if name == other else latency_ms) for other in names}
                 for name in names
