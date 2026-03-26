@@ -93,3 +93,35 @@ class Manifest:
         clients.sort(key=_index)
 
         return cls(validators, clients)
+
+    @classmethod
+    def load_ssh_only(cls, filename, username):
+        """Parse manifest XML and return SSH hostnames for all nodes.
+        Does not require interface IPs or any naming convention."""
+        assert isinstance(filename, str)
+        assert isinstance(username, str)
+        try:
+            tree = ET.parse(filename)
+        except FileNotFoundError:
+            raise ManifestError(f'Manifest file not found: {filename}')
+        except ET.ParseError as e:
+            raise ManifestError(f'Failed to parse manifest XML: {e}')
+
+        root = tree.getroot()
+        ns = cls.NS
+        hosts = []
+        for node in root.iter(f'{ns}node'):
+            client_id = node.attrib.get('client_id', '')
+            if not client_id:
+                continue
+            ssh_host = None
+            for login in node.iter(f'{ns}login'):
+                if login.attrib.get('username') == username:
+                    ssh_host = login.attrib['hostname']
+                    break
+            assert ssh_host is not None, (
+                f'No SSH login found for username {username!r} on node {client_id}'
+            )
+            hosts.append(ssh_host)
+        assert hosts, 'No nodes found in manifest'
+        return hosts

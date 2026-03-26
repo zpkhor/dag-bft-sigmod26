@@ -526,7 +526,8 @@ class CloudLabInstaller:
     """Install dependencies on CloudLab machines."""
 
     def __init__(self, manifest_file, username):
-        self.manager = CloudLabInstanceManager.make(manifest_file, username)
+        from benchmark.manifest import Manifest
+        self._hosts = Manifest.load_ssh_only(manifest_file, username)
         self.username = username
 
     def _ssh(self, host):
@@ -534,7 +535,7 @@ class CloudLabInstaller:
 
     def install(self):
         """Install Rust and build dependencies on all machines in parallel."""
-        hosts = self.manager.all_ssh_hosts()
+        hosts = self._hosts
         Print.info(f'Installing dependencies on {len(hosts)} machines in parallel...')
         cmd = ' && '.join([
             'sudo apt-get update',
@@ -542,6 +543,15 @@ class CloudLabInstaller:
             'curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y',
             'source $HOME/.cargo/env',
             'rustup default stable',
+            # Install Docker
+            'sudo apt-get -y install ca-certificates curl gnupg lsb-release',
+            'sudo install -m 0755 -d /etc/apt/keyrings',
+            'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg',
+            'sudo chmod a+r /etc/apt/keyrings/docker.gpg',
+            'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null',
+            'sudo apt-get update',
+            'sudo apt-get -y install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin',
+            f'sudo usermod -aG docker $USER',
         ])
 
         def _install_one(host):
