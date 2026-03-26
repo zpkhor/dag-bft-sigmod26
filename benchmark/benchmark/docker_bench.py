@@ -18,6 +18,28 @@ from benchmark.logs import LogParser, ParseError
 from benchmark.utils import Print, BenchError, PathMaker
 
 
+def max_capacity_tps_by_ingress(bw_mbit, tx_size):
+    """Max TPS the system can sustain given ingress bandwidth.
+
+    bw_mbit: a single int (2f+1)-th slowest node is used as the system-wide bottleneck (quorum threshold).
+    tx_size: transaction payload size in bytes
+    """
+    bw_bytes = bw_mbit * 1_000_000 / 8
+    return int(bw_bytes / (tx_size + 44))
+
+
+def egress_bw_capacity_tps(bw_mbit, tx_size, num_peers):
+    """Max sustainable TPS a node can broadcast to num_peers given egress bandwidth.
+
+    bw_mbit: egress bandwidth in megabits/s
+    tx_size: transaction payload size in bytes
+    num_peers: number of peer validators to fan-out to (i.e. nodes - 1)
+    """
+    bw_bytes = bw_mbit * 1_000_000 / 8
+    # 40 TCP/IP + 4 length-prefix codec overhead per transaction
+    return int(bw_bytes / (tx_size + 44) / num_peers * 0.9)
+
+
 def _port_open(host, port):
     try:
         with socket.create_connection((host, port), timeout=0.3):
@@ -328,8 +350,9 @@ networks:
             if not self.baseline:
                 capacities = [] # max tps/validator
                 for i in range(nodes):
-                    workers_bw_bytes = self._parse_bw_mbit(self.worker_bws[i]) * 1_000_000 / 8
-                    capacity = int(workers_bw_bytes / (self.tx_size + 44) / (nodes - 1) * 0.9) # 40 TCP/IP + 4 length-prefix codec
+                    capacity = egress_bw_capacity_tps(
+                        self._parse_bw_mbit(self.worker_bws[i]), self.tx_size, nodes - 1
+                    )
                     capacities.append(capacity)
                 committee.set_capacities(capacities)
             latency_ms = (int(self.latency.rstrip('ms')) if self.latency not in ('0ms', '') else 0) // 2
