@@ -37,14 +37,13 @@ class DockerBench:
         self,
         bench_parameters_dict,
         node_parameters_dict,
-        worker_bw="100mbit",
+        worker_bws,
         latency="0ms",
         jitter="0ms",
         cpus_per_validator=0,
         lan_bandwidth="100gbit",
         check_mismatch=False,
         primary_bw="500mbit",
-        worker_bandwidths=None,
         baseline=False,
         tc_netem_limit=0,
         tc_netem_limit_client=0,
@@ -66,13 +65,9 @@ class DockerBench:
 
         # QoS bandwidth allocation
         nodes = self.bench_parameters.nodes[0]
-        if worker_bandwidths is not None:
-            assert len(worker_bandwidths) == nodes, (
-                f"WORKER_BANDWIDTHS_MBPS has {len(worker_bandwidths)} entries but nodes={nodes}"
-            )
-            self.worker_bandwidths = worker_bandwidths
-        else:
-            self.worker_bandwidths = [worker_bw] * nodes
+        assert len(worker_bws) == nodes, (
+            f"worker_bws has {len(worker_bws)} entries but nodes={nodes}"
+        )
 
         self.baseline = baseline
         self.round_robin = round_robin
@@ -80,7 +75,7 @@ class DockerBench:
         primary_mbit = self._parse_bw_mbit(primary_bw)
         self.worker_bws = []
         self.total_bws = []
-        for i, wbw in enumerate(self.worker_bandwidths):
+        for i, wbw in enumerate(worker_bws):
             worker_mbit = self._parse_bw_mbit(wbw)
             assert worker_mbit > 0, (
                 f"worker_bw for validator {i} ({wbw}={worker_mbit}mbit) must be > 0"

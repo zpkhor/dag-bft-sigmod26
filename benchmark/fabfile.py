@@ -17,6 +17,7 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     ''' Run benchmarks in Docker containers with tc bandwidth shaping.
         latency: target RTT between validators (e.g. '100ms'), not one-way delay.
     '''
+    nodes = int(os.environ.get('NODES', 4))
     rate = int(os.environ.get('RATE', 50_000))
     duration = int(os.environ.get('DURATION', 20))
     warmup = int(os.environ.get('WARMUP', 0))
@@ -24,8 +25,8 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
-    worker_bandwidths_mbps_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
-    worker_bandwidths = [f"{int(v)}mbit" for v in worker_bandwidths_mbps_raw.split(',')] if worker_bandwidths_mbps_raw else None
+    worker_bws_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
+    worker_bws = [f"{int(v)}mbit" for v in worker_bws_raw.split(',')] if worker_bws_raw else [worker_bw] * nodes
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     routing_mode = os.environ.get('ROUTING_MODE', '')
     baseline = os.environ.get('BASELINE', '0') == '1'
@@ -37,7 +38,7 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     tc_netem_limit_client = int(os.environ.get('TC_NETEM_LIMIT_CLIENT', 0))
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': nodes,
         'workers': 1,
         'rate': rate,
         'tx_size': 512,
@@ -59,12 +60,12 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     try:
         ret = DockerBench(
             bench_params, node_params,
-            worker_bw=worker_bw, latency=latency, jitter=jitter,
+            worker_bws,
+            latency=latency, jitter=jitter,
             cpus_per_validator=int(cpus_per_validator),
             lan_bandwidth=lan_bandwidth,
             check_mismatch=check_mismatch,
             primary_bw=primary_bw,
-            worker_bandwidths=worker_bandwidths,
             baseline=baseline,
             tc_netem_limit=tc_netem_limit,
             tc_netem_limit_client=tc_netem_limit_client,
@@ -207,8 +208,9 @@ def logs(ctx):
 
 @task
 def cloudlab(ctx, debug=False,
-             manifest='manifest.xml', username='zpkhor', latency_ms=100):
+             manifest='manifest.xml', username='zpkhor', latency_ms=100, worker_bw='75mbit'):
     ''' Run benchmarks on CloudLab physical machines '''
+    nodes = int(os.environ.get('NODES', 4))
     rate = int(os.environ.get('RATE', 8300))
     duration = int(os.environ.get('DURATION', 50))
     warmup = int(os.environ.get('WARMUP', 5))
@@ -218,8 +220,8 @@ def cloudlab(ctx, debug=False,
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     primary_bw_kbps = int(os.environ.get('PRIMARY_BW_KBPS', 25000))
+    assert worker_bw.endswith('mbit'), f"worker_bw must be in mbit format (e.g. '75mbit'), got: {worker_bw!r}"
     worker_bws_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
-    worker_bws_kbps = [int(v) * 1000 for v in worker_bws_raw.split(',')] if worker_bws_raw else [75000, 75000, 75000, 75000]
     routing_mode = os.environ.get('ROUTING_MODE', '')
     baseline = os.environ.get('BASELINE', '0') == '1'
     round_robin = routing_mode == 'round-robin'
@@ -227,7 +229,7 @@ def cloudlab(ctx, debug=False,
         baseline = True
     bench_params = {
         'faults': 0,
-        'nodes': 4,
+        'nodes': nodes,
         'workers': 1,
         'rate': rate,
         'tx_size': 512,
@@ -237,6 +239,7 @@ def cloudlab(ctx, debug=False,
         'warmup': warmup,
         'num_accounts': num_accounts,
     }
+    worker_bws_kbps = [int(v) * 1000 for v in worker_bws_raw.split(',')] if worker_bws_raw else [int(worker_bw[:-4]) * 1000] * bench_params['nodes']
     node_params = {
         'header_size': 1_000,
         'max_header_delay': 200,

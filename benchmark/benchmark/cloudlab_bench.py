@@ -55,10 +55,10 @@ class CloudLabBench:
         self.round_robin = round_robin
         self.primary_bw_kbps = primary_bw_kbps
         assert worker_bws_kbps is not None, 'worker_bws_kbps must be provided'
-        assert len(worker_bws_kbps) >= nodes, (
-            f'worker_bws_kbps has {len(worker_bws_kbps)} entries but need {nodes}'
+        assert len(worker_bws_kbps) == nodes, (
+            f'worker_bws_kbps has {len(worker_bws_kbps)} entries but nodes={nodes}'
         )
-        self.worker_bws_kbps = worker_bws_kbps[:nodes]
+        self.worker_bws_kbps = worker_bws_kbps
 
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
