@@ -25,13 +25,22 @@ RESULTS_DIR="$(pwd)/results/saturation_${MODE}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
-# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS"
-CONFIGS=(
-    "balanced|75,75,75,75|1,1,1,1"
-    "imbalanced|75,75,75,75|5,1,1,1"
-    "imbalanced_bw1|25,75,75,75|1,1,1,1"
-    "imbalanced_bw2|25,25,75,75|1,1,1,1"
-    "imbalanced_bw3|25,25,25,75|1,1,1,1"
+# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES"
+# For ~60% rate to v0: weight_0 = 1.5*(n-1), others = 1
+# f = (n-1)//3; slow BW validators are the last f or f+1
+CONFIGS=( # /home/zpkhor/narwhal-validator/benchmark/results/saturation_cloudlab_20260326_093013
+    # n=4, f=1
+    "n4_rate_imb|75,75,75,75|4.5,1,1,1|4"
+    "n4_bw_f|75,75,75,25|1,1,1,1|4"
+    "n4_bw_f1|75,75,25,25|1,1,1,1|4"
+    # n=7, f=2
+    "n7_rate_imb|75,75,75,75,75,75,75|9,1,1,1,1,1,1|7"
+    "n7_bw_f|75,75,75,75,75,25,25|1,1,1,1,1,1,1|7"
+    "n7_bw_f1|75,75,75,75,25,25,25|1,1,1,1,1,1,1|7"
+    # n=9, f=2
+    "n9_rate_imb|75,75,75,75,75,75,75,75,75|12,1,1,1,1,1,1,1,1|9"
+    "n9_bw_f|75,75,75,75,75,75,75,25,25|1,1,1,1,1,1,1,1,1|9"
+    "n9_bw_f1|75,75,75,75,75,75,25,25,25|1,1,1,1,1,1,1,1,1|9"
 )
 
 RATES=(4800 11800 15100)
@@ -96,7 +105,7 @@ check_certified_tps_consistency() {
 # Validate unique labels
 declare -A seen_labels
 for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL _ _ <<< "$CONFIG"
+    IFS='|' read -r LABEL _ _ _ <<< "$CONFIG"
     if [[ -v seen_labels["$LABEL"] ]]; then
         echo "ERROR: Duplicate label '$LABEL' in CONFIGS" >&2
         exit 1
@@ -111,7 +120,7 @@ echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS <<< "$CONFIG"
+    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL <<< "$CONFIG"
 
     for RATE in "${RATES[@]}"; do
         for RETRY in $(seq 1 "$RETRIES"); do
@@ -119,12 +128,12 @@ for CONFIG in "${CONFIGS[@]}"; do
             mkdir -p "$RUN_DIR"
 
             echo ""
-            echo "--- $LABEL | bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS rate=$RATE Run: $RETRY/$RETRIES ---"
+            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS rate=$RATE Run: $RETRY/$RETRIES ---"
 
             if [[ "$MODE" == "docker" ]]; then
-                FAB_CMD="WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             elif [[ "$MODE" == "cloudlab" ]]; then
-                FAB_CMD="WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
             else
                 echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
                 exit 1
