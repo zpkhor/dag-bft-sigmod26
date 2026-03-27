@@ -11,9 +11,9 @@ DURATION=${DURATION:-120}
 WARMUP=${WARMUP:-10}
 
 # Docker-specific defaults
-CPUS_PER_VALIDATOR=${CPUS_PER_VALIDATOR:-12}
+CPUS_PER_VALIDATOR=${CPUS_PER_VALIDATOR:-8}
 LATENCY=${LATENCY:-100ms}
-PRIMARY_BW=${PRIMARY_BW:-25mbit}
+PRIMARY_BW=${PRIMARY_BW:-250mbit}
 
 # CloudLab-specific defaults
 MANIFEST=${MANIFEST:-manifest.xml}
@@ -24,22 +24,15 @@ RESULTS_DIR="$(pwd)/results/scenario_${MODE}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
-# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|BASELINE|RATE"
+# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES|BASELINE"
+# n=4, f=1; for ~60% rate to v0: weight_0 = 1.5*(n-1), others = 1
 CONFIGS=(
-    "balanced_r15100|75,75,75,75|1,1,1,1|0|15100"
-    "balanced_r11800|75,75,75,75|1,1,1,1|0|11800"
-    "balanced_r4800|75,75,75,75|1,1,1,1|0|4800"
-    "imbalanced_r15100|75,75,75,75|5,1,1,1|0|15100"
-    "imbalanced_r11800|75,75,75,75|5,1,1,1|0|11800"
-    "imbalanced_r4800|75,75,75,75|5,1,1,1|0|4800"
-    "imbalanced_bw1_r15100|25,75,75,75|1,1,1,1|0|15100"
-    "imbalanced_bw1_r11800|25,75,75,75|1,1,1,1|0|11800"
-    "imbalanced_bw1_r4800|25,75,75,75|1,1,1,1|0|4800"
-    "imbalanced_bw2_r11800|25,25,75,75|1,1,1,1|0|11800"
-    "imbalanced_bw2_r4800|25,25,75,75|1,1,1,1|0|4800"
-    "imbalanced_bw3_r11800|25,25,25,75|1,1,1,1|0|11800"
-    "imbalanced_bw3_r4800|25,25,25,75|1,1,1,1|0|4800"
+    "n4_rate_imb|500,500,500,500|4.5,1,1,1|4|0"
+    "n4_bw_f|500,500,500,150|1,1,1,1|4|0"
+    "n4_bw_f1|500,500,150,150|1,1,1,1|4|0"
 )
+
+RATES=(100000) # /home/zpkhor/narwhal/benchmark/results/scenario_docker_20260327_161810/merged_output.log
 
 check_certified_tps_consistency() {
     local run_dir="$1"
@@ -110,43 +103,45 @@ for CONFIG in "${CONFIGS[@]}"; do
 done
 
 echo "Scenario sweep ($MODE)"
-echo "Configs: ${#CONFIGS[@]}"
+echo "Configs: ${#CONFIGS[@]}, Rates: ${RATES[*]}"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
 echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS BASELINE RATE <<< "$CONFIG"
+    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL BASELINE <<< "$CONFIG"
 
-    for RETRY in $(seq 1 "$RETRIES"); do
-        RUN_DIR="$RESULTS_DIR/${LABEL}_run_${RETRY}"
-        mkdir -p "$RUN_DIR"
+    for RATE in "${RATES[@]}"; do
+        for RETRY in $(seq 1 "$RETRIES"); do
+            RUN_DIR="$RESULTS_DIR/${LABEL}_r${RATE}_run_${RETRY}"
+            mkdir -p "$RUN_DIR"
 
-        echo ""
-        echo "--- $LABEL | bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS baseline=$BASELINE rate=$RATE Run: $RETRY/$RETRIES ---"
+            echo ""
+            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS baseline=$BASELINE rate=$RATE Run: $RETRY/$RETRIES ---"
 
-        if [[ "$MODE" == "docker" ]]; then
-            FAB_CMD="WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
-        elif [[ "$MODE" == "cloudlab" ]]; then
-            FAB_CMD="WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
-        else
-            echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
-            exit 1
-        fi
+            if [[ "$MODE" == "docker" ]]; then
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+            elif [[ "$MODE" == "cloudlab" ]]; then
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
+            else
+                echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
+                exit 1
+            fi
 
-        echo "CMD: $FAB_CMD" | tee -a "$OUTPUT_LOG"
-        OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
-        echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
+            echo "CMD: $FAB_CMD" | tee -a "$OUTPUT_LOG"
+            OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
+            echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
-        cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
-        check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$OUTPUT_LOG" || true
+            cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
+            check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$OUTPUT_LOG" || true
 
-        if echo "$OUTPUT" | grep -qiE 'panic|error|failed'; then
-            echo "WARNING: Errors detected in $LABEL run=$RETRY"
-            echo "$OUTPUT" | grep -iE 'panic|error|failed' > "$RUN_DIR/errors.log"
-        fi
+            if echo "$OUTPUT" | grep -qiE 'panic|error|failed'; then
+                echo "WARNING: Errors detected in $LABEL rate=$RATE run=$RETRY"
+                echo "$OUTPUT" | grep -iE 'panic|error|failed' > "$RUN_DIR/errors.log"
+            fi
 
-        sleep 2
+            sleep 2
+        done
     done
 done
 

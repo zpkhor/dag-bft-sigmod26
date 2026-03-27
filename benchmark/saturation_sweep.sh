@@ -7,14 +7,14 @@ set -euo pipefail
 MODE=${MODE:-docker}
 
 # Common defaults
-RETRIES=${RETRIES:-2}
+RETRIES=${RETRIES:-1}
 DURATION=${DURATION:-80}
 WARMUP=${WARMUP:-8}
 
 # Docker-specific defaults
-CPUS_PER_VALIDATOR=${CPUS_PER_VALIDATOR:-12}
+CPUS_PER_VALIDATOR=${CPUS_PER_VALIDATOR:-8}
 LATENCY=${LATENCY:-100ms}
-PRIMARY_BW=${PRIMARY_BW:-25mbit}
+PRIMARY_BW=${PRIMARY_BW:-250mbit}
 
 # CloudLab-specific defaults
 MANIFEST=${MANIFEST:-manifest.xml}
@@ -30,20 +30,16 @@ OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 # f = (n-1)//3; slow BW validators are the last f or f+1
 CONFIGS=( # /home/zpkhor/narwhal-validator/benchmark/results/saturation_cloudlab_20260326_093013
     # n=4, f=1
-    "n4_rate_imb|75,75,75,75|4.5,1,1,1|4"
-    "n4_bw_f|75,75,75,25|1,1,1,1|4"
-    "n4_bw_f1|75,75,25,25|1,1,1,1|4"
+    "n4_rate_imb|500,500,500,500|4.5,1,1,1|4"
+    "n4_bw_f|500,500,500,150|1,1,1,1|4"
+    "n4_bw_f1|500,500,150,150|1,1,1,1|4"
     # n=7, f=2
-    "n7_rate_imb|75,75,75,75,75,75,75|9,1,1,1,1,1,1|7"
-    "n7_bw_f|75,75,75,75,75,25,25|1,1,1,1,1,1,1|7"
-    "n7_bw_f1|75,75,75,75,25,25,25|1,1,1,1,1,1,1|7"
-    # n=9, f=2
-    "n9_rate_imb|75,75,75,75,75,75,75,75,75|12,1,1,1,1,1,1,1,1|9"
-    "n9_bw_f|75,75,75,75,75,75,75,25,25|1,1,1,1,1,1,1,1,1|9"
-    "n9_bw_f1|75,75,75,75,75,75,25,25,25|1,1,1,1,1,1,1,1,1|9"
+    # "n7_rate_imb|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7"
+    # "n7_bw_f|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7"
+    # "n7_bw_f1|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7"
 )
 
-RATES=(4800 11800 15100)
+RATES=(33000 78000 100000) # /home/zpkhor/narwhal/benchmark/results/saturation_docker_20260327_150719/merged_output.log
 
 check_certified_tps_consistency() {
     local run_dir="$1"
