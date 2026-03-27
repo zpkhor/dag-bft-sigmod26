@@ -217,18 +217,11 @@ fn compute_rerouting(
         }
     };
 
-    info!(
-        "reroute: median_delay={:.1}ms median_latency={:.1}ms donor_threshold={:.1}ms ql_threshold={:.1}ms f={}",
-        median_delay, median_latency,
-        f64::max(30.0, 2.0 * median_delay),
-        f64::max(200.0, 2.0 * median_latency),
-        f
-    );
 
     // Step 3: Quorum-limited check — if >f validators have high quorum_latency,
     // the system is network-bottlenecked and rerouting cannot help.
     let high_latency_count = avg_quorum_latency.values()
-        .filter(|&&lat| lat > f64::max(200.0, 2.0 * median_latency))
+        .filter(|&&lat| lat > 2.0 * median_latency)
         .count();
     if high_latency_count > f {
         info!(
@@ -241,7 +234,7 @@ fn compute_rerouting(
     // Step 4: Identify donors — validators with queue_delay significantly above median
     let donor_set: HashSet<PublicKey> = sorted_keys.iter()
         .filter(|pk| {
-            avg_queue_delay.get(pk).copied().unwrap_or(0.0) > f64::max(30.0, 2.0 * median_delay)
+            avg_queue_delay.get(pk).copied().unwrap_or(0.0) > 2.0 * median_delay
         })
         .copied()
         .collect();
@@ -316,6 +309,7 @@ fn compute_rerouting(
         }).collect();
 
         let donor_cap = capacities.get(donor_pk).copied().unwrap_or(0) as f64;
+        // shed excess above 75% of capacity; floor at 10% of current tps
         let shed_target = f64::max(donor_tps * 0.1, donor_tps - donor_cap * 0.75);
         info!(
             "reroute: donor {} cap={:.0} shed_target={:.1} (10%={:.1} excess={:.1})",
@@ -346,7 +340,7 @@ fn compute_rerouting(
             info!("reroute: receiver {} spare={:.1}", r, spare_capacity[r]);
         }
 
-        // Migrate one-at-a-time
+        // Migrate one-at-a-time; O(A*R) per donor where A=accounts, R=receivers; breaks early once shed_target is met
         let mut shed_so_far = 0.0;
         let mut migrated_count: u64 = 0;
         let mut skip_count: u64 = 0;
@@ -373,7 +367,8 @@ fn compute_rerouting(
                 .map(|r| **r);
 
             if best_receiver.is_none() && migrated_count == 0 && skip_count == 0 {
-                info!(
+                // none of the receivers have enough spare capacity for even the heaviest account; log for debugging
+                debug!(
                     "reroute: first account {} load={:.1} has no eligible receiver (eligible={} latencies={})",
                     acct, load, eligible_receivers.len(), latencies.is_some()
                 );
