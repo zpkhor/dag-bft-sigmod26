@@ -4,7 +4,6 @@
 set -euo pipefail
 
 RETRIES=${RETRIES:-2}
-RATE=${RATE:-15000}
 DURATION=${DURATION:-50}
 WARMUP=${WARMUP:-5}
 CPUS_PER_VALIDATOR=${CPUS_PER_VALIDATOR:-4}
@@ -12,6 +11,7 @@ PRIMARY_BW=${PRIMARY_BW:-25mbit}
 
 NODES_LIST=(4 7)
 LATS=(100 200 500)
+RATES=(4800 11800 15100)
 
 cd "$(dirname "$0")"
 RESULTS_DIR="$(pwd)/results/latency_nodes_docker_$(date +%Y%m%d_%H%M%S)"
@@ -75,7 +75,7 @@ check_certified_tps_consistency() {
 
 echo "Latency/nodes sweep (docker)"
 echo "NODES_LIST: ${NODES_LIST[*]}, LATS (ms): ${LATS[*]}"
-echo "RATE=$RATE, DURATION=${DURATION}s, WARMUP=${WARMUP}s, RETRIES=$RETRIES"
+echo "RATES: ${RATES[*]}, DURATION=${DURATION}s, WARMUP=${WARMUP}s, RETRIES=$RETRIES"
 echo "CPUS_PER_VALIDATOR=$CPUS_PER_VALIDATOR, PRIMARY_BW=$PRIMARY_BW"
 echo "Results: $RESULTS_DIR"
 echo "==========================================="
@@ -85,28 +85,30 @@ for NODES in "${NODES_LIST[@]}"; do
         LABEL="n${NODES}_lat${LAT}ms"
         LATENCY="${LAT}ms"
 
-        for RETRY in $(seq 1 "$RETRIES"); do
-            RUN_DIR="$RESULTS_DIR/${LABEL}_run_${RETRY}"
-            mkdir -p "$RUN_DIR"
+        for RATE in "${RATES[@]}"; do
+            for RETRY in $(seq 1 "$RETRIES"); do
+                RUN_DIR="$RESULTS_DIR/${LABEL}_r${RATE}_run_${RETRY}"
+                mkdir -p "$RUN_DIR"
 
-            echo ""
-            echo "--- $LABEL | nodes=$NODES latency=$LATENCY rate=$RATE Run: $RETRY/$RETRIES ---"
+                echo ""
+                echo "--- $LABEL | nodes=$NODES latency=$LATENCY rate=$RATE Run: $RETRY/$RETRIES ---"
 
-            FAB_CMD="NODES=$NODES BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="NODES=$NODES BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
 
-            echo "CMD: $FAB_CMD" | tee -a "$OUTPUT_LOG"
-            OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
-            echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
+                echo "CMD: $FAB_CMD" | tee -a "$OUTPUT_LOG"
+                OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
+                echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 
-            cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
-            check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$OUTPUT_LOG" || true
+                cp -r logs/* "$RUN_DIR/" 2>/dev/null || true
+                check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$OUTPUT_LOG" || true
 
-            if echo "$OUTPUT" | grep -qiE 'panic|error|failed'; then
-                echo "WARNING: Errors detected in $LABEL run=$RETRY"
-                echo "$OUTPUT" | grep -iE 'panic|error|failed' > "$RUN_DIR/errors.log"
-            fi
+                if echo "$OUTPUT" | grep -qiE 'panic|error|failed'; then
+                    echo "WARNING: Errors detected in $LABEL rate=$RATE run=$RETRY"
+                    echo "$OUTPUT" | grep -iE 'panic|error|failed' > "$RUN_DIR/errors.log"
+                fi
 
-            sleep 2
+                sleep 2
+            done
         done
     done
 done
