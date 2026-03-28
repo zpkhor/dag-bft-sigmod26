@@ -261,13 +261,12 @@ class DockerCommittee(Committee):
         # Override intra-validator addresses to 127.0.0.1
         for name in names:
             auth = self.json['authorities'][name]
-            # worker_to_primary is intra-validator
+            # worker_to_primary is intra-validator (same container)
             addr = auth['primary']['worker_to_primary']
             auth['primary']['worker_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
 
-            # executor_to_primary is intra-validator (executors on same LAN)
-            addr = auth['primary']['executor_to_primary']
-            auth['primary']['executor_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
+            # executor_to_primary: executors are in SEPARATE containers,
+            # so they must reach the validator via its container IP (NOT 127.0.0.1)
 
             for worker in auth['workers'].values():
                 # primary_to_worker is intra-validator
