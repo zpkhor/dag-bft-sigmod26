@@ -70,6 +70,10 @@ class DockerBench:
         tc_netem_limit=0,
         tc_netem_limit_client=0,
         round_robin=False,
+        num_executors=0,
+        no_send_payment=False,
+        zipf_exponent=0.0,
+        in_memory_store=False,
     ):
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -94,6 +98,10 @@ class DockerBench:
         self.baseline = baseline
         self.round_robin = round_robin
         self.primary_bw = primary_bw
+        self.num_executors = num_executors
+        self.no_send_payment = no_send_payment
+        self.zipf_exponent = zipf_exponent
+        self.in_memory_store = in_memory_store
         primary_mbit = self._parse_bw_mbit(primary_bw)
         self.worker_bws = []
         self.total_bws = []
@@ -440,9 +448,10 @@ networks:
             )
 
             commands_per_validator = {}
+            ims_prefix = "IN_MEMORY_STORE=1 " if self.in_memory_store else ""
             for i, addresses in enumerate(workers_addresses):
                 primary_cmd = (
-                    f"./node {v} run --keys .node-{i}.json --committee .committee.json "
+                    f"{ims_prefix}./node {v} run --keys .node-{i}.json --committee .committee.json "
                     f"--store .db-{i} --parameters .parameters.json primary"
                     f" 2> /logs/primary-{i}.log"
                 )
@@ -450,7 +459,7 @@ networks:
                 worker_cmds = []
                 for id, _ in addresses:
                     w_cmd = (
-                        f"./node {v} run --keys .node-{i}.json --committee .committee.json "
+                        f"{ims_prefix}./node {v} run --keys .node-{i}.json --committee .committee.json "
                         f"--store .db-{i}-{id} --parameters .parameters.json worker --id {id}"
                     )
                     w_cmd += f" 2> /logs/worker-{i}-{id}.log"

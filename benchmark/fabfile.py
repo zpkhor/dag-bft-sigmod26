@@ -36,6 +36,10 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     check_mismatch = os.environ.get('CHECK_MISMATCH', '0') == '1'
     tc_netem_limit = int(os.environ.get('TC_NETEM_LIMIT', 0))
     tc_netem_limit_client = int(os.environ.get('TC_NETEM_LIMIT_CLIENT', 0))
+    num_executors = int(os.environ.get('NUM_EXECUTORS', 0))
+    no_send_payment = os.environ.get('NO_SEND_PAYMENT', '0') == '1'
+    zipf_exponent = float(os.environ.get('ZIPF_EXPONENT', 0.0))
+    in_memory_store = os.environ.get('IN_MEMORY_STORE', '0') == '1'
     bench_params = {
         'faults': 0,
         'nodes': nodes,
@@ -70,6 +74,10 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
             tc_netem_limit=tc_netem_limit,
             tc_netem_limit_client=tc_netem_limit_client,
             round_robin=round_robin,
+            num_executors=num_executors,
+            no_send_payment=no_send_payment,
+            zipf_exponent=zipf_exponent,
+            in_memory_store=in_memory_store,
         ).run(debug)
         print(ret.result())
     except BenchError as e:
@@ -227,6 +235,7 @@ def cloudlab(ctx, debug=False,
     round_robin = routing_mode == 'round-robin'
     if round_robin:
         baseline = True
+    in_memory_store = os.environ.get('IN_MEMORY_STORE', '0') == '1'
     bench_params = {
         'faults': 0,
         'nodes': nodes,
@@ -259,6 +268,7 @@ def cloudlab(ctx, debug=False,
             latency_ms=int(latency_ms),
             primary_bw_kbps=primary_bw_kbps,
             worker_bws_kbps=worker_bws_kbps,
+            in_memory_store=in_memory_store,
         ).run(debug)
         print(ret.result())
     except BenchError as e:

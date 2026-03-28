@@ -91,7 +91,11 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     };
 
     // Make the data store.
-    let store = Store::new(store_path).context("Failed to create a store")?;
+    let store = if std::env::var("IN_MEMORY_STORE").as_deref() == Ok("1") {
+        Store::new_in_memory()
+    } else {
+        Store::new(store_path).context("Failed to create a store")?
+    };
 
     // Channels the sequence of consensus output (certificates + migration notices).
     let (tx_output, rx_output) = channel::<ConsensusOutput>(CHANNEL_CAPACITY);

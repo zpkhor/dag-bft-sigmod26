@@ -35,9 +35,11 @@ class CloudLabBench:
         latency_ms=100,
         primary_bw_kbps=25000,
         worker_bws_kbps=None,
+        in_memory_store=False,
     ):
         self.username = username
         self.latency_ms = latency_ms
+        self.in_memory_store = in_memory_store
 
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -87,91 +89,103 @@ class CloudLabBench:
                     failed.append((host, e))
         assert not failed, f'Parallel SSH failed on: {failed}'
 
+    def _reset_tcp_buffers(self, ssh_hosts):
+        """Reset TCP buffers to defaults to avoid bufferbloat."""
+        Print.info('Resetting TCP buffers...')
+        sysctl_cmd = (
+            'sysctl -w '
+            'net.core.rmem_max=8388608 '
+            'net.core.wmem_max=8388608 '
+            'net.ipv4.tcp_rmem="4096 131072 6291456" '
+            'net.ipv4.tcp_wmem="4096 16384 4194304" '
+            'net.core.netdev_max_backlog=2048'
+        )
+        def _tune(host):
+            self._ssh(host).run(f'sudo {sysctl_cmd}', hide=True)
+        self._parallel_ssh(ssh_hosts, _tune)
+
+    @staticmethod
+    def _detect_iface():
+        """Shell snippet to find the 10.10.1.x experiment LAN interface."""
+        return (
+            'IFACE=$(ip -o addr show | grep " 10\\\\." | awk "{print \\$2}" | head -1)\n'
+            '[ -z "$IFACE" ] && echo "FATAL: no 10.x interface" && exit 1'
+        )
+
+    @staticmethod
+    def _strip_all_tc():
+        """Shell snippet to remove Emulab-applied TC from every interface."""
+        return (
+            'for dev in $(ls /sys/class/net/ | grep -v lo); do '
+            'tc qdisc del dev $dev root 2>/dev/null || true; '
+            'tc qdisc del dev $dev ingress 2>/dev/null || true; '
+            'done'
+        )
+
     def _apply_tc_shaping(self, v_ssh, c_ssh_host, nodes, committee):
-        """Replace Emulab default TC with QoS classes for primary/worker/client."""
+        """Egress-only HTB + netem on validators, SO_MARK-based client shaping."""
         Print.info('Applying TC QoS shaping...')
 
         primary_bw = self.primary_bw_kbps
-        latency_ms = self.latency_ms // 4  # per-interface delay (25ms for 100ms RTT)
+        half_lat = self.latency_ms // 2  # egress-only delay per hop
 
-        # Extract primary_to_primary ports from committee
-        primary_ports = []
-        for auth in committee.json['authorities'].values():
-            addr = auth['primary']['primary_to_primary']
-            primary_ports.append(addr.split(':')[1])
-
-        def _port_filters(dev, ports):
-            """Generate tc filter rules to classify primary ports into class 1:10."""
-            lines = []
-            for p in ports:
-                lines.append(f'tc filter add dev {dev} parent 1:0 protocol ip prio 2 u32 match ip sport {p} 0xffff flowid 1:10')
-                lines.append(f'tc filter add dev {dev} parent 1:0 protocol ip prio 2 u32 match ip dport {p} 0xffff flowid 1:10')
-            return lines
-
-        def _htb_classes(dev, total_bw, primary_bw, worker_bw):
-            """Generate HTB root + primary/worker classes with netem delay."""
-            return [
-                f'tc qdisc add dev {dev} root handle 1: htb default 20',
-                f'tc class add dev {dev} parent 1: classid 1:1 htb rate {total_bw}kbit',
-                f'tc class add dev {dev} parent 1:1 classid 1:10 htb rate {primary_bw}kbit ceil {primary_bw}kbit prio 0',
-                f'tc class add dev {dev} parent 1:1 classid 1:20 htb rate {worker_bw}kbit ceil {worker_bw}kbit prio 1',
-                f'tc qdisc add dev {dev} parent 1:10 handle 10: netem delay {latency_ms}ms limit 1000',
-                f'tc qdisc add dev {dev} parent 1:20 handle 20: netem delay {latency_ms}ms limit 1000',
-            ]
+        # Primary-to-primary ports for traffic classification
+        primary_ports = [
+            auth['primary']['primary_to_primary'].split(':')[1]
+            for auth in committee.json['authorities'].values()
+        ]
 
         def _shape_validator(i):
             worker_bw = self.worker_bws_kbps[i]
             total_bw = primary_bw + worker_bw
-            lines = [
+            # Port filters: classify primary traffic into class 1:10
+            port_filters = []
+            for p in primary_ports:
+                port_filters.append(f'tc filter add dev $IFACE parent 1:0 protocol ip prio 2 u32 match ip sport {p} 0xffff flowid 1:10')
+                port_filters.append(f'tc filter add dev $IFACE parent 1:0 protocol ip prio 2 u32 match ip dport {p} 0xffff flowid 1:10')
+            script = '\n'.join([
                 'set -e',
-                'IFACE=$(ip -o addr show | grep "10\\\\." | awk "{print \\$2}" | head -1)',
-                '[ -z "$IFACE" ] && echo "FATAL: no 10.x interface" && exit 1',
-                'tc qdisc del dev $IFACE root 2>/dev/null || true',
-                'tc qdisc del dev $IFACE ingress 2>/dev/null || true',
-                'tc qdisc del dev ifb0 root 2>/dev/null || true',
-                # Egress: HTB with primary/worker classes (both with netem delay)
-            ]
-            lines += _htb_classes('$IFACE', total_bw, primary_bw, worker_bw)
-            lines += _port_filters('$IFACE', primary_ports)
-            # Ingress: redirect to ifb0
-            lines += [
-                'ip link set dev ifb0 up',
-                'tc qdisc add dev $IFACE handle ffff: ingress',
-                'tc filter add dev $IFACE parent ffff: protocol ip u32 match u32 0 0 action mirred egress redirect dev ifb0',
-            ]
-            lines += _htb_classes('ifb0', total_bw, primary_bw, worker_bw)
-            lines += _port_filters('ifb0', primary_ports)
-            script = '\n'.join(lines)
+                self._detect_iface(),
+                self._strip_all_tc(),
+                # HTB: primary (1:10) + worker (1:20, default)
+                # No client exemption — client replies go through worker class (50ms netem)
+                # so client-to-own-validator RTT = 50ms, client-to-remote = 100ms
+                f'tc qdisc add dev $IFACE root handle 1: htb default 20',
+                f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {total_bw}kbit',
+                f'tc class add dev $IFACE parent 1:1 classid 1:10 htb rate {primary_bw}kbit ceil {primary_bw}kbit prio 0',
+                f'tc class add dev $IFACE parent 1:1 classid 1:20 htb rate {worker_bw}kbit ceil {worker_bw}kbit prio 1',
+                f'tc qdisc add dev $IFACE parent 1:10 handle 10: netem delay {half_lat}ms limit 10000',
+                f'tc qdisc add dev $IFACE parent 1:20 handle 20: netem delay {half_lat}ms limit 10000',
+                *port_filters,
+            ])
             self._ssh(v_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
 
         def _shape_client():
+            # SO_MARK-based per-flow shaping: remote flows get extra one-way latency
             client_bw = max(self.worker_bws_kbps)
-            remote_extra_lat = self.latency_ms // 2  # 50ms one-way for remote
+            remote_extra_lat = self.latency_ms // 2
             n = nodes
-            lines = [
+            class_lines = []
+            for region_id in range(n):
+                for v_idx in range(n):
+                    if region_id == v_idx:
+                        continue
+                    mark = region_id * n + v_idx + 1
+                    classid = mark + 10
+                    class_lines += [
+                        f'tc class add dev $IFACE parent 1:1 classid 1:{classid} htb rate 1mbit ceil {client_bw}kbit',
+                        f'tc filter add dev $IFACE parent 1:0 protocol ip prio 1 handle {mark} fw flowid 1:{classid}',
+                        f'tc qdisc add dev $IFACE parent 1:{classid} handle {classid}: netem delay {remote_extra_lat}ms limit 10000',
+                    ]
+            script = '\n'.join([
                 'set -e',
-                'IFACE=$(ip -o addr show | grep "10\\\\." | awk "{print \\$2}" | head -1)',
-                '[ -z "$IFACE" ] && echo "FATAL: no 10.x interface" && exit 1',
-                'tc qdisc del dev $IFACE root 2>/dev/null || true',
+                self._detect_iface(),
+                self._strip_all_tc(),
                 f'tc qdisc add dev $IFACE root handle 1: htb default 99',
                 f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {client_bw}kbit',
                 f'tc class add dev $IFACE parent 1:1 classid 1:99 htb rate 1mbit ceil {client_bw}kbit',
-            ]
-            for region_id in range(n):
-                for v_idx in range(n):
-                    mark = region_id * n + v_idx + 1
-                    classid = mark + 10
-                    lines.append(
-                        f'tc class add dev $IFACE parent 1:1 classid 1:{classid} htb rate 1mbit ceil {client_bw}kbit'
-                    )
-                    lines.append(
-                        f'tc filter add dev $IFACE parent 1:0 protocol ip prio 1 handle {mark} fw flowid 1:{classid}'
-                    )
-                    if region_id != v_idx:
-                        lines.append(
-                            f'tc qdisc add dev $IFACE parent 1:{classid} handle {classid}: netem delay {remote_extra_lat}ms limit 1000'
-                        )
-            script = '\n'.join(lines)
+                *class_lines,
+            ])
             self._ssh(c_ssh_host).run(f'sudo bash -c \'{script}\'', hide=True)
 
         with ThreadPoolExecutor(max_workers=nodes + 1) as pool:
@@ -221,6 +235,9 @@ class CloudLabBench:
             # Kill any previous run
             Print.info('Killing previous processes...')
             self._kill(all_ssh, delete_logs=True)
+
+            # Reset TCP buffers to defaults to avoid bufferbloat
+            self._reset_tcp_buffers(all_ssh)
 
             # Clean up locally
             cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
@@ -395,6 +412,10 @@ class CloudLabBench:
                 f'{vw_args}{rr_flag}'
             )
 
+            # Apply QoS TC shaping BEFORE starting processes so TCP connections
+            # are established with the correct RTT from the start
+            self._apply_tc_shaping(v_ssh, c_ssh_host, nodes, committee)
+
             # Start primaries
             Print.info('Starting primaries...')
             for i in range(nodes):
@@ -404,6 +425,7 @@ class CloudLabBench:
                     PathMaker.db_path(i),
                     PathMaker.parameters_file(),
                     debug=debug,
+                    in_memory_store=self.in_memory_store,
                 )
                 self._background_run(
                     v_ssh[i], primary_cmd, PathMaker.primary_log_file(i),
@@ -420,6 +442,7 @@ class CloudLabBench:
                         PathMaker.parameters_file(),
                         wid,
                         debug=debug,
+                        in_memory_store=self.in_memory_store,
                     )
                     self._background_run(
                         v_ssh[i], worker_cmd, PathMaker.worker_log_file(i, wid),
@@ -452,9 +475,6 @@ class CloudLabBench:
                 assert _now() <= deadline, 'Workers did not become ready within 120s'
                 sleep(0.5)
             Print.info('All workers ready.')
-
-            # Apply QoS TC shaping (replaces Emulab defaults + geni-script SO_MARK)
-            self._apply_tc_shaping(v_ssh, c_ssh_host, nodes, committee)
 
             # Start single client
             Print.info('Starting client...')
