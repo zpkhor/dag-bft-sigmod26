@@ -18,4 +18,4 @@ mod synchronizer;
 mod common;
 
 pub use crate::messages::{Certificate, ConsensusOutput, Header, MigrationMessage, MigrationNotice, QuorumMetrics, MIGRATION_CHUNK_SIZE};
-pub use crate::primary::{Primary, PrimaryWorkerMessage, Round, WorkerPrimaryMessage};
+pub use crate::primary::{ExecutorPrimaryMessage, Primary, PrimaryWorkerMessage, Round, WorkerPrimaryMessage};

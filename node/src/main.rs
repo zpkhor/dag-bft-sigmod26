@@ -4,7 +4,7 @@ use bytes::Bytes;
 use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
 use config::Export as _;
 use config::Import as _;
-use config::{Committee, KeyPair, Parameters, WorkerId};
+use config::{Committee, ExecutorId, KeyPair, Parameters, ShardingStrategy, WorkerId};
 use consensus::Consensus;
 use crypto::PublicKey;
 use env_logger::Env;
@@ -13,7 +13,7 @@ use primary::{ConsensusOutput, Primary, PrimaryWorkerMessage};
 use std::collections::HashMap;
 use store::Store;
 use tokio::sync::mpsc::{channel, Receiver};
-use worker::Worker;
+use worker::{Executor, Worker};
 
 /// The default channel capacity.
 pub const CHANNEL_CAPACITY: usize = 1_000;
@@ -41,6 +41,11 @@ async fn main() -> Result<()> {
                     SubCommand::with_name("worker")
                         .about("Run a single worker")
                         .args_from_usage("--id=<INT> 'The worker id'"),
+                )
+                .subcommand(
+                    SubCommand::with_name("executor")
+                        .about("Run a single executor")
+                        .args_from_usage("--id=<INT> 'The executor id'"),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -136,6 +141,30 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .context("The worker id must be a positive integer")?;
             Worker::spawn(name, id, committee, parameters, store);
         }
+
+        // Spawn a single executor.
+        ("executor", Some(sub_matches)) => {
+            let id = sub_matches
+                .value_of("id")
+                .unwrap()
+                .parse::<ExecutorId>()
+                .context("The executor id must be a positive integer")?;
+            let sharding_strategy =
+                ShardingStrategy::from_str(&parameters.sharding_strategy);
+            let initial_partition = config::create_initial_partition(
+                parameters.num_executors,
+                parameters.num_accounts,
+                sharding_strategy,
+            );
+            Executor::spawn(
+                name,
+                id,
+                committee,
+                parameters,
+                sharding_strategy,
+                initial_partition,
+            );
+        }
         _ => unreachable!(),
     }
 
@@ -158,6 +187,9 @@ async fn analyze(mut rx_output: Receiver<ConsensusOutput>, committee: Committee,
         .map(|(id, addr)| (*id, addr.primary_to_worker))
         .collect();
 
+    // Monotonically increasing sequence number for Execute dispatch to executors.
+    let mut next_sequence: u64 = 0;
+
     while let Some(output) = rx_output.recv().await {
         match output {
             ConsensusOutput::Certificate(certificate) => {
@@ -170,13 +202,22 @@ async fn analyze(mut rx_output: Receiver<ConsensusOutput>, committee: Committee,
                         .push(digest.clone());
                 }
 
-                // Send CommittedBatches to each of our workers.
+                // Send CommittedBatches and Execute to each of our workers.
                 for (worker_id, digests) in per_worker {
                     if let Some(&address) = our_workers.get(&worker_id) {
-                        let message = PrimaryWorkerMessage::CommittedBatches(digests);
+                        let message = PrimaryWorkerMessage::CommittedBatches(digests.clone());
                         let bytes = bincode::serialize(&message)
                             .expect("Failed to serialize CommittedBatches");
                         network.send(address, Bytes::from(bytes)).await;
+
+                        // Send Execute for each batch digest with a global sequence number.
+                        for digest in digests {
+                            let execute_msg = PrimaryWorkerMessage::Execute(digest, worker_id, next_sequence);
+                            let execute_bytes = bincode::serialize(&execute_msg)
+                                .expect("Failed to serialize Execute");
+                            network.send(address, Bytes::from(execute_bytes)).await;
+                            next_sequence += 1;
+                        }
                     }
                 }
             }

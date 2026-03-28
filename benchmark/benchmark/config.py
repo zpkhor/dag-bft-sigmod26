@@ -44,12 +44,13 @@ class Committee:
         }
     '''
 
-    def __init__(self, addresses, base_port):
+    def __init__(self, addresses, base_port, num_executors=0, executor_hosts=None):
         ''' The `addresses` field looks as follows:
-            { 
+            {
                 "name": ["host", "host", ...],
                 ...
             }
+            executor_hosts: optional dict {name: [host]*num_executors}
         '''
         assert isinstance(addresses, OrderedDict)
         assert all(isinstance(x, str) for x in addresses.keys())
@@ -68,9 +69,10 @@ class Committee:
             host = hosts.pop(0)
             primary_addr = {
                 'primary_to_primary': f'{host}:{port}',
-                'worker_to_primary': f'{host}:{port + 1}'
+                'worker_to_primary': f'{host}:{port + 1}',
+                'executor_to_primary': f'{host}:{port + 2}',
             }
-            port += 2
+            port += 3
 
             workers_addr = OrderedDict()
             for j, host in enumerate(hosts):
@@ -83,10 +85,23 @@ class Committee:
                     client_reply_addr = f'{host}:{port + 3}'
                 port += 4
 
+            # Allocate executor addresses
+            executors_addr = OrderedDict()
+            for e in range(num_executors):
+                e_host = host  # default: same host as last worker
+                if executor_hosts and name in executor_hosts:
+                    e_host = executor_hosts[name][e]
+                executors_addr[e] = {
+                    'worker_to_executor': f'{e_host}:{port}',
+                    'executor_to_executor': f'{e_host}:{port + 1}',
+                }
+                port += 2
+
             self.json['authorities'][name] = {
                 'stake': 1,
                 'primary': primary_addr,
                 'workers': workers_addr,
+                'executors': executors_addr,
                 'client_reply': client_reply_addr,
                 'capacity_by_bw': 0,
             }
@@ -109,6 +124,23 @@ class Committee:
         names = set(self.json['authorities'].keys())
         assert set(ranges.keys()) == names
         self.json['account_ranges'] = {pk: list(v) for pk, v in ranges.items()}
+
+    def set_client_reply_addresses(self, addresses):
+        ''' Set client reply addresses. addresses is dict: {client_id_int: "host:port", ...} '''
+        # JSON keys must be strings
+        self.json['client_reply_addresses'] = {str(k): v for k, v in addresses.items()}
+
+    def executors_addresses(self, faults=0):
+        ''' Returns an ordered list of list of (id, worker_to_executor_addr) per authority. '''
+        assert faults < self.size()
+        addresses = []
+        good_nodes = self.size() - faults
+        for authority in list(self.json['authorities'].values())[:good_nodes]:
+            authority_addresses = []
+            for id, executor in authority.get('executors', {}).items():
+                authority_addresses.append((id, executor['worker_to_executor']))
+            addresses.append(authority_addresses)
+        return addresses
 
     def set_capacities(self, capacities):
         ''' Set per-validator capacity (requests/sec). capacities is a list aligned
@@ -196,7 +228,8 @@ class LocalCommittee(Committee):
 
 
 class DockerCommittee(Committee):
-    def __init__(self, names, port, workers, container_ips, client_ip):
+    def __init__(self, names, port, workers, container_ips, client_ip,
+                 num_executors=0, executor_ips=None):
         assert isinstance(names, list)
         assert all(isinstance(x, str) for x in names)
         assert isinstance(port, int)
@@ -205,12 +238,22 @@ class DockerCommittee(Committee):
         assert len(container_ips) == len(names)
         assert isinstance(client_ip, str)
 
+        # Build executor_hosts mapping: {name: [executor_ip]*num_executors}
+        executor_hosts = None
+        if num_executors > 0 and executor_ips:
+            executor_hosts = {}
+            idx = 0
+            for name in names:
+                executor_hosts[name] = executor_ips[idx:idx + num_executors]
+                idx += num_executors
+
         # Build addresses with container IPs for all hosts (primary + workers)
         addresses = OrderedDict(
             (name, [ip] * (1 + workers))
             for name, ip in zip(names, container_ips)
         )
-        super().__init__(addresses, port)
+        super().__init__(addresses, port, num_executors=num_executors,
+                         executor_hosts=executor_hosts)
 
         # All authorities share a single client_reply address
         first_reply_port = list(self.json['authorities'].values())[0]['client_reply'].split(':')[1]
@@ -221,6 +264,10 @@ class DockerCommittee(Committee):
             # worker_to_primary is intra-validator
             addr = auth['primary']['worker_to_primary']
             auth['primary']['worker_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
+
+            # executor_to_primary is intra-validator (executors on same LAN)
+            addr = auth['primary']['executor_to_primary']
+            auth['primary']['executor_to_primary'] = f'127.0.0.1:{addr.split(":")[1]}'
 
             for worker in auth['workers'].values():
                 # primary_to_worker is intra-validator
@@ -331,6 +378,16 @@ class NodeParameters:
         assert isinstance(filename, str)
         with open(filename, 'w') as f:
             dump(self.json, f, indent=4, sort_keys=True)
+
+    def set_executor_params(self, num_executors, num_accounts, min_balance, max_balance,
+                            sharding_strategy, no_send_payment_tx, use_new_scheduler):
+        self.json['num_executors'] = num_executors
+        self.json['num_accounts'] = num_accounts
+        self.json['min_balance'] = min_balance
+        self.json['max_balance'] = max_balance
+        self.json['sharding_strategy'] = sharding_strategy
+        self.json['no_send_payment_tx'] = no_send_payment_tx
+        self.json['use_new_scheduler'] = use_new_scheduler
 
 
 class BenchParameters:

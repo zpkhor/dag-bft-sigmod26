@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 COPY entrypoint.sh /entrypoint.sh
 COPY client-entrypoint.sh /client-entrypoint.sh
-RUN chmod +x /entrypoint.sh /client-entrypoint.sh
+COPY executor-entrypoint.sh /executor-entrypoint.sh
+RUN chmod +x /entrypoint.sh /client-entrypoint.sh /executor-entrypoint.sh
 
 ENTRYPOINT ["/entrypoint.sh"]

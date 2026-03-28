@@ -4,6 +4,7 @@ use crate::helper::Helper;
 use crate::primary_connector::PrimaryConnector;
 use crate::processor::{Processor, SerializedBatchMessage};
 use crate::quorum_waiter::QuorumWaiter;
+use crate::router::{ExecuteCommand, Router};
 use crate::synchronizer::Synchronizer;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -109,6 +110,7 @@ impl Worker {
     /// Spawn all tasks responsible to handle messages from our primary.
     fn handle_primary_messages(&self) {
         let (tx_synchronizer, rx_synchronizer) = channel(CHANNEL_CAPACITY);
+        let (tx_router, rx_router) = channel(CHANNEL_CAPACITY);
 
         // Receive incoming messages from our primary.
         let mut address = self
@@ -120,11 +122,13 @@ impl Worker {
         Receiver::spawn(
             address,
             /* handler */
-            PrimaryReceiverHandler { tx_synchronizer },
+            PrimaryReceiverHandler {
+                tx_synchronizer,
+                tx_router,
+            },
         );
 
-        // The `Synchronizer` is responsible to keep the worker in sync with the others. It handles the commands
-        // it receives from the primary (which are mainly notifications that we are out of sync).
+        // The `Synchronizer` is responsible to keep the worker in sync with the others.
         Synchronizer::spawn(
             self.name,
             self.id,
@@ -134,6 +138,15 @@ impl Worker {
             self.parameters.sync_retry_delay,
             self.parameters.sync_retry_nodes,
             /* rx_message */ rx_synchronizer,
+        );
+
+        // The `Router` reads committed batches from store and broadcasts to executors.
+        Router::spawn(
+            self.name,
+            self.id,
+            self.committee.clone(),
+            self.store.clone(),
+            rx_router,
         );
 
         info!(
@@ -258,20 +271,20 @@ struct TxReceiverHandler {
 #[async_trait]
 impl MessageHandler for TxReceiverHandler {
     async fn dispatch(&self, _writer: &mut Writer, message: Bytes) -> Result<(), Box<dyn Error>> {
-        if message.len() < 8 {
+        if message.len() < 10 {
             panic!("Received transaction frame too short ({} bytes), dropping", message.len());
         }
 
         #[cfg(feature = "benchmark")]
         {
-            if message.len() > 17 && message[8] == 0u8 {
-                let account_id = u64::from_be_bytes(message[0..8].try_into().unwrap());
-                if let Ok(id) = message[9..17].try_into().map(u64::from_be_bytes) {
-                    info!(
-                        "Worker received sample tx {} account {}",
-                        id, account_id
-                    );
-                }
+            // SmallBank format: [tx_type:1][client_id:1][tx_counter:8][src_account:8]...
+            if message[0] == 0u8 && message.len() >= 18 {
+                let counter = u64::from_be_bytes(message[2..10].try_into().unwrap());
+                let account_id = u64::from_be_bytes(message[10..18].try_into().unwrap());
+                info!(
+                    "Worker received sample tx {} account {}",
+                    counter, account_id
+                );
             }
         }
 
@@ -321,6 +334,7 @@ impl MessageHandler for WorkerReceiverHandler {
 #[derive(Clone)]
 struct PrimaryReceiverHandler {
     tx_synchronizer: Sender<PrimaryWorkerMessage>,
+    tx_router: Sender<ExecuteCommand>,
 }
 
 #[async_trait]
@@ -330,14 +344,22 @@ impl MessageHandler for PrimaryReceiverHandler {
         _writer: &mut Writer,
         serialized: Bytes,
     ) -> Result<(), Box<dyn Error>> {
-        // Deserialize the message and send it to the synchronizer.
-        match bincode::deserialize(&serialized) {
-            Err(e) => error!("Failed to deserialize primary message: {}", e),
-            Ok(message) => self
-                .tx_synchronizer
-                .send(message)
-                .await
-                .expect("Failed to send transaction"),
+        match bincode::deserialize::<PrimaryWorkerMessage>(&serialized) {
+            Ok(PrimaryWorkerMessage::Execute(digest, _worker_id, sequence)) => {
+                self.tx_router
+                    .send(ExecuteCommand { digest, sequence })
+                    .await
+                    .expect("Failed to send to router");
+            }
+            Ok(message) => {
+                self.tx_synchronizer
+                    .send(message)
+                    .await
+                    .expect("Failed to send to synchronizer");
+            }
+            Err(e) => {
+                error!("Failed to deserialize primary message: {}", e);
+            }
         }
         Ok(())
     }

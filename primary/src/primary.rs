@@ -49,6 +49,15 @@ pub enum PrimaryWorkerMessage {
     CommittedBatches(Vec<Digest>),
     /// Migration notices from consensus: reroute these accounts to new validators.
     MigrationNotices(Vec<crate::messages::MigrationNotice>),
+    /// Execute a committed batch: (digest, worker_id, sequence_number).
+    Execute(Digest, WorkerId, u64),
+}
+
+/// Messages sent by executors to their primary (for flow control).
+#[derive(Debug, Serialize, Deserialize)]
+pub enum ExecutorPrimaryMessage {
+    /// Feedback: (executor_id, last_executed_sequence)
+    ExecutionFeedback(config::ExecutorId, u64),
 }
 
 /// The messages sent by the workers to their primary.

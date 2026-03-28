@@ -160,7 +160,7 @@ class DockerBench:
     def _entrypoint_hash():
         import hashlib
         h = hashlib.sha256()
-        for path in ['docker/entrypoint.sh', 'docker/client-entrypoint.sh']:
+        for path in ['docker/entrypoint.sh', 'docker/client-entrypoint.sh', 'docker/executor-entrypoint.sh']:
             with open(path, 'rb') as f:
                 h.update(f.read())
         return h.hexdigest()
@@ -185,7 +185,7 @@ class DockerBench:
         ]
         subprocess.run(cmd, check=True)
 
-    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str):
+    def _generate_compose(self, nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str, executor_commands=None, executor_ips=None):
         """Generate docker-compose.yml programmatically."""
         # Halve latency for netem: egress-only delay on both endpoints means
         # each side contributes half the RTT (self.latency is the target RTT).
@@ -258,6 +258,49 @@ class DockerBench:
       - WAIT_PORTS={wait_ports_per_validator[i]}"""
 
             services.append(service)
+
+        # Executor containers
+        if executor_commands and executor_ips:
+            exec_idx = 0
+            for i in range(nodes):
+                for e in range(self.num_executors):
+                    e_ip = executor_ips[exec_idx]
+                    e_cmd = executor_commands[(i, e)]
+
+                    e_cpuset = ""
+                    if self.cpus_per_validator > 0:
+                        # Executors get CPU after validators and client
+                        slot = self.cpus_per_validator
+                        # validators: [0, nodes*slot)
+                        # client: [nodes*slot, nodes*slot + 2*nodes)
+                        # executors: after client
+                        client_cpus = 2 * nodes
+                        exec_cpus_per = 7  # TODO: make configurable
+                        e_start = nodes * slot + client_cpus + exec_idx * exec_cpus_per
+                        e_end = e_start + exec_cpus_per - 1
+                        e_cpuset = f'\n    cpuset: "{e_start}-{e_end}"'
+
+                    service = f"""  executor-{i}-{e}:
+    image: {self.IMAGE_NAME}
+    container_name: narwhal-executor-{i}-{e}
+    working_dir: /app
+    cap_add:
+      - NET_ADMIN{e_cpuset}
+    entrypoint: ["/executor-entrypoint.sh"]
+    networks:
+      {self.NETWORK_NAME}:
+        ipv4_address: {e_ip}
+    volumes:
+      - ./node:/app/node:ro
+      - ./.node-{i}.json:/app/.node-{i}.json:ro
+      - ./.committee.json:/app/.committee.json:ro
+      - ./.parameters.json:/app/.parameters.json:ro
+      - ./logs:/logs:rw
+    environment:
+      - EXECUTOR_CMD={e_cmd}"""
+
+                    services.append(service)
+                    exec_idx += 1
 
         # Single client container
         max_bw = -1
@@ -350,9 +393,17 @@ networks:
 
             names = [x.name for x in keys]
             container_ips = [self._container_ip(i) for i in range(nodes)]
-            client_ip = f"172.20.0.{10 + nodes}"
+
+            # Executor IPs: after validators, before client
+            executor_ips = []
+            for i in range(nodes):
+                for e in range(self.num_executors):
+                    executor_ips.append(f"172.20.0.{10 + nodes + 1 + i * self.num_executors + e}")
+            client_ip = f"172.20.0.{10 + nodes + 1 + nodes * self.num_executors}"
+
             committee = DockerCommittee(
-                names, self.BASE_PORT, self.workers, container_ips, client_ip
+                names, self.BASE_PORT, self.workers, container_ips, client_ip,
+                num_executors=self.num_executors, executor_ips=executor_ips,
             )
             
             if not self.baseline:
@@ -372,6 +423,21 @@ networks:
 
             if self.baseline:
                 self.node_parameters.json['baseline_mode'] = True
+
+            num_accounts = self.bench_parameters.num_accounts
+
+            # Set executor parameters in node params
+            if self.num_executors > 0:
+                self.node_parameters.set_executor_params(
+                    num_executors=self.num_executors,
+                    num_accounts=num_accounts,
+                    min_balance=10_000,
+                    max_balance=100_000,
+                    sharding_strategy='range',
+                    no_send_payment_tx=self.no_send_payment,
+                    use_new_scheduler=False,
+                )
+
             self.node_parameters.print(PathMaker.parameters_file())
 
             # Create db directories
@@ -385,7 +451,6 @@ networks:
 
             v = "-vvv" if debug else "-vv"
 
-            num_accounts = self.bench_parameters.num_accounts
             account_weights = self.bench_parameters.account_weights or [1] * nodes
             total_aw = sum(account_weights)
             acct_counts = [num_accounts * w // total_aw for w in account_weights]
@@ -404,6 +469,13 @@ networks:
                 for i, name in enumerate(names)
             }
             committee.set_account_ranges(account_ranges)
+
+            # Set client_reply_addresses for executor -> client replies (e2e latency)
+            if self.num_executors > 0:
+                # Use a port on the client container for execution replies
+                exec_reply_port = self.BASE_PORT + 9000  # high enough to not conflict
+                committee.set_client_reply_addresses({0: f'{client_ip}:{exec_reply_port}'})
+
             committee.print(PathMaker.committee_file())
 
             # Build --validator-workers args for all validators
@@ -438,12 +510,20 @@ networks:
             reply_addr = list(committee.json['authorities'].values())[0]['client_reply']
 
             rr_flag = " --round-robin" if self.round_robin else ""
+            no_send_flag = " --no-send-payment" if self.no_send_payment else ""
+            zipf_flag = f" --zipf-exponent {self.zipf_exponent}" if self.zipf_exponent > 0 else ""
+
+            exec_reply_flag = ""
+            if self.num_executors > 0:
+                exec_reply_addr = f"{client_ip}:{self.BASE_PORT + 9000}"
+                exec_reply_flag = f" --execution-reply-addr {exec_reply_addr}"
+
             client_command = (
                 f"./benchmark_client --size {self.tx_size} "
                 f"--rate {rate} --nodes {all_nodes_arg} "
                 f"{ar_args} --rate-weights {rate_weights_str} "
                 f"--reply-addr {reply_addr} --own-validator {names[0]} "
-                f"{vw_args}{rr_flag}"
+                f"{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}"
                 f" 2> /logs/client-0-0.log"
             )
 
@@ -469,6 +549,17 @@ networks:
                     "primary": primary_cmd,
                     "workers": worker_cmds,
                 }
+
+            # Build executor commands (separate containers)
+            executor_commands = {}  # (validator_idx, executor_id) -> cmd
+            for i in range(nodes):
+                for e in range(self.num_executors):
+                    e_cmd = (
+                        f"./node {v} run --keys .node-{i}.json --committee .committee.json "
+                        f"--store .db-{i} --parameters .parameters.json executor --id {e}"
+                        f" 2> /logs/executor-{i}-{e}.log"
+                    )
+                    executor_commands[(i, e)] = e_cmd
 
             # Compute remote wait ports for each validator.
             wait_ports_per_validator = {}
@@ -499,7 +590,7 @@ networks:
                 Print.info("Docker image up to date, skipping build.")
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str)
+            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str, executor_commands=executor_commands, executor_ips=executor_ips)
 
             # Start containers.
             Print.info("Starting containers...")

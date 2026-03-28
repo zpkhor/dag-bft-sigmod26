@@ -3,8 +3,10 @@ use crypto::{generate_production_keypair, PublicKey, SecretKey};
 use log::info;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
+use std::collections::hash_map::DefaultHasher;
 use std::collections::{BTreeMap, HashMap};
 use std::fs::{self, OpenOptions};
+use std::hash::{Hash, Hasher};
 use std::io::BufWriter;
 use std::io::Write as _;
 use std::net::SocketAddr;
@@ -17,6 +19,9 @@ pub enum ConfigError {
 
     #[error("Unknown worker id {0}")]
     UnknownWorker(WorkerId),
+
+    #[error("Unknown executor id {0}")]
+    UnknownExecutor(ExecutorId),
 
     #[error("Failed to read config file '{file}': {message}")]
     ImportError { file: String, message: String },
@@ -55,8 +60,25 @@ pub trait Export: Serialize {
     }
 }
 
+/// Sharding strategy for account states distribution among batch executors
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq, Copy)]
+pub enum ShardingStrategy {
+    Range,
+    Hash,
+}
+
+impl ShardingStrategy {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "hash" => ShardingStrategy::Hash,
+            _ => ShardingStrategy::Range,
+        }
+    }
+}
+
 pub type Stake = u32;
 pub type WorkerId = u32;
+pub type ExecutorId = u32;
 
 #[derive(Deserialize, Clone)]
 pub struct Parameters {
@@ -82,6 +104,31 @@ pub struct Parameters {
     /// When true, disables account_counts tracking and rerouting computation.
     #[serde(default)]
     pub baseline_mode: bool,
+    /// Total number of SmallBank accounts.
+    #[serde(default)]
+    pub num_accounts: u64,
+    /// Number of executors per validator.
+    #[serde(default)]
+    pub num_executors: u32,
+    /// Initial account balance range (min).
+    #[serde(default)]
+    pub min_balance: i64,
+    /// Initial account balance range (max).
+    #[serde(default)]
+    pub max_balance: i64,
+    /// Sharding strategy: "range" or "hash".
+    #[serde(default = "default_sharding_strategy")]
+    pub sharding_strategy: String,
+    /// Use new scheduler (dynamic load-aware scheduling).
+    #[serde(default)]
+    pub use_new_scheduler: bool,
+    /// Exclude SendPayment transactions (single-account txs only).
+    #[serde(default)]
+    pub no_send_payment_tx: bool,
+}
+
+fn default_sharding_strategy() -> String {
+    "range".to_string()
 }
 
 impl Default for Parameters {
@@ -95,6 +142,13 @@ impl Default for Parameters {
             batch_size: 500_000,
             max_batch_delay: 100,
             baseline_mode: false,
+            num_accounts: 0,
+            num_executors: 0,
+            min_balance: 0,
+            max_balance: 0,
+            sharding_strategy: default_sharding_strategy(),
+            use_new_scheduler: false,
+            no_send_payment_tx: false,
         }
     }
 }
@@ -110,6 +164,12 @@ impl Parameters {
         info!("Sync retry nodes set to {} nodes", self.sync_retry_nodes);
         info!("Batch size set to {} B", self.batch_size);
         info!("Max batch delay set to {} ms", self.max_batch_delay);
+        if self.num_accounts > 0 {
+            info!("SmallBank: {} accounts across {} executors", self.num_accounts, self.num_executors);
+            info!("SmallBank: Balance range [{}, {}]", self.min_balance, self.max_balance);
+            info!("SmallBank: Sharding strategy: {}", self.sharding_strategy);
+            info!("SmallBank: no_send_payment_tx={}", self.no_send_payment_tx);
+        }
     }
 }
 
@@ -119,6 +179,16 @@ pub struct PrimaryAddresses {
     pub primary_to_primary: SocketAddr,
     /// Address to receive messages from our workers (LAN).
     pub worker_to_primary: SocketAddr,
+    /// Address to receive feedback from our executors (LAN).
+    pub executor_to_primary: SocketAddr,
+}
+
+#[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
+pub struct ExecutorAddresses {
+    /// Address to receive execution requests from workers.
+    pub worker_to_executor: SocketAddr,
+    /// Address to receive state transfers from other executors.
+    pub executor_to_executor: SocketAddr,
 }
 
 #[derive(Clone, Deserialize, Eq, Hash, PartialEq)]
@@ -139,6 +209,9 @@ pub struct Authority {
     pub primary: PrimaryAddresses,
     /// Map of workers' id and their network addresses.
     pub workers: HashMap<WorkerId, WorkerAddresses>,
+    /// Map of executors' id and their network addresses.
+    #[serde(default)]
+    pub executors: HashMap<ExecutorId, ExecutorAddresses>,
     /// Address to send commit replies to the client.
     pub client_reply: SocketAddr,
     /// Estimated max request throughput (requests/sec)
@@ -155,6 +228,9 @@ pub struct Committee {
     /// Per-validator (account_start, account_count), keyed by validator public key.
     #[serde(default)]
     pub account_ranges: BTreeMap<PublicKey, (u64, u64)>,
+    /// Client reply addresses keyed by client_id (u8).
+    #[serde(default)]
+    pub client_reply_addresses: HashMap<u8, SocketAddr>,
 }
 
 impl Import for Committee {}
@@ -255,6 +331,25 @@ impl Committee {
             .collect()
     }
 
+    /// Returns the addresses of a specific executor (`id`) of a specific authority (`to`).
+    pub fn executor(&self, to: &PublicKey, id: &ExecutorId) -> Result<ExecutorAddresses, ConfigError> {
+        self.authorities
+            .iter()
+            .find(|(name, _)| name == &to)
+            .map(|(_, authority)| authority)
+            .ok_or_else(|| ConfigError::NotInCommittee(*to))?
+            .executors
+            .iter()
+            .find(|(executor_id, _)| executor_id == &id)
+            .map(|(_, executor)| executor.clone())
+            .ok_or_else(|| ConfigError::UnknownExecutor(*id))
+    }
+
+    /// Returns the reply address for a specific client_id.
+    pub fn client_reply_address(&self, client_id: u8) -> Option<&SocketAddr> {
+        self.client_reply_addresses.get(&client_id)
+    }
+
     /// Returns the addresses of all workers with a specific id except the ones of the authority
     /// specified by `myself`.
     pub fn others_workers(
@@ -297,5 +392,67 @@ impl KeyPair {
 impl Default for KeyPair {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+/// Account→ExecutorId mapping. Updated deterministically by the scheduler.
+pub type Partition = HashMap<u64, ExecutorId>;
+
+/// Creates an initial Partition based on sharding strategy.
+pub fn create_initial_partition(
+    num_executors: u32,
+    num_accounts: u64,
+    strategy: ShardingStrategy,
+) -> Partition {
+    let mut partition: Partition = HashMap::new();
+    for account_id in 0..num_accounts {
+        let executor_id = compute_worker_for_account(
+            account_id,
+            num_executors,
+            num_accounts,
+            strategy,
+        );
+        partition.insert(account_id, executor_id);
+    }
+    partition
+}
+
+/// Compute the initial shard range [start, end) for an executor at startup.
+pub fn compute_initial_shard_range(executor_id: u32, num_executors: u32, num_accounts: u64) -> (u64, u64) {
+    if num_executors == 0 {
+        return (0, 0);
+    }
+    let accounts_per_shard = (num_accounts + num_executors as u64 - 1) / num_executors as u64;
+    let start = executor_id as u64 * accounts_per_shard;
+    let end = ((executor_id + 1) as u64 * accounts_per_shard).min(num_accounts);
+    (start, end)
+}
+
+fn hash_account_id(account_id: u64) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    account_id.hash(&mut hasher);
+    hasher.finish()
+}
+
+pub fn compute_worker_for_account(
+    account_id: u64,
+    num_workers: u32,
+    num_accounts: u64,
+    strategy: ShardingStrategy,
+) -> u32 {
+    match strategy {
+        ShardingStrategy::Range => {
+            if num_workers == 0 {
+                return 0;
+            }
+            let accounts_per_shard = (num_accounts + num_workers as u64 - 1) / num_workers as u64;
+            (account_id / accounts_per_shard).min(num_workers as u64 - 1) as u32
+        }
+        ShardingStrategy::Hash => {
+            if num_workers == 0 {
+                return 0;
+            }
+            (hash_account_id(account_id) % num_workers as u64) as u32
+        }
     }
 }

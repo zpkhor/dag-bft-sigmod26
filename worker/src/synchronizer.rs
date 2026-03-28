@@ -115,8 +115,9 @@ impl Synchronizer {
             };
 
             for tx in &txs {
-                if tx.len() > 17 && tx[8] == 0u8 {
-                    let counter = u64::from_be_bytes(tx[9..17].try_into().unwrap());
+                // SmallBank format: [tx_type:1][client_id:1][tx_counter:8][src_account:8]...
+                if tx.len() >= 10 && tx[0] == 0u8 {
+                    let counter = u64::from_be_bytes(tx[2..10].try_into().unwrap());
                     info!("Committed sample tx {} from batch {:?}", counter, digest);
                 }
             }
@@ -219,6 +220,9 @@ impl Synchronizer {
                     },
                     PrimaryWorkerMessage::MigrationNotices(notices) => {
                         self.handle_migration_notices(notices).await;
+                    },
+                    PrimaryWorkerMessage::Execute(..) => {
+                        // Handled by PrimaryReceiverHandler directly (routed to Router).
                     },
                     PrimaryWorkerMessage::Cleanup(round) => {
                         // Keep track of the primary's round number.

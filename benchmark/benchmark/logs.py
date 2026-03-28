@@ -38,9 +38,13 @@ class LogParser:
                 results = p.map(self._parse_clients, clients)
         except (ValueError, IndexError, AttributeError) as e:
             raise ParseError(f'Failed to parse clients\' logs: {e}')
-        self.size, self.rate, self.start, misses, self.sent_samples \
+        self.size, self.rate, self.start, misses, self.sent_samples, e2e_completed_list \
             = zip(*results)
         self.misses = sum(misses)
+        # Merge e2e completed timestamps across all clients
+        self.e2e_completed = {}
+        for d in e2e_completed_list:
+            self.e2e_completed.update(d)
         _client_cache = {id(log): r for log, r in zip(clients, results)}
 
         # Parse the primaries logs.
@@ -141,7 +145,7 @@ class LogParser:
                 v_sent_list = []
                 v_misses = 0
                 for log in logs:
-                    _, _, _, misses, samples = _client_cache[id(log)]
+                    _, _, _, misses, samples, _ = _client_cache[id(log)]
                     v_sent_list.append(samples)
                     v_misses += misses
                 self.sent_samples_by_validator[v] = v_sent_list
@@ -200,7 +204,11 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* sample transaction (\d+) account (\d+)', log)
         samples = {(int(s), int(a)): self._to_posix(t) for t, s, a in tmp}
 
-        return size, rate, start, misses, samples
+        # Parse e2e completion (executor reply received)
+        tmp = findall(r'\[(.*Z) .* Sample transaction (\d+) completed with (\d+) confirmations', log)
+        e2e_completed = {int(s): self._to_posix(t) for t, s, _ in tmp}
+
+        return size, rate, start, misses, samples, e2e_completed
 
     def _parse_primaries(self, log):
         if search(r'(?:panicked|Error)', log) is not None:
@@ -322,6 +330,50 @@ class LogParser:
     def _consensus_latency(self):
         latency = [c - self.proposals[d] for d, c in self.commits.items()]
         return self._calculate_latency_metrics(latency)
+
+    def _e2e_latency(self):
+        """Compute end-to-end latency: client send -> executor reply received (f+1)."""
+        if not self.e2e_completed:
+            return None
+
+        # Build sent map: counter -> sent_time (across all clients)
+        global_sent = {}
+        for sent in self.sent_samples:
+            for (counter, _acct), t in sent.items():
+                global_sent[counter] = t
+
+        latency = []
+        for counter, completed_time in self.e2e_completed.items():
+            if counter in global_sent:
+                lat = (completed_time - global_sent[counter]) * 1000  # ms
+                if lat > 0:
+                    latency.append(lat)
+
+        if not latency:
+            return None
+        return self._calculate_latency_metrics(latency)
+
+    def _end_to_end_throughput(self):
+        """Compute e2e throughput: from first commit to last executor-reply completion.
+
+        Each completed sample represents (rate / PRECISION) actual transactions,
+        since 1 sample is sent per burst and there are PRECISION bursts/sec.
+        """
+        if not self.e2e_completed or not self.commits:
+            return 0, 0, 0
+        PRECISION = 20  # bursts/sec, matches benchmark_client PRECISION constant
+        start = min(self.commits.values())
+        end = max(self.e2e_completed.values())
+        duration = end - start
+        if duration <= 0:
+            return 0, 0, 0
+
+        num_completed = len(self.e2e_completed)
+        sample_multiplier = self.rate[0] / PRECISION
+        bytes_represented = num_completed * sample_multiplier * self.size[0]
+        bps = bytes_represented / duration
+        tps = bps / self.size[0]
+        return tps, bps, duration
 
     def _committed_throughput(self):
         if not self.commits:
@@ -793,15 +845,32 @@ class LogParser:
         commit_p95 = commit_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
         committed_tps, committed_bps, _ = self._committed_throughput()
+        e2e = self._e2e_latency()
+        e2e_tps, e2e_bps, e2e_duration = self._end_to_end_throughput()
+        e2e_lines1 = ''
+        e2e_lines2 = ''
+        if e2e:
+            e2e_lines1 = (
+                f' E2E latency (send -> exec reply) (mean): {round(e2e["mean"]):,} ms\n'
+                f' E2E latency (send -> exec reply) (p95): {round(e2e["p95"]):,} ms\n'
+            )
+
+            e2e_lines2 = (
+                f' E2E TPS: {round(e2e_tps):,} tx/s\n'
+                f' E2E duration: {round(e2e_duration, 2):,} s\n'
+            )
+
         return (
             ' + RESULTS:\n'
             f' f+1 Commit latency (workers) (mean): {round(commit_latency):,} ms\n'
             f' f+1 Commit latency (workers) (p95): {round(commit_p95):,} ms\n'
+            + e2e_lines1 +
             '\n'
             f' Consensus TPS: {round(consensus_tps):,} tx/s\n'
             f' Consensus BPS: {round(consensus_bps):,} B/s\n'
             f' Committed TPS: {round(committed_tps):,} tx/s\n'
             f' Committed BPS: {round(committed_bps):,} B/s\n'
+            + e2e_lines2
         )
 
     def _format_validator_commit_section(self):

@@ -16,11 +16,22 @@ use rand::{Rng, SeedableRng};
 use std::collections::{HashMap, HashSet};
 use std::net::SocketAddr;
 use std::os::unix::io::AsRawFd;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::mpsc;
 use tokio::time::{interval, sleep, Duration, Instant};
 use tokio_util::codec::{Framed, LengthDelimitedCodec};
+use worker::client_replier::ClientReply;
+
+/// SmallBank transaction amount constants
+const DEPOSIT_CHECKING_AMOUNT: f64 = 1.3;
+const TRANSACT_SAVINGS_AMOUNT: f64 = 20.20;
+const WRITE_CHECK_AMOUNT: f64 = 5.0;
+const SEND_PAYMENT_AMOUNT: f64 = 5.0;
+
+/// Transaction type identifiers
+const SAMPLE_TX_TYPE: u8 = 0;
+const REGULAR_TX_TYPE: u8 = 1;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -35,8 +46,12 @@ async fn main() -> Result<()> {
         .args_from_usage("--rate-weights=[WEIGHTS] 'Comma-separated rate weights per region (default: equal)'")
         .args_from_usage("--validator-workers=<PAIR>... 'PUBKEY_BASE64:addr1+addr2 per validator'")
         .args_from_usage("--reply-addr=[ADDR] 'Address to listen for migration notices'")
+        .args_from_usage("--execution-reply-addr=[ADDR] 'Address to listen for execution replies (e2e latency)'")
         .args_from_usage("--own-validator=<KEY> 'Base64 public key of this client\\'s home validator'")
         .args_from_usage("--round-robin 'Enable round-robin routing across all validators'")
+        .args_from_usage("--client-id=[INT] 'Client identifier (default 0)'")
+        .args_from_usage("--no-send-payment 'Exclude SendPayment transactions'")
+        .args_from_usage("--zipf-exponent=[FLOAT] 'Zipf exponent for account selection (0.0=uniform, default 0.0)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -113,7 +128,26 @@ async fn main() -> Result<()> {
         .map(|a| a.parse().context("Invalid --reply-addr"))
         .transpose()?;
 
+    let execution_reply_addr: Option<SocketAddr> = matches
+        .value_of("execution-reply-addr")
+        .map(|a| a.parse().context("Invalid --execution-reply-addr"))
+        .transpose()?;
+
     let round_robin = matches.is_present("round-robin");
+
+    let client_id: u8 = matches
+        .value_of("client-id")
+        .unwrap_or("0")
+        .parse::<u8>()
+        .context("The client id must be a u8")?;
+
+    let no_send_payment = matches.is_present("no-send-payment");
+
+    let zipf_exponent: f64 = matches
+        .value_of("zipf-exponent")
+        .unwrap_or("0.0")
+        .parse::<f64>()
+        .context("--zipf-exponent must be a float")?;
 
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
@@ -184,6 +218,13 @@ async fn main() -> Result<()> {
         info!("Round-robin routing enabled across {} validators", num_validators);
     }
 
+    let num_tx_types: u8 = if no_send_payment { 4 } else { 5 };
+
+    info!(
+        "client_id={}, no_send_payment={}, zipf_exponent={}, num_tx_types={}",
+        client_id, no_send_payment, zipf_exponent, num_tx_types
+    );
+
     let client = Client {
         all_validators,
         sorted_validators,
@@ -193,8 +234,13 @@ async fn main() -> Result<()> {
         account_ranges,
         rate_weights,
         reply_addr,
+        execution_reply_addr,
         f_plus_one,
         round_robin,
+        client_id,
+        no_send_payment,
+        zipf_exponent,
+        num_tx_types,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -213,8 +259,13 @@ struct Client {
     account_ranges: HashMap<PublicKey, (u64, u64)>,
     rate_weights: Vec<f64>,
     reply_addr: Option<SocketAddr>,
+    execution_reply_addr: Option<SocketAddr>,
     f_plus_one: usize,
     round_robin: bool,
+    client_id: u8,
+    no_send_payment: bool,
+    zipf_exponent: f64,
+    num_tx_types: u8,
 }
 
 impl Client {
@@ -266,9 +317,9 @@ impl Client {
     }
 
     pub async fn send(&self) -> Result<()> {
-        if self.size < 17 {
+        if self.size < 35 {
             return Err(anyhow::Error::msg(
-                "Transaction size must be at least 17 bytes (8 prefix + 1 type + 8 counter)",
+                "Transaction size must be at least 35 bytes for SmallBank format",
             ));
         }
 
@@ -282,6 +333,17 @@ impl Client {
             tokio::spawn(async move {
                 if let Err(e) = migration_listener(reply_addr, rt, f_plus_one).await {
                     warn!("Migration listener error: {}", e);
+                }
+            });
+        }
+
+        // Spawn execution reply listener for e2e latency.
+        if let Some(exec_addr) = self.execution_reply_addr {
+            let f_plus_one = self.f_plus_one;
+            let client_id = self.client_id;
+            tokio::spawn(async move {
+                if let Err(e) = execution_reply_listener(exec_addr, f_plus_one, client_id).await {
+                    warn!("Execution reply listener error: {}", e);
                 }
             });
         }
@@ -314,6 +376,8 @@ impl Client {
             let rt = routing_table.clone();
             let round_robin = self.round_robin;
             let size = self.size;
+            let client_id = self.client_id;
+            let num_tx_types = self.num_tx_types;
             let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
             handles.push(tokio::spawn(async move {
@@ -327,6 +391,8 @@ impl Client {
                     acct_count,
                     region_rate,
                     size,
+                    client_id,
+                    num_tx_types,
                 ).await
             }));
         }
@@ -360,11 +426,13 @@ async fn send_shard(
     num_accounts: u64,
     rate: u64,
     size: usize,
+    client_id: u8,
+    num_tx_types: u8,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
     const RAMPUP_SECS: u64 = 2;
-    const RAMPUP_TICKS: u64 = RAMPUP_SECS * PRECISION; // 80 ticks = 4s
+    const RAMPUP_TICKS: u64 = RAMPUP_SECS * PRECISION;
 
     let own_senders = &validator_senders[&own_validator];
     let num_workers = own_senders.len();
@@ -375,11 +443,9 @@ async fn send_shard(
     let mut worker_rr: HashMap<u64, usize> = HashMap::new();
     let interval = interval(Duration::from_millis(BURST_DURATION));
     tokio::pin!(interval);
-    // Cumulative send count to avoid truncation loss from rate/PRECISION.
-    // On tick `counter`, send exactly `rate*(counter+1)/PRECISION - rate*counter/PRECISION` txs.
     let mut total_sent = 0u64;
+    let mut burst_count = 0u64;
 
-    // For round-robin mode: sorted validator keys and per-account validator counter
     let sorted_validators: Vec<PublicKey> = {
         let mut keys: Vec<PublicKey> = validator_senders.keys().copied().collect();
         keys.sort();
@@ -392,9 +458,6 @@ async fn send_shard(
         interval.as_mut().tick().await;
         let now = Instant::now();
 
-        // Linear ramp-up from 0 to full rate over RAMPUP_SECS seconds.
-        // Cumulative = rate * T^2 / (2 * RAMPUP_SECS) where T = (counter+1)/PRECISION.
-        // After ramp: ramp contributed rate * RAMPUP_SECS / 2 total txs.
         let next_total = if counter < RAMPUP_TICKS {
             rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * RAMPUP_SECS)
         } else {
@@ -403,17 +466,39 @@ async fn send_shard(
         let burst = next_total - total_sent;
 
         for x in 0..burst {
-            let account_id = account_start + rng.gen_range(0, num_accounts);
+            let src_account_id = account_start + rng.gen_range(0, num_accounts);
+
+            // Determine SmallBank tx type (cycle through types)
+            let sb_tx_type = (burst_count % num_tx_types as u64) as u8;
+            let amount = match sb_tx_type {
+                0 => 0.0f64,                    // Balance
+                1 => DEPOSIT_CHECKING_AMOUNT,   // DepositChecking
+                2 => TRANSACT_SAVINGS_AMOUNT,   // TransactSavings
+                3 => WRITE_CHECK_AMOUNT,        // WriteCheck
+                4 => SEND_PAYMENT_AMOUNT,       // SendPayment
+                _ => unreachable!(),
+            };
+
+            // dest = src for single-account txs; random different account for SendPayment
+            let dest_account_id = if sb_tx_type == 4 {
+                loop {
+                    let d = account_start + rng.gen_range(0, num_accounts);
+                    if d != src_account_id {
+                        break d;
+                    }
+                }
+            } else {
+                src_account_id
+            };
 
             let senders = if round_robin {
-                let v_idx = validator_rr.entry(account_id)
-                    .or_insert((account_id as usize) % num_validators);
+                let v_idx = validator_rr.entry(src_account_id)
+                    .or_insert((src_account_id as usize) % num_validators);
                 let target_pk = sorted_validators[*v_idx];
                 *v_idx = (*v_idx + 1) % num_validators;
                 &validator_senders[&target_pk]
             } else {
-                // Check routing table for this account
-                let target_pk = routing_table.read().unwrap().get(&account_id).copied();
+                let target_pk = routing_table.read().unwrap().get(&src_account_id).copied();
                 match target_pk {
                     Some(pk) if pk != own_validator => {
                         validator_senders.get(&pk).unwrap_or(own_senders)
@@ -423,24 +508,29 @@ async fn send_shard(
             };
 
             let w_idx = {
-                let entry = worker_rr.entry(account_id).or_insert((account_id as usize) % num_workers);
+                let entry = worker_rr.entry(src_account_id).or_insert((src_account_id as usize) % num_workers);
                 let w = *entry;
                 *entry = (w + 1) % num_workers;
                 w
             };
 
-            tx.put_u64(account_id); // bytes 0-7: account_id prefix
-            if burst > 0 && x == counter % burst {
-                // NOTE: This log entry is used to compute performance.
-                info!("Sending sample transaction {} account {}", counter, account_id);
+            // SmallBank format: [tx_type:1][client_id:1][tx_counter:8][src:8][dest:8][sb_type:1][amount:8] = 35 bytes
+            let is_sample = burst > 0 && x == counter % burst;
+            let tx_type = if is_sample { SAMPLE_TX_TYPE } else { REGULAR_TX_TYPE };
+            let tx_counter = if is_sample { counter } else { r += 1; r };
 
-                tx.put_u8(0u8); // Sample txs start with 0.
-                tx.put_u64(counter); // This counter identifies the tx.
-            } else {
-                r += 1;
-                tx.put_u8(1u8); // Standard txs start with 1.
-                tx.put_u64(r); // Ensures all clients send different txs.
-            };
+            tx.put_u8(tx_type);           // offset 0
+            tx.put_u8(client_id);         // offset 1
+            tx.put_u64(tx_counter);       // offset 2-9
+            tx.put_u64(src_account_id);   // offset 10-17
+            tx.put_u64(dest_account_id);  // offset 18-25
+            tx.put_u8(sb_tx_type);        // offset 26
+            tx.put_f64(amount);           // offset 27-34
+
+            if is_sample {
+                // NOTE: This log entry is used to compute performance.
+                info!("Sending sample transaction {} account {}", counter, src_account_id);
+            }
 
             tx.resize(size, 0u8);
             let bytes = tx.split().freeze();
@@ -448,6 +538,7 @@ async fn send_shard(
                 warn!("Failed to queue transaction: {}", e);
                 break 'main;
             }
+            burst_count += 1;
         }
         total_sent = next_total;
         if now.elapsed().as_millis() > BURST_DURATION as u128 {
@@ -524,6 +615,70 @@ async fn migration_listener(
                     }
                     Err(e) => {
                         warn!("Migration listener read error from {}: {}", peer, e);
+                        break;
+                    }
+                }
+            }
+        });
+    }
+}
+
+/// Listen for execution replies from executors, track f+1 matching, log e2e completion.
+async fn execution_reply_listener(
+    addr: SocketAddr,
+    f_plus_one: usize,
+    client_id: u8,
+) -> Result<()> {
+    let listener = TcpListener::bind(addr).await
+        .context(format!("Failed to bind execution reply listener on {}", addr))?;
+    info!("Execution reply listener started on {}", addr);
+
+    // Track replies per tx_counter: set of responding validator public keys
+    let reply_counts: Arc<Mutex<HashMap<u64, HashSet<PublicKey>>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+
+    loop {
+        let (stream, peer) = listener.accept().await
+            .context("Failed to accept execution reply connection")?;
+        let reply_counts = reply_counts.clone();
+
+        tokio::spawn(async move {
+            let mut framed = Framed::new(stream, LengthDelimitedCodec::new());
+            while let Some(result) = framed.next().await {
+                match result {
+                    Ok(data) => {
+                        match bincode::deserialize::<ClientReply>(&data) {
+                            Ok(reply) => {
+                                // Only process sample txs for our client_id
+                                if reply.tx_type != SAMPLE_TX_TYPE || reply.client_id != client_id {
+                                    continue;
+                                }
+
+                                let mut counts = reply_counts.lock().unwrap();
+                                let entry = counts
+                                    .entry(reply.tx_counter)
+                                    .or_default();
+                                entry.insert(reply.primary_name);
+                                let count = entry.len();
+
+                                if count == f_plus_one {
+                                    // NOTE: This log entry is used to compute performance.
+                                    info!(
+                                        "Sample transaction {} completed with {} confirmations",
+                                        reply.tx_counter, count
+                                    );
+                                }
+                            }
+                            Err(e) => {
+                                warn!(
+                                    "Failed to deserialize execution reply from {}: {}",
+                                    peer, e
+                                );
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        warn!("Execution reply listener read error from {}: {}", peer, e);
                         break;
                     }
                 }

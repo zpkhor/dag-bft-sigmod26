@@ -103,13 +103,14 @@ impl BatchMaker {
         let txs: Vec<Transaction> = self.current_batch.drain(..).collect();
 
         #[cfg(feature = "benchmark")]
-        // Look for sample txs (type byte 0) and gather their counter and account_id.
+        // Look for sample txs (tx_type=0 at byte 0) and gather their counter and account_id.
+        // SmallBank format: [tx_type:1][client_id:1][tx_counter:8][src_account:8]...
         let sample_ids: Vec<_> = txs
             .iter()
-            .filter(|tx| tx.len() > 17 && tx[8] == 0u8)
+            .filter(|tx| tx.len() >= 18 && tx[0] == 0u8)
             .filter_map(|tx| {
-                let counter: [u8; 8] = tx[9..17].try_into().ok()?;
-                let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+                let counter: [u8; 8] = tx[2..10].try_into().ok()?;
+                let account_id = u64::from_be_bytes(tx[10..18].try_into().ok()?);
                 Some((counter, account_id))
             })
             .collect();
