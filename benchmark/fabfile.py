@@ -248,6 +248,10 @@ def cloudlab(ctx, debug=False,
         'warmup': warmup,
         'num_accounts': num_accounts,
     }
+    num_executors = int(os.environ.get('NUM_EXECUTORS', 0))
+    no_send_payment = os.environ.get('NO_SEND_PAYMENT', '0') == '1'
+    zipf_exponent = float(os.environ.get('ZIPF_EXPONENT', 0.0))
+    new_scheduler = os.environ.get('NEW_SCHEDULER', '0') == '1'
     worker_bws_kbps = [int(v) * 1000 for v in worker_bws_raw.split(',')] if worker_bws_raw else [int(worker_bw[:-4]) * 1000] * bench_params['nodes']
     node_params = {
         'header_size': 1_000,
@@ -269,6 +273,10 @@ def cloudlab(ctx, debug=False,
             primary_bw_kbps=primary_bw_kbps,
             worker_bws_kbps=worker_bws_kbps,
             in_memory_store=in_memory_store,
+            num_executors=num_executors,
+            no_send_payment=no_send_payment,
+            zipf_exponent=zipf_exponent,
+            new_scheduler=new_scheduler,
         ).run(debug)
         print(ret.result())
     except BenchError as e:

@@ -36,10 +36,18 @@ class CloudLabBench:
         primary_bw_kbps=25000,
         worker_bws_kbps=None,
         in_memory_store=False,
+        num_executors=0,
+        no_send_payment=False,
+        zipf_exponent=0.0,
+        new_scheduler=False,
     ):
         self.username = username
         self.latency_ms = latency_ms
         self.in_memory_store = in_memory_store
+        self.num_executors = num_executors
+        self.no_send_payment = no_send_payment
+        self.zipf_exponent = zipf_exponent
+        self.new_scheduler = new_scheduler
 
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -49,8 +57,12 @@ class CloudLabBench:
 
         self.manager = CloudLabInstanceManager.make(manifest_file, username)
         nodes = self.bench_parameters.nodes[0]
-        assert nodes <= self.manager.num_validators(), (
-            f'Requested {nodes} nodes but manifest has {self.manager.num_validators()} validators'
+        # Validators use node-0..nodes-1, executors use node-nodes..2*nodes-1
+        required_machines = nodes + (nodes if num_executors > 0 else 0)
+        assert required_machines <= self.manager.num_validators(), (
+            f'Need {required_machines} node-X machines '
+            f'({nodes} validators + {nodes if num_executors > 0 else 0} executor hosts) '
+            f'but manifest has {self.manager.num_validators()}'
         )
 
         self.baseline = baseline
@@ -122,8 +134,8 @@ class CloudLabBench:
             'done'
         )
 
-    def _apply_tc_shaping(self, v_ssh, c_ssh_host, nodes, committee):
-        """Egress-only HTB + netem on validators, SO_MARK-based client shaping."""
+    def _apply_tc_shaping(self, v_ssh, e_ssh, c_ssh_host, nodes, committee):
+        """Egress-only HTB + netem on validators/executors, SO_MARK-based client shaping."""
         Print.info('Applying TC QoS shaping...')
 
         primary_bw = self.primary_bw_kbps
@@ -135,30 +147,59 @@ class CloudLabBench:
             for auth in committee.json['authorities'].values()
         ]
 
+        # Executor IPs for traffic exemption on validator machines
+        e_ip_set = set(self.manager.validator_ips()[nodes:2 * nodes]) if e_ssh else set()
+
         def _shape_validator(i):
             worker_bw = self.worker_bws_kbps[i]
-            total_bw = primary_bw + worker_bw
+            executor_bw = 5_000_000  # 5 Gbit — co-located, no real limit
+            total_bw = primary_bw + worker_bw + (executor_bw if e_ssh else 0)
             # Port filters: classify primary traffic into class 1:10
             port_filters = []
             for p in primary_ports:
                 port_filters.append(f'tc filter add dev $IFACE parent 1:0 protocol ip prio 2 u32 match ip sport {p} 0xffff flowid 1:10')
                 port_filters.append(f'tc filter add dev $IFACE parent 1:0 protocol ip prio 2 u32 match ip dport {p} 0xffff flowid 1:10')
+
+            # IP filters: classify executor traffic into class 1:30 (no delay)
+            executor_filters = []
+            for e_ip in e_ip_set:
+                executor_filters.append(f'tc filter add dev $IFACE parent 1:0 protocol ip prio 1 u32 match ip dst {e_ip}/32 flowid 1:30')
+
+            executor_class_lines = []
+            if e_ssh:
+                executor_class_lines = [
+                    # Executor class: high bandwidth, NO netem delay (simulates co-located)
+                    f'tc class add dev $IFACE parent 1:1 classid 1:30 htb rate {executor_bw}kbit ceil {executor_bw}kbit prio 0',
+                ]
+
             script = '\n'.join([
                 'set -e',
                 self._detect_iface(),
                 self._strip_all_tc(),
-                # HTB: primary (1:10) + worker (1:20, default)
+                # HTB: primary (1:10) + worker (1:20, default) + executor (1:30, no delay)
                 # No client exemption — client replies go through worker class (50ms netem)
                 # so client-to-own-validator RTT = 50ms, client-to-remote = 100ms
                 f'tc qdisc add dev $IFACE root handle 1: htb default 20',
                 f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {total_bw}kbit',
                 f'tc class add dev $IFACE parent 1:1 classid 1:10 htb rate {primary_bw}kbit ceil {primary_bw}kbit prio 0',
                 f'tc class add dev $IFACE parent 1:1 classid 1:20 htb rate {worker_bw}kbit ceil {worker_bw}kbit prio 1',
+                *executor_class_lines,
                 f'tc qdisc add dev $IFACE parent 1:10 handle 10: netem delay {half_lat}ms limit 10000',
                 f'tc qdisc add dev $IFACE parent 1:20 handle 20: netem delay {half_lat}ms limit 10000',
+                *executor_filters,
                 *port_filters,
             ])
             self._ssh(v_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
+
+        def _shape_executor(i):
+            # Executor machines: strip all TC, no shaping needed.
+            # Executors are logically co-located with their validator;
+            # only placed on separate machines for CPU.
+            script = '\n'.join([
+                'set -e',
+                self._strip_all_tc(),
+            ])
+            self._ssh(e_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
 
         def _shape_client():
             # SO_MARK-based per-flow shaping: remote flows get extra one-way latency
@@ -188,8 +229,10 @@ class CloudLabBench:
             ])
             self._ssh(c_ssh_host).run(f'sudo bash -c \'{script}\'', hide=True)
 
-        with ThreadPoolExecutor(max_workers=nodes + 1) as pool:
+        with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
             futures = [pool.submit(_shape_validator, i) for i in range(nodes)]
+            for i in range(len(e_ssh)):
+                futures.append(pool.submit(_shape_executor, i))
             futures.append(pool.submit(_shape_client))
             failed = []
             for future in as_completed(futures):
@@ -203,6 +246,7 @@ class CloudLabBench:
             f'TC QoS applied: primary={primary_bw}kbps, '
             f'worker_bws={[self.worker_bws_kbps[i] for i in range(nodes)]}kbps, '
             f'client={max(self.worker_bws_kbps)}kbps'
+            f'{", executors=" + str(len(e_ssh)) + " machines (bypassed, co-located)" if e_ssh else ""}'
         )
 
     def _kill(self, ssh_hosts, delete_logs=False):
@@ -229,7 +273,20 @@ class CloudLabBench:
         c_ssh_host = c_ssh[0]
         v_ips = self.manager.validator_ips()[:nodes]
         c_ip = self.manager.client_ips()[0]
-        all_ssh = v_ssh + [c_ssh_host]
+
+        # Executor machines: next `nodes` machines after validators
+        if self.num_executors > 0:
+            e_ssh = self.manager.validator_ssh_hosts()[nodes:2 * nodes]
+            e_ips = self.manager.validator_ips()[nodes:2 * nodes]
+            assert len(e_ssh) == nodes, (
+                f'Need {nodes} executor machines but only {len(e_ssh)} available'
+            )
+        else:
+            e_ssh = []
+            e_ips = []
+
+        all_ssh = v_ssh + e_ssh + [c_ssh_host]
+        Print.info(f"All SSH hosts: {all_ssh}")
 
         try:
             # Kill any previous run
@@ -300,6 +357,8 @@ class CloudLabBench:
             # Build committee (single client IP)
             committee = CloudLabCommittee(
                 names, self.BASE_PORT, self.workers, v_ips, c_ip,
+                num_executors=self.num_executors,
+                executor_ips=e_ips,
             )
 
             latency_matrix = {
@@ -318,6 +377,19 @@ class CloudLabBench:
 
             if self.baseline:
                 self.node_parameters.json['baseline_mode'] = True
+
+            # Set executor parameters in node params
+            if self.num_executors > 0:
+                self.node_parameters.set_executor_params(
+                    num_executors=self.num_executors,
+                    num_accounts=self.bench_parameters.num_accounts,
+                    min_balance=10_000,
+                    max_balance=100_000,
+                    sharding_strategy='range',
+                    no_send_payment_tx=self.no_send_payment,
+                    use_new_scheduler=self.new_scheduler,
+                )
+
             self.node_parameters.print(PathMaker.parameters_file())
 
             # Account distribution
@@ -339,6 +411,12 @@ class CloudLabBench:
                 for i, name in enumerate(names)
             }
             committee.set_account_ranges(account_ranges)
+
+            # Set client_reply_addresses for executor -> client replies (e2e latency)
+            if self.num_executors > 0:
+                exec_reply_port = self.BASE_PORT + 9000
+                committee.set_client_reply_addresses({0: f'{c_ip}:{exec_reply_port}'})
+
             committee.print(PathMaker.committee_file())
 
             # Upload config files to all machines (parallel)
@@ -354,6 +432,19 @@ class CloudLabBench:
                 conn.put(PathMaker.parameters_file(), '.')
                 conn.put(PathMaker.key_file(i), '.')
 
+            def _upload_executor(i):
+                conn = self._ssh(e_ssh[i])
+                exec_db_dirs = ' '.join(
+                    f'.db-exec-{i}-{e}' for e in range(self.num_executors)
+                )
+                conn.run(
+                    f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs && mkdir -p {exec_db_dirs}',
+                    hide=True,
+                )
+                conn.put(PathMaker.committee_file(), '.')
+                conn.put(PathMaker.parameters_file(), '.')
+                conn.put(PathMaker.key_file(i), '.')
+
             def _upload_client():
                 conn = self._ssh(c_ssh_host)
                 conn.run(
@@ -363,8 +454,10 @@ class CloudLabBench:
                 conn.put(PathMaker.committee_file(), '.')
                 conn.put(PathMaker.parameters_file(), '.')
 
-            with ThreadPoolExecutor(max_workers=nodes + 1) as pool:
+            with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
                 futures = [pool.submit(_upload_validator, i) for i in range(nodes)]
+                for i in range(len(e_ssh)):
+                    futures.append(pool.submit(_upload_executor, i))
                 futures.append(pool.submit(_upload_client))
                 for f in as_completed(futures):
                     f.result()
@@ -404,17 +497,25 @@ class CloudLabBench:
             reply_addr = list(committee.json['authorities'].values())[0]['client_reply']
 
             rr_flag = ' --round-robin' if self.round_robin else ''
+            no_send_flag = ' --no-send-payment' if self.no_send_payment else ''
+            zipf_flag = f' --zipf-exponent {self.zipf_exponent}' if self.zipf_exponent > 0 else ''
+
+            exec_reply_flag = ''
+            if self.num_executors > 0:
+                exec_reply_addr = f'{c_ip}:{self.BASE_PORT + 9000}'
+                exec_reply_flag = f' --execution-reply-addr {exec_reply_addr}'
+
             client_command = (
                 f'./benchmark_client --size {self.tx_size} '
                 f'--rate {rate} --nodes {all_nodes_arg} '
                 f'{ar_args} --rate-weights {rate_weights_str} '
                 f'--reply-addr {reply_addr} --own-validator {names[0]} '
-                f'{vw_args}{rr_flag}'
+                f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}'
             )
 
             # Apply QoS TC shaping BEFORE starting processes so TCP connections
             # are established with the correct RTT from the start
-            self._apply_tc_shaping(v_ssh, c_ssh_host, nodes, committee)
+            self._apply_tc_shaping(v_ssh, e_ssh, c_ssh_host, nodes, committee)
 
             # Start primaries
             Print.info('Starting primaries...')
@@ -447,6 +548,23 @@ class CloudLabBench:
                     self._background_run(
                         v_ssh[i], worker_cmd, PathMaker.worker_log_file(i, wid),
                     )
+
+            # Start executors (on dedicated machines)
+            if self.num_executors > 0:
+                Print.info('Starting executors...')
+                for i in range(nodes):
+                    for e in range(self.num_executors):
+                        executor_cmd = CommandMaker.run_executor(
+                            PathMaker.key_file(i),
+                            PathMaker.committee_file(),
+                            f'.db-exec-{i}-{e}',
+                            PathMaker.parameters_file(),
+                            e,
+                            debug=debug,
+                        )
+                        self._background_run(
+                            e_ssh[i], executor_cmd, PathMaker.executor_log_file(i, e),
+                        )
 
             # Wait for worker ports to be ready
             Print.info('Waiting for workers to be ready...')
@@ -482,14 +600,6 @@ class CloudLabBench:
                 c_ssh_host, client_command, PathMaker.client_log_file(0, 0),
             )
 
-            # Save bench params for log parsing
-            with open(PathMaker.bench_params_file(), 'w') as f:
-                json.dump({
-                    'duration': self.duration,
-                    'warmup': self.warmup,
-                    'faults': self.faults,
-                }, f)
-
             # Run benchmark
             Print.info(f'Running benchmark ({self.duration} sec)...')
             sleep(self.duration)
@@ -514,6 +624,14 @@ class CloudLabBench:
                         local=PathMaker.worker_log_file(i, w),
                     )
 
+            def _download_executor(i):
+                conn = self._ssh(e_ssh[i])
+                for e in range(self.num_executors):
+                    conn.get(
+                        PathMaker.executor_log_file(i, e),
+                        local=PathMaker.executor_log_file(i, e),
+                    )
+
             def _download_client():
                 conn = self._ssh(c_ssh_host)
                 conn.get(
@@ -521,11 +639,21 @@ class CloudLabBench:
                     local=PathMaker.client_log_file(0, 0),
                 )
 
-            with ThreadPoolExecutor(max_workers=nodes + 1) as pool:
+            with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
                 futures = [pool.submit(_download_validator, i) for i in range(nodes)]
+                for i in range(len(e_ssh)):
+                    futures.append(pool.submit(_download_executor, i))
                 futures.append(pool.submit(_download_client))
                 for f in as_completed(futures):
                     f.result()
+
+            # Save bench params for log parsing (after download, since clean_logs wipes the dir)
+            with open(PathMaker.bench_params_file(), 'w') as f:
+                json.dump({
+                    'duration': self.duration,
+                    'warmup': self.warmup,
+                    'faults': self.faults,
+                }, f)
 
             # Parse logs
             Print.info('Parsing logs...')

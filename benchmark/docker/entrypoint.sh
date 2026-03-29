@@ -28,6 +28,14 @@ if [ -n "$TC_BANDWIDTH" ] && [ "$TC_BANDWIDTH" != "0" ]; then
             tc filter add dev eth0 parent 1:0 protocol ip prio 1 u32 match ip dst ${OWN_CLIENT_IP}/32 flowid 1:30
         fi
 
+        # Executor class: no latency, high bandwidth (co-located simulation)
+        if [ -n "$EXECUTOR_IPS" ]; then
+            tc class add dev eth0 parent 1:1 classid 1:40 htb rate 5gbit ceil 5gbit prio 0
+            for eip in $EXECUTOR_IPS; do
+                tc filter add dev eth0 parent 1:0 protocol ip prio 1 u32 match ip dst ${eip}/32 flowid 1:40
+            done
+        fi
+
         # Port-based filters: classify primary_to_primary traffic into class 1:10
         for port in $PRIMARY_PORTS; do
             tc filter add dev eth0 parent 1:0 protocol ip prio 2 u32 match ip sport $port 0xffff flowid 1:10

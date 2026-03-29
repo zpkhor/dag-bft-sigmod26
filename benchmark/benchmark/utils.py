@@ -65,6 +65,12 @@ class PathMaker:
         return join(PathMaker.logs_path(), f'client-{i}-{j}.log')
 
     @staticmethod
+    def executor_log_file(i, e):
+        assert isinstance(i, int) and i >= 0
+        assert isinstance(e, int) and e >= 0
+        return join(PathMaker.logs_path(), f'executor-{i}-{e}.log')
+
+    @staticmethod
     def results_path():
         return 'results'
 

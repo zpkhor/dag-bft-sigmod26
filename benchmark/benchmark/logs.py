@@ -109,10 +109,12 @@ class LogParser:
         self.quorum_times = {k: v for d in quorum_times_list for k, v in d.items()}
         self.processed_times = {k: v for d in processed_times_list for k, v in d.items()}
 
+        # Each worker contributes one timestamp per batch (the earliest it logged).
+        # Result: per batch, a list of timestamps — one per validator/worker.
         self.committed_times_by_batch = defaultdict(list)
         for d in committed_times_list:
-            for batch_id, times in d.items():
-                self.committed_times_by_batch[batch_id].extend(times)
+            for batch_id, earliest_time in d.items():
+                self.committed_times_by_batch[batch_id].append(earliest_time)
 
         # Determine whether the primary and the workers are collocated.
         self.collocate = set(primary_ips) == set(workers_ips)
@@ -284,11 +286,13 @@ class LogParser:
         tmp = findall(r'\[(.*Z) .* Processed batch (\S+)', log)
         processed_times = {d: self._to_posix(t) for t, d in tmp}
 
-        # Stage 5: Committed timestamps for sample txs (keyed by full batch digest)
+        # Stage 5: Earliest committed timestamp per batch (one entry per worker/validator)
         tmp = findall(r'\[(.*Z) .* Committed sample tx \d+ from batch (\S+)', log)
-        committed_times_by_batch = defaultdict(list)
+        committed_times_by_batch = {}
         for t, full_digest in tmp:
-            committed_times_by_batch[full_digest].append(self._to_posix(t))
+            ts = self._to_posix(t)
+            if full_digest not in committed_times_by_batch or ts < committed_times_by_batch[full_digest]:
+                committed_times_by_batch[full_digest] = ts
 
         return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times, committed_times_by_batch, queue_delay_by_batch, quorum_latency_by_batch
 
@@ -336,16 +340,21 @@ class LogParser:
         if not self.e2e_completed:
             return None
 
-        # Build sent map: counter -> sent_time (across all clients)
+        # Build sent map: counter -> earliest sent_time (client sends same counter
+        # to multiple validators with different accounts; use earliest send)
         global_sent = {}
         for sent in self.sent_samples:
             for (counter, _acct), t in sent.items():
-                global_sent[counter] = t
+                if counter not in global_sent or t < global_sent[counter]:
+                    global_sent[counter] = t
 
         latency = []
         for counter, completed_time in self.e2e_completed.items():
             if counter in global_sent:
-                lat = (completed_time - global_sent[counter]) * 1000  # ms
+                send_time = global_sent[counter]
+                if send_time < self.effective_start:
+                    continue
+                lat = (completed_time - send_time) * 1000  # ms
                 if lat > 0:
                     latency.append(lat)
 
@@ -354,21 +363,38 @@ class LogParser:
         return self._calculate_latency_metrics(latency)
 
     def _end_to_end_throughput(self):
-        """Compute e2e throughput: from first commit to last executor-reply completion.
+        """Compute e2e throughput: from effective_start to last executor-reply completion.
 
         Each completed sample represents (rate / PRECISION) actual transactions,
         since 1 sample is sent per burst and there are PRECISION bursts/sec.
+        Only samples sent after warmup are counted.
         """
         if not self.e2e_completed or not self.commits:
             return 0, 0, 0
         PRECISION = 20  # bursts/sec, matches benchmark_client PRECISION constant
-        start = min(self.commits.values())
-        end = max(self.e2e_completed.values())
+
+        # Build sent map for warmup filtering (earliest send per counter)
+        global_sent = {}
+        for sent in self.sent_samples:
+            for (counter, _acct), t in sent.items():
+                if counter not in global_sent or t < global_sent[counter]:
+                    global_sent[counter] = t
+
+        # Only count completions whose send time is after warmup
+        valid_completed = {
+            c: t for c, t in self.e2e_completed.items()
+            if c in global_sent and global_sent[c] >= self.effective_start
+        }
+        if not valid_completed:
+            return 0, 0, 0
+
+        start = self.effective_start
+        end = max(valid_completed.values())
         duration = end - start
         if duration <= 0:
             return 0, 0, 0
 
-        num_completed = len(self.e2e_completed)
+        num_completed = len(valid_completed)
         sample_multiplier = self.rate[0] / PRECISION
         bytes_represented = num_completed * sample_multiplier * self.size[0]
         bps = bytes_represented / duration
@@ -417,7 +443,8 @@ class LogParser:
     def _worker_committed_latency(self):
         if not isinstance(self.faults, int):
             return {'mean': 0, 'p95': 0, 'p50': 0, 'p99': 0}
-        threshold = self.faults + 1
+        # BFT f+1 threshold: n = 3f+1 → f = (n-1)/3 → f+1 = (n-1)//3 + 1
+        threshold = (self.committee_size - 1) // 3 + 1
 
         global_sent = {}
         for sent in self.sent_samples:

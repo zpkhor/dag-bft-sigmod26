@@ -111,7 +111,8 @@ class DockerBench:
                 f"worker_bw for validator {i} ({wbw}={worker_mbit}mbit) must be > 0"
             )
             self.worker_bws.append(self._format_bw(worker_mbit))
-            self.total_bws.append(self._format_bw(primary_mbit + worker_mbit))
+            executor_mbit = 5000 if num_executors > 0 else 0  # 5Gbit for co-located executor traffic
+            self.total_bws.append(self._format_bw(primary_mbit + worker_mbit + executor_mbit))
 
     @staticmethod
     def _parse_bw_mbit(bw_str):
@@ -236,6 +237,11 @@ class DockerBench:
 
             tokio_env = f"\n      - TOKIO_WORKER_THREADS={tokio_threads}" if tokio_threads > 0 else ""
             netem_limit_env = f"\n      - TC_NETEM_LIMIT={self.tc_netem_limit}" if self.tc_netem_limit > 0 else ""
+            # Executor IPs for this validator (for TC bypass)
+            executor_ips_env = ""
+            if executor_ips and self.num_executors > 0:
+                v_exec_ips = executor_ips[i * self.num_executors:(i + 1) * self.num_executors]
+                executor_ips_env = f"\n      - EXECUTOR_IPS={' '.join(v_exec_ips)}"
             service += f"""
     environment:
       - VALIDATOR_ID={i}
@@ -246,7 +252,7 @@ class DockerBench:
       - TC_JITTER={self.jitter}
       - TC_LAN_BANDWIDTH={self.lan_bandwidth}
       - OWN_CLIENT_IP={client_ip}
-      - PRIMARY_PORTS={primary_ports_str}{tokio_env}{netem_limit_env}
+      - PRIMARY_PORTS={primary_ports_str}{tokio_env}{netem_limit_env}{executor_ips_env}
       - PRIMARY_CMD={cmds['primary']}"""
 
             # Join worker commands with semicolons
@@ -275,7 +281,7 @@ class DockerBench:
                         # client: [nodes*slot, nodes*slot + 2*nodes)
                         # executors: after client
                         client_cpus = 2 * nodes
-                        exec_cpus_per = 7  # TODO: make configurable
+                        exec_cpus_per = 8  # TODO: make configurable
                         e_start = nodes * slot + client_cpus + exec_idx * exec_cpus_per
                         e_end = e_start + exec_cpus_per - 1
                         e_cpuset = f'\n    cpuset: "{e_start}-{e_end}"'

@@ -24,6 +24,7 @@ pub use crate::executor::{Executor, WorkerToExecutorMessage};
 pub use crate::state_helper::{
     ExecutorToExecutorMessage, StateHelper, StateTransfer, StateTransferRequest,
 };
+pub use crate::workload::AccountStore;
 pub use crate::worker::{CommitNotification, Worker};
 pub use crate::workload::{
     AccountState, SmallBankTransaction, SmallBankTxType,

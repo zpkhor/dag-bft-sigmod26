@@ -1,9 +1,11 @@
 use crate::transaction::TxID;
 use crate::workload::AccountState;
+use bytes::Bytes;
 use config::{Committee, ExecutorId};
 use crypto::PublicKey;
-use log::{info, warn};
+use log::{debug, info, warn};
 use network::SimpleSender;
+use primary::ExecutorPrimaryMessage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -17,35 +19,58 @@ pub struct StateTransfer {
     pub src_account_state: AccountState,
 }
 
-/// Request from BatchExecutor to send state to another executor.
+/// Request from BatchExecutor to send StateTransfer to remote executor.
+#[derive(Debug, Clone)]
 pub struct StateTransferRequest {
     pub state_transfer: StateTransfer,
     pub dest_executor_id: ExecutorId,
 }
 
-/// Messages exchanged between executors for state migration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+/// Messages sent between executors for distributed transaction coordination.
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ExecutorToExecutorMessage {
+    /// State transfer: account migrates from source executor to destination executor.
     StateTransfer {
         tx_id: TxID,
         src_account_id: u64,
         src_account_state: AccountState,
     },
+    /// State writeback: destination executor returns updated source account state after execution.
+    /// Only used by the writeback executor path.
+    StateWriteback {
+        tx_id: TxID,
+        src_account_id: u64,
+        updated_state: AccountState,
+        success: bool,
+        dest_account_id: u64,
+    },
 }
 
-/// Primary feedback message from executor.
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum ExecutorPrimaryMessage {
-    ExecutionFeedback(ExecutorId, u64),
-}
+/// StateHelper manages one-way executor-to-executor state migrations.
+///
+/// Responsibilities:
+/// - Send StateTransfer messages to destination executors (migration out)
+/// - Receive StateTransfer messages from network into shared buffer (migration in)
+/// - Forward execution feedback from BatchExecutor to Primary for flow control
+pub struct StateHelper {
+    executor_id: ExecutorId,
+    name: PublicKey,
+    committee: Committee,
+    network: SimpleSender,
 
-pub struct StateHelper;
+    rx_send_state: Receiver<StateTransferRequest>,
+    rx_feedback: Receiver<(ExecutorId, u64)>,
+    rx_executor_message: Receiver<ExecutorToExecutorMessage>,
+
+    /// Shared buffer: incoming StateTransfers (migration arrivals, multiple per tx)
+    incoming_transfers: Arc<Mutex<HashMap<TxID, Vec<StateTransfer>>>>,
+
+    accounts_sent_out: u64,
+    accounts_received: u64,
+}
 
 impl StateHelper {
-    /// Spawn the state helper that handles outgoing state transfers, incoming state transfers,
-    /// and feedback to primary.
-    ///
-    /// Returns the shared incoming_transfers buffer that BatchExecutor polls.
+    /// Spawns StateHelper thread and returns the shared incoming transfers buffer.
     pub fn spawn(
         executor_id: ExecutorId,
         name: PublicKey,
@@ -54,100 +79,128 @@ impl StateHelper {
         rx_executor_message: Receiver<ExecutorToExecutorMessage>,
         rx_feedback: Receiver<(ExecutorId, u64)>,
     ) -> Arc<Mutex<HashMap<TxID, Vec<StateTransfer>>>> {
-        let incoming_transfers: Arc<Mutex<HashMap<TxID, Vec<StateTransfer>>>> =
-            Arc::new(Mutex::new(HashMap::new()));
-        let incoming_clone = incoming_transfers.clone();
+        let incoming_transfers = Arc::new(Mutex::new(HashMap::new()));
+        let transfers_clone = incoming_transfers.clone();
 
-        // Spawn outgoing state transfer handler
-        let name_clone = name;
-        let committee_clone = committee.clone();
         tokio::spawn(async move {
-            Self::handle_outgoing(executor_id, name_clone, committee_clone, rx_send_state).await;
-        });
-
-        // Spawn incoming state transfer handler
-        tokio::spawn(async move {
-            Self::handle_incoming(rx_executor_message, incoming_clone).await;
-        });
-
-        // Spawn feedback forwarder
-        let committee_clone = committee;
-        tokio::spawn(async move {
-            Self::handle_feedback(name, committee_clone, rx_feedback).await;
+            Self {
+                executor_id,
+                name,
+                committee,
+                network: SimpleSender::new(),
+                rx_send_state,
+                rx_executor_message,
+                rx_feedback,
+                incoming_transfers: transfers_clone,
+                accounts_sent_out: 0,
+                accounts_received: 0,
+            }
+            .run()
+            .await;
         });
 
         incoming_transfers
     }
 
-    async fn handle_outgoing(
-        _executor_id: ExecutorId,
-        name: PublicKey,
-        committee: Committee,
-        mut rx_send_state: Receiver<StateTransferRequest>,
-    ) {
-        let mut network = SimpleSender::new();
-        while let Some(request) = rx_send_state.recv().await {
-            let dest_addr = match committee.executor(&name, &request.dest_executor_id) {
-                Ok(addrs) => addrs.executor_to_executor,
-                Err(e) => {
-                    warn!("Failed to find executor {}: {}", request.dest_executor_id, e);
-                    continue;
-                }
-            };
-            let msg = ExecutorToExecutorMessage::StateTransfer {
-                tx_id: request.state_transfer.tx_id,
-                src_account_id: request.state_transfer.src_account_id,
-                src_account_state: request.state_transfer.src_account_state,
-            };
-            let serialized = bincode::serialize(&msg).expect("Failed to serialize state transfer");
-            network.send(dest_addr, bytes::Bytes::from(serialized)).await;
-        }
-    }
+    /// Main event loop handling StateTransfer requests and network messages.
+    async fn run(&mut self) {
+        info!("StateHelper {} started", self.executor_id);
 
-    async fn handle_incoming(
-        mut rx_executor_message: Receiver<ExecutorToExecutorMessage>,
-        incoming_transfers: Arc<Mutex<HashMap<TxID, Vec<StateTransfer>>>>,
-    ) {
-        while let Some(msg) = rx_executor_message.recv().await {
-            match msg {
-                ExecutorToExecutorMessage::StateTransfer {
-                    tx_id,
-                    src_account_id,
-                    src_account_state,
-                } => {
-                    let transfer = StateTransfer {
-                        tx_id,
-                        src_account_id,
-                        src_account_state,
-                    };
-                    let mut map = incoming_transfers.lock().unwrap();
-                    map.entry(tx_id).or_default().push(transfer);
+        loop {
+            tokio::select! {
+                Some(request) = self.rx_send_state.recv() => {
+                    self.handle_send_state_request(request).await;
+                }
+                Some(message) = self.rx_executor_message.recv() => {
+                    self.handle_executor_message(message).await;
+                }
+                Some((executor_id, last_executed)) = self.rx_feedback.recv() => {
+                    self.forward_feedback_to_primary(executor_id, last_executed).await;
                 }
             }
         }
     }
 
-    async fn handle_feedback(
-        name: PublicKey,
-        committee: Committee,
-        mut rx_feedback: Receiver<(ExecutorId, u64)>,
-    ) {
-        let mut network = SimpleSender::new();
-        let primary_addr = committee
-            .primary(&name)
-            .expect("Own key not in committee")
+    async fn forward_feedback_to_primary(&mut self, executor_id: ExecutorId, last_executed: u64) {
+        let primary_addr = self
+            .committee
+            .primary(&self.name)
+            .expect("Primary address not found")
             .executor_to_primary;
 
-        while let Some((executor_id, last_executed)) = rx_feedback.recv().await {
-            let msg = ExecutorPrimaryMessage::ExecutionFeedback(executor_id, last_executed);
-            let serialized = bincode::serialize(&msg).expect("Failed to serialize feedback");
-            network
-                .send(primary_addr, bytes::Bytes::from(serialized))
-                .await;
+        let msg = ExecutorPrimaryMessage::ExecutionFeedback(executor_id, last_executed);
+
+        let serialized =
+            bincode::serialize(&msg).expect("Failed to serialize ExecutorPrimaryMessage");
+
+        self.network
+            .send(primary_addr, Bytes::from(serialized))
+            .await;
+
+        debug!(
+            "StateHelper {}: Forwarded feedback to Primary (executor={}, last_executed={})",
+            self.executor_id, executor_id, last_executed
+        );
+    }
+
+    async fn handle_send_state_request(&mut self, request: StateTransferRequest) {
+        let dest_addr = self
+            .committee
+            .executor(&self.name, &request.dest_executor_id)
+            .expect("Dest executor address not found")
+            .executor_to_executor;
+
+        let msg = ExecutorToExecutorMessage::StateTransfer {
+            tx_id: request.state_transfer.tx_id,
+            src_account_id: request.state_transfer.src_account_id,
+            src_account_state: request.state_transfer.src_account_state.clone(),
+        };
+
+        let serialized =
+            bincode::serialize(&msg).expect("Failed to serialize StateTransfer");
+
+        self.network.send(dest_addr, Bytes::from(serialized)).await;
+
+        self.accounts_sent_out += 1;
+        if self.accounts_sent_out % 1000 == 0 {
             info!(
-                "Sent execution feedback: executor={}, last_executed={}",
-                executor_id, last_executed
+                "E{} MigrationStats: accounts_out={}, accounts_in={}",
+                self.executor_id, self.accounts_sent_out, self.accounts_received,
             );
+        }
+    }
+
+    async fn handle_executor_message(&mut self, message: ExecutorToExecutorMessage) {
+        match message {
+            ExecutorToExecutorMessage::StateTransfer {
+                tx_id,
+                src_account_id,
+                src_account_state,
+            } => {
+                let state_transfer = StateTransfer {
+                    tx_id,
+                    src_account_id,
+                    src_account_state,
+                };
+
+                self.incoming_transfers
+                    .lock()
+                    .unwrap()
+                    .entry(tx_id)
+                    .or_insert_with(Vec::new)
+                    .push(state_transfer);
+
+                self.accounts_received += 1;
+                if self.accounts_received % 1000 == 0 {
+                    info!(
+                        "E{} MigrationStats: accounts_out={}, accounts_in={}",
+                        self.executor_id, self.accounts_sent_out, self.accounts_received,
+                    );
+                }
+            }
+            ExecutorToExecutorMessage::StateWriteback { .. } => {
+                panic!("StateHelper (data-fusion mode) received unexpected StateWriteback");
+            }
         }
     }
 }

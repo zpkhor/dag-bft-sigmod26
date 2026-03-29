@@ -63,6 +63,16 @@ class CommandMaker:
         return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {client_id_arg}'
 
     @staticmethod
+    def run_executor(keys, committee, store, parameters, executor_id, debug=False):
+        assert isinstance(keys, str)
+        assert isinstance(committee, str)
+        assert isinstance(parameters, str)
+        assert isinstance(debug, bool)
+        v = '-vvv' if debug else '-vv'
+        return (f'./node {v} run --keys {keys} --committee {committee} '
+                f'--store {store} --parameters {parameters} executor --id {executor_id}')
+
+    @staticmethod
     def remote_cleanup():
         """Cleanup for remote machines (home dir). Only removes narwhal-specific
         files, not all .*.json (which would nuke ~/.claude.json etc.)."""
