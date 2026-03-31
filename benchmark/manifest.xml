@@ -1,295 +1,636 @@
 <rspec xmlns="http://www.geni.net/resources/rspec/3" xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" xmlns:tour="http://www.protogeni.net/resources/rspec/ext/apt-tour/1" xmlns:jacks="http://www.protogeni.net/resources/rspec/ext/jacks/1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.geni.net/resources/rspec/3    http://www.geni.net/resources/rspec/3/request.xsd" type="request">
-  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-0" exclusive="true" component_manager_id="urn:publicid:IDN+emulab.net+authority+cm" component_id="urn:publicid:IDN+emulab.net+node+pc828" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780197">
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-0" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp158" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342226">
     <sliver_type name="raw-pc">
       <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
     </sliver_type>
-    <interface client_id="node-0:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc828:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780200" mac_address="a0369f6bfd64">
+    <hardware_type name="xl170"/>
+    <interface client_id="node-0:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp158:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342234" mac_address="9cdc715e0fe1">
       <ip address="10.10.1.1" type="ipv4" netmask="255.255.255.0"/>
     </interface>
     <services>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="vinlnx"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="qizhen"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="linhphan"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="ckazer"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="Simran"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="kelvinng"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="jsedoc"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="amarder"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="yifancai"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="cxinyic"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="Haoran"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="sankhe"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="leoyu"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="jsonch"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="acardoza"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="zhileiz"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="jagasiaa"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="rmada"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="tbade"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="kallas"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="yindaz"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="taoluo"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="yipingma"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="pavlatos"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="akis"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="zpkhor"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="hzm628"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="kevdong"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="jiaheng"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="shrishti"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="areb91"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="colinz"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="ishabh"/>
-      <login authentication="ssh-keys" hostname="pc828.emulab.net" port="22" username="Steven_W"/>
-      <emulab:console server="boss.emulab.net"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp158.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
       <emulab:recovery available="true"/>
       <emulab:powercycle available="true"/>
       <emulab:imageable available="true"/>
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
-    <emulab:vnode name="pc828" hardware_type="d430"/>
-    <host name="node-0.zpkhor-296219.PennNetworks.emulab.net" ipv4="155.98.36.128"/>
+    <emulab:vnode name="hp158" hardware_type="xl170"/>
+    <host name="node-0.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.197"/>
   </node>
-  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-1" exclusive="true" component_manager_id="urn:publicid:IDN+emulab.net+authority+cm" component_id="urn:publicid:IDN+emulab.net+node+pc834" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780193">
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-1" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp037" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342229">
     <sliver_type name="raw-pc">
       <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
     </sliver_type>
-    <interface client_id="node-1:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc834:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780201" mac_address="a0369f615362">
+    <hardware_type name="xl170"/>
+    <interface client_id="node-1:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp037:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342235" mac_address="9cdc7156afb5">
       <ip address="10.10.1.2" type="ipv4" netmask="255.255.255.0"/>
     </interface>
     <services>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="vinlnx"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="qizhen"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="linhphan"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="ckazer"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="Simran"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="kelvinng"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="jsedoc"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="amarder"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="yifancai"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="cxinyic"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="Haoran"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="sankhe"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="leoyu"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="jsonch"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="acardoza"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="zhileiz"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="jagasiaa"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="rmada"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="tbade"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="kallas"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="yindaz"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="taoluo"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="yipingma"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="pavlatos"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="akis"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="zpkhor"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="hzm628"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="kevdong"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="jiaheng"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="shrishti"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="areb91"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="colinz"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="ishabh"/>
-      <login authentication="ssh-keys" hostname="pc834.emulab.net" port="22" username="Steven_W"/>
-      <emulab:console server="boss.emulab.net"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
       <emulab:recovery available="true"/>
       <emulab:powercycle available="true"/>
       <emulab:imageable available="true"/>
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
-    <emulab:vnode name="pc834" hardware_type="d430"/>
-    <host name="node-1.zpkhor-296219.PennNetworks.emulab.net" ipv4="155.98.36.134"/>
+    <emulab:vnode name="hp037" hardware_type="xl170"/>
+    <host name="node-1.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.76"/>
   </node>
-  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-2" exclusive="true" component_manager_id="urn:publicid:IDN+emulab.net+authority+cm" component_id="urn:publicid:IDN+emulab.net+node+pc840" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780196">
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-2" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp016" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342223">
     <sliver_type name="raw-pc">
       <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
     </sliver_type>
-    <interface client_id="node-2:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc840:eth2" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780202" mac_address="a0369f857fb4">
+    <hardware_type name="xl170"/>
+    <interface client_id="node-2:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp016:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342236" mac_address="9cdc715e2f71">
       <ip address="10.10.1.3" type="ipv4" netmask="255.255.255.0"/>
     </interface>
     <services>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="vinlnx"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="qizhen"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="linhphan"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="ckazer"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="Simran"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="kelvinng"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="jsedoc"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="amarder"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="yifancai"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="cxinyic"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="Haoran"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="sankhe"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="leoyu"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="jsonch"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="acardoza"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="zhileiz"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="jagasiaa"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="rmada"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="tbade"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="kallas"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="yindaz"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="taoluo"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="yipingma"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="pavlatos"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="akis"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="zpkhor"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="hzm628"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="kevdong"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="jiaheng"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="shrishti"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="areb91"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="colinz"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="ishabh"/>
-      <login authentication="ssh-keys" hostname="pc840.emulab.net" port="22" username="Steven_W"/>
-      <emulab:console server="boss.emulab.net"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp016.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
       <emulab:recovery available="true"/>
       <emulab:powercycle available="true"/>
       <emulab:imageable available="true"/>
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
-    <emulab:vnode name="pc840" hardware_type="d430"/>
-    <host name="node-2.zpkhor-296219.PennNetworks.emulab.net" ipv4="155.98.36.140"/>
+    <emulab:vnode name="hp016" hardware_type="xl170"/>
+    <host name="node-2.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.55"/>
   </node>
-  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-3" exclusive="true" component_manager_id="urn:publicid:IDN+emulab.net+authority+cm" component_id="urn:publicid:IDN+emulab.net+node+pc837" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780194">
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-3" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp020" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342228">
     <sliver_type name="raw-pc">
       <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
     </sliver_type>
-    <interface client_id="node-3:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc837:eth2" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780203" mac_address="a0369f857f80">
+    <hardware_type name="xl170"/>
+    <interface client_id="node-3:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp020:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342237" mac_address="9cdc715e2fa1">
       <ip address="10.10.1.4" type="ipv4" netmask="255.255.255.0"/>
     </interface>
     <services>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="vinlnx"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="qizhen"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="linhphan"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="ckazer"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="Simran"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="kelvinng"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="jsedoc"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="amarder"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="yifancai"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="cxinyic"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="Haoran"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="sankhe"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="leoyu"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="jsonch"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="acardoza"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="zhileiz"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="jagasiaa"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="rmada"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="tbade"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="kallas"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="yindaz"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="taoluo"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="yipingma"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="pavlatos"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="akis"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="zpkhor"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="hzm628"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="kevdong"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="jiaheng"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="shrishti"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="areb91"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="colinz"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="ishabh"/>
-      <login authentication="ssh-keys" hostname="pc837.emulab.net" port="22" username="Steven_W"/>
-      <emulab:console server="boss.emulab.net"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp020.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
       <emulab:recovery available="true"/>
       <emulab:powercycle available="true"/>
       <emulab:imageable available="true"/>
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
-    <emulab:vnode name="pc837" hardware_type="d430"/>
-    <host name="node-3.zpkhor-296219.PennNetworks.emulab.net" ipv4="155.98.36.137"/>
+    <emulab:vnode name="hp020" hardware_type="xl170"/>
+    <host name="node-3.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.59"/>
   </node>
-  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="client-0" exclusive="true" component_manager_id="urn:publicid:IDN+emulab.net+authority+cm" component_id="urn:publicid:IDN+emulab.net+node+pc836" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780195">
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-4" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp138" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342224">
     <sliver_type name="raw-pc">
       <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
     </sliver_type>
-    <interface client_id="client-0:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc836:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780204" mac_address="a0369f6bfd8a">
+    <hardware_type name="xl170"/>
+    <interface client_id="node-4:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp138:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342238" mac_address="9cdc715d47c1">
       <ip address="10.10.1.5" type="ipv4" netmask="255.255.255.0"/>
     </interface>
     <services>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="vinlnx"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="qizhen"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="linhphan"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="ckazer"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="Simran"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="kelvinng"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="jsedoc"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="amarder"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="yifancai"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="cxinyic"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="Haoran"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="sankhe"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="leoyu"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="jsonch"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="acardoza"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="zhileiz"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="jagasiaa"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="rmada"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="tbade"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="kallas"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="yindaz"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="taoluo"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="yipingma"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="pavlatos"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="akis"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="zpkhor"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="hzm628"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="kevdong"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="jiaheng"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="shrishti"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="areb91"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="colinz"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="ishabh"/>
-      <login authentication="ssh-keys" hostname="pc836.emulab.net" port="22" username="Steven_W"/>
-      <emulab:console server="boss.emulab.net"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp138.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
       <emulab:recovery available="true"/>
       <emulab:powercycle available="true"/>
       <emulab:imageable available="true"/>
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
-      <execute shell="sh" command="cat &gt; /tmp/tc-setup.sh &lt;&lt; 'TCEOF'&#10;set -e&#10;for i in $(seq 1 30); do&#10;  IFACE=$(ip -o addr show | grep '10\.' | awk '{print $2}' | head -1)&#10;  [ -n &quot;$IFACE&quot; ] &amp;&amp; break&#10;  sleep 2&#10;done&#10;[ -z &quot;$IFACE&quot; ] &amp;&amp; echo 'FATAL: no 10.x interface found' &amp;&amp; exit 1&#10;tc qdisc replace dev $IFACE root handle 1: prio bands 3 priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 2 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 3 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 4 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 5 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 7 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 8 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 9 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 10 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 12 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 13 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 14 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 15 fw flowid 1:3&#10;tc qdisc add dev $IFACE parent 1:3 handle 30: netem delay 50ms&#10;TCEOF&#10;bash /tmp/tc-setup.sh"/>
     </services>
-    <emulab:vnode name="pc836" hardware_type="d430"/>
-    <host name="client-0.zpkhor-296219.PennNetworks.emulab.net" ipv4="155.98.36.136"/>
+    <emulab:vnode name="hp138" hardware_type="xl170"/>
+    <host name="node-4.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.177"/>
   </node>
-  <link client_id="wan-lan" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780199" vlantag="169">
-    <interface_ref client_id="node-0:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc828:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780200"/>
-    <interface_ref client_id="node-1:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc834:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780201"/>
-    <interface_ref client_id="node-2:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc840:eth2" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780202"/>
-    <interface_ref client_id="node-3:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc837:eth2" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780203"/>
-    <interface_ref client_id="client-0:if-lan" component_id="urn:publicid:IDN+emulab.net+interface+pc836:eth0" sliver_id="urn:publicid:IDN+emulab.net+sliver+1780204"/>
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-5" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp018" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342231">
+    <sliver_type name="raw-pc">
+      <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
+    </sliver_type>
+    <hardware_type name="xl170"/>
+    <interface client_id="node-5:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp018:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342239" mac_address="9cdc715e0f91">
+      <ip address="10.10.1.6" type="ipv4" netmask="255.255.255.0"/>
+    </interface>
+    <services>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp018.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
+      <emulab:recovery available="true"/>
+      <emulab:powercycle available="true"/>
+      <emulab:imageable available="true"/>
+      <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
+    </services>
+    <emulab:vnode name="hp018" hardware_type="xl170"/>
+    <host name="node-5.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.57"/>
+  </node>
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-6" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp024" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342225">
+    <sliver_type name="raw-pc">
+      <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
+    </sliver_type>
+    <hardware_type name="xl170"/>
+    <interface client_id="node-6:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp024:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342240" mac_address="9cdc7156fda5">
+      <ip address="10.10.1.7" type="ipv4" netmask="255.255.255.0"/>
+    </interface>
+    <services>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp024.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
+      <emulab:recovery available="true"/>
+      <emulab:powercycle available="true"/>
+      <emulab:imageable available="true"/>
+      <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
+    </services>
+    <emulab:vnode name="hp024" hardware_type="xl170"/>
+    <host name="node-6.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.63"/>
+  </node>
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-7" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp146" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342230">
+    <sliver_type name="raw-pc">
+      <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
+    </sliver_type>
+    <hardware_type name="xl170"/>
+    <interface client_id="node-7:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp146:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342241" mac_address="9cdc714b33d1">
+      <ip address="10.10.1.8" type="ipv4" netmask="255.255.255.0"/>
+    </interface>
+    <services>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp146.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
+      <emulab:recovery available="true"/>
+      <emulab:powercycle available="true"/>
+      <emulab:imageable available="true"/>
+      <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
+    </services>
+    <emulab:vnode name="hp146" hardware_type="xl170"/>
+    <host name="node-7.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.185"/>
+  </node>
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-8" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp004" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342227">
+    <sliver_type name="raw-pc">
+      <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
+    </sliver_type>
+    <hardware_type name="xl170"/>
+    <interface client_id="node-8:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp004:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342242" mac_address="9cdc7156df65">
+      <ip address="10.10.1.9" type="ipv4" netmask="255.255.255.0"/>
+    </interface>
+    <services>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp004.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
+      <emulab:recovery available="true"/>
+      <emulab:powercycle available="true"/>
+      <emulab:imageable available="true"/>
+      <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
+    </services>
+    <emulab:vnode name="hp004" hardware_type="xl170"/>
+    <host name="node-8.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.43"/>
+  </node>
+  <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="client-0" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp009" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342222">
+    <sliver_type name="raw-pc">
+      <disk_image name="urn:publicid:IDN+emulab.net+image+emulab-ops:UBUNTU22-64-STD"/>
+    </sliver_type>
+    <hardware_type name="xl170"/>
+    <interface client_id="client-0:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp009:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342243" mac_address="9cdc715e2fb1">
+      <ip address="10.10.1.10" type="ipv4" netmask="255.255.255.0"/>
+    </interface>
+    <services>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="vinlnx"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="qizhen"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="linhphan"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="ckazer"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="Simran"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="kelvinng"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="jsedoc"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="amarder"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="yifancai"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="cxinyic"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="Haoran"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="sankhe"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="leoyu"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="jsonch"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="acardoza"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="zhileiz"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="jagasiaa"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="rmada"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="tbade"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="kallas"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="yindaz"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="taoluo"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="yipingma"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="pavlatos"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="xutingl"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="akis"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="hzm628"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="kevdong"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="jiaheng"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="shrishti"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="areb91"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="colinz"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="ishabh"/>
+      <login authentication="ssh-keys" hostname="hp009.utah.cloudlab.us" port="22" username="Steven_W"/>
+      <emulab:console server="boss.utah.cloudlab.us"/>
+      <emulab:recovery available="true"/>
+      <emulab:powercycle available="true"/>
+      <emulab:imageable available="true"/>
+      <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
+      <execute shell="sh" command="cat &gt; /tmp/tc-setup.sh &lt;&lt; 'TCEOF'&#10;set -e&#10;for i in $(seq 1 30); do&#10;  IFACE=$(ip -o addr show | grep '10\.' | awk '{print $2}' | head -1)&#10;  [ -n &quot;$IFACE&quot; ] &amp;&amp; break&#10;  sleep 2&#10;done&#10;[ -z &quot;$IFACE&quot; ] &amp;&amp; echo 'FATAL: no 10.x interface found' &amp;&amp; exit 1&#10;tc qdisc replace dev $IFACE root handle 1: prio bands 3 priomap 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1 1&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 2 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 3 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 4 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 5 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 6 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 7 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 8 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 9 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 10 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 12 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 13 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 14 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 15 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 16 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 17 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 18 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 19 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 20 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 22 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 23 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 24 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 25 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 26 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 27 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 28 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 29 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 30 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 32 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 33 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 34 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 35 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 36 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 37 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 38 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 39 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 40 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 42 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 43 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 44 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 45 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 46 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 47 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 48 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 49 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 50 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 52 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 53 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 54 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 55 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 56 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 57 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 58 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 59 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 60 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 62 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 63 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 64 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 65 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 66 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 67 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 68 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 69 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 70 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 72 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 73 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 74 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 75 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 76 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 77 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 78 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 79 fw flowid 1:3&#10;tc filter add dev $IFACE parent 1: protocol ip prio 1 handle 80 fw flowid 1:3&#10;tc qdisc add dev $IFACE parent 1:3 handle 30: netem delay 50ms&#10;TCEOF&#10;bash /tmp/tc-setup.sh"/>
+    </services>
+    <emulab:vnode name="hp009" hardware_type="xl170"/>
+    <host name="client-0.zpkhor-297139.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.48"/>
+  </node>
+  <link client_id="wan-lan" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342233" vlantag="302">
+    <interface_ref client_id="node-0:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp158:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342234"/>
+    <interface_ref client_id="node-1:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp037:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342235"/>
+    <interface_ref client_id="node-2:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp016:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342236"/>
+    <interface_ref client_id="node-3:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp020:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342237"/>
+    <interface_ref client_id="node-4:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp138:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342238"/>
+    <interface_ref client_id="node-5:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp018:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342239"/>
+    <interface_ref client_id="node-6:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp024:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342240"/>
+    <interface_ref client_id="node-7:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp146:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342241"/>
+    <interface_ref client_id="node-8:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp004:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342242"/>
+    <interface_ref client_id="client-0:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp009:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2342243"/>
     <link_type name="lan"/>
-    <component_manager name="urn:publicid:IDN+emulab.net+authority+cm"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-1:if-lan" capacity="25000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-2:if-lan" capacity="25000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-3:if-lan" capacity="25000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="client-0:if-lan" capacity="25000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-0:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-2:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-3:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="client-0:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-0:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-1:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-3:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="client-0:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-0:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-1:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-2:if-lan" capacity="75000"/>
-    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="client-0:if-lan" capacity="75000"/>
+    <component_manager name="urn:publicid:IDN+utah.cloudlab.us+authority+cm"/>
+    <emulab:switchpath>ms-mellanox0:ms-mellanox4 ms-mellanox0:ms-mellanox1</emulab:switchpath>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-0:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-1:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-2:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-3:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-4:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-5:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-6:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="node-8:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-7:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-0:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-1:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-2:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-3:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-4:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-5:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-6:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="node-7:if-lan" capacity="100000"/>
+    <property xmlns="http://www.geni.net/resources/rspec/3" source_id="node-8:if-lan" dest_id="client-0:if-lan" capacity="100000"/>
   </link>
   <rspec_tour xmlns="http://www.protogeni.net/resources/rspec/ext/apt-tour/1">
-    <description type="markdown">Narwhal WAN topology: single shared LAN, single consolidated client.
+    <description type="markdown">xl170 Narwhal WAN topology: single shared LAN, single consolidated client.
 
 N validators and 1 client on one broadcast domain. Validator interfaces are
-shaped (50Mbps, 25ms per interface -&gt; 100ms RTT between validators). The single
+shaped (25ms per interface -&gt; 100ms RTT between validators). The single
 client interface is unshaped on the LAN (baseline 50ms RTT to any validator).
 SO_MARK-based tc rules on the client add extra one-way delay for remote flows
 so that region i -&gt; validator j (i!=j) gets 100ms RTT.
@@ -309,28 +650,28 @@ MIID+QYJKoZIhvcNAQcDoIID6jCCA+YCAQAxggHNMIIByQIBADCBsDCBqDELMAkG
 A1UEBhMCVVMxDTALBgNVBAgTBFV0YWgxFzAVBgNVBAcTDlNhbHQgTGFrZSBDaXR5
 MR0wGwYDVQQKExRVdGFoIE5ldHdvcmsgVGVzdGJlZDEPMA0GA1UECxMGQVBUTEFC
 MRcwFQYDVQQDEw53d3cuYXB0bGFiLm5ldDEoMCYGCSqGSIb3DQEJARYZdGVzdGJl
-ZC1vcHNAZmx1eC51dGFoLmVkdQIDJHjMMA0GCSqGSIb3DQEBAQUABIIBAFSs3cW7
-jiH0xnEpxQ9soEcpbU07EvfNwKh87STunRdc1YZEo7RFa88R7irngkWPG+7s8i3c
-438q9DG7kQ3m5thYudbyP6ZxSO/4aM+fsLEDdrAkCmHkcQV/GQIlOfo/Oy16IMgV
-Nlab1B+lpZWCpbteDdVnvCKm5IyZPq+MGYPNA3vduOSeB+kOK4TG2zdxTtqfTTiT
-vokWhNEaw1xhHhdbBXw0s8gW/vUKZaX2bRQe5kivKSZNV0PEOADUmQgSYmJp2aF/
-9iD6xnDkCsu17YcgdhEpGYgcStcEtzvnqAS399boDvfKZbPuqs/5V45pE5dZ7di8
-WZpnIlEuqoAGR4swggIOBgkqhkiG9w0BBwEwHQYJYIZIAWUDBAEqBBAU7C0zlBZZ
-NeGs+xDf501ngIIB4Or1LcUjTQqbO9mbAItLHwCoty4p6Yt9h8yFftVMq9sjI31z
-8EK+fpBmi69Pnfj5+NKQqmczcBlN7W1DRfAnG0BQIuGVnq14+oenWOevUzRmn8on
-FG4sbRe21u1eDKsdrv5I3yBLqVlOkQuWItfBoWbHpaauMo8SdX0jkx+0kM/GVuDr
-4wfb8YtF0qho7R+rel3AvwdG9TlUMcblYyWYLZFGIqcOOq3Y6RT1oor/kEBLBw10
-4ZsQml9UJR0cl5fOq14tkH/XkMsROWU8FFeLQh6uiZVOnNlW0pc8wNmXmD4wB957
-4GLaSrKy7oxKjeMG9PLAacpHs+HD/jCxqu9EjeTJFfSGSpuCeW0XCJs5n2gGKAwu
-zE4oTT9j+i9ZYomUw6WjKKAPJEgfdbU7PtTbvU3pdg7hRccFeoC4MQCB4Cc4QosJ
-7lsQayOttfDphD4jBdJGYC3L8TvU/J1lfICWEbHQyC/2bsEu1KqTxVuZow7o6nRF
-dz76+ifDQfD4Dl2WtEVB6+702dQExcDRyknFwiz3221kHcwdKapMrxkGnMY3K+NJ
-XxBdIDf6DjQLi0zHhSVodMkGpSG0HGcc8nIAhjD+f63Wc9dsXal3dh2RnAFgLOwn
-12F6YScXkHfqITKeCw==
+ZC1vcHNAZmx1eC51dGFoLmVkdQIDJI+jMA0GCSqGSIb3DQEBAQUABIIBAJvHXi0G
+T3rN7mG7HoLJmU6K5B2a6mt582PKujeoNZM1rKINVxSmTiJ645bB6i3ovUlFMTkq
+MTqWLGjm+rRMO9Zkj5s8JJJrLFt8WK85P3mZpF6wt1xUU3gSgPgB43aM9MOGrP7S
+acKwAZNIXdwkmCzd9zhLpr3fthJ4j8p347PiXTfAAy5SwKcJ944cSeKVFP4xkTkI
+ntvMIiAUAtAj3hGQhCYuS9o1jjFwrDhQ8riGy8+gaqjdvbw80RSCJCIEHLUCAFtq
+sD9eK+fMpW/qxBP30mz7DBg/OiNVLxHJeS8+m9k5EUxOD0OSsGPlq4Y5CoIx3Qh1
+Zla9AxBewpNrDb4wggIOBgkqhkiG9w0BBwEwHQYJYIZIAWUDBAEqBBAH60XaTA6t
+ABdmwUcM5J7BgIIB4Dt03p5OINypmhHEnUq+ytkHer1/MrR8FE65tsPz2d0meb2j
+MUELU5eqswMKl0TiT+RMOE2yk3yOa29OMZkZ03eB5Rki1P1N/DYGZQ0EUHVr7T3r
+98ciu2wklJPYFt5mLVlxCAMFg/RtA226R5dzDPY7vB4nDOkUWES5tJy0j1cEXBDS
+oLfGmgqnpVgfOq+vadOjl+DyJV5Tf+wsnwg+xNUGh3KaNVOeabOom/iwJyMMauC5
+3WvzmqcmeKxzHvyi3zn1VISbt5haPWxMEC9bOmX3mP6hbYtGDDiXLvWDZK96xtDp
+Z3Sv41ZFtPi0XQ5RNrZkAMtLgWCbAqrkAs8wCy3I7eSTcGxGYSd++uCareQedTx3
+P4NRp/3KMraeqnKHAXCA7tpoREDYBFQISBtSofH1RoQA1SlcLWSWaKleAdXdUYSJ
+07+J+dzKxyir+5ebdHZpS6MDHszVINYlC83fagQ/lp/5xfulrBkXhKdJPFfg3EPN
+unp5F5AqL6fQR4FbKywi0l35RvcWslig8P8xo+k++sgeyX5duN1DYgRmGX2tmmmZ
+NF0me3YPVss/fp+02pkn1wG3QmUw06RgRxXTSUVl5sFCPQrfrqAiVQU3mMkzj83o
+H4djMjw22pXlO5Easg==
 -----END PKCS7-----
 </emulab:password>
-  <emulab:portal name="cloudlab" url="https://www.cloudlab.us/status.php?uuid=ae81e786-505e-42e9-b22c-45680339b6a1" project="PennNetworks" experiment="zpkhor-296219" sequence="1774206731"/>
+  <emulab:portal name="cloudlab" url="https://www.cloudlab.us/status.php?uuid=5ed1cffe-80ef-4e66-b5cb-ef7bab276551" project="PennNetworks" experiment="zpkhor-297139" sequence="1774658251"/>
   <rs:site_info xmlns:rs="http://www.protogeni.net/resources/rspec/ext/site-info/1">
-    <rs:location country="US" latitude="40.768652" longitude="-111.84581"/>
+    <rs:location country="US" latitude="40.750714" longitude="-111.893288"/>
   </rs:site_info>
 </rspec>
