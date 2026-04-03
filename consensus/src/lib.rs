@@ -167,7 +167,7 @@ fn compute_rerouting(
     per_validator_account_counts: &HashMap<PublicKey, HashMap<u64, u64>>,
     sorted_keys: &[PublicKey],
     current_assignments: &mut Vec<HashSet<u64>>,
-    f: usize,
+    _f: usize,
     last_migrated: &HashMap<u64, Round>,
     current_round: Round,
     prev_avg_qd: &HashMap<PublicKey, f64>,
@@ -203,18 +203,11 @@ fn compute_rerouting(
     //     qm
     // };
 
-    // Step 1: Compute avg_queue_delay and avg_quorum_latency from raw metrics
+    // Step 1: Compute avg_queue_delay from raw metrics
     let avg_queue_delay: HashMap<PublicKey, f64> = quorum_metrics.iter()
         .filter(|(_, ms)| !ms.is_empty())
         .map(|(pk, ms)| {
             let sum: u64 = ms.iter().map(|m| m.queue_delay_ms).sum();
-            (*pk, sum as f64 / ms.len() as f64)
-        })
-        .collect();
-    let avg_quorum_latency: HashMap<PublicKey, f64> = quorum_metrics.iter()
-        .filter(|(_, ms)| !ms.is_empty())
-        .map(|(pk, ms)| {
-            let sum: u64 = ms.iter().map(|m| m.quorum_latency_ms).sum();
             (*pk, sum as f64 / ms.len() as f64)
         })
         .collect();
@@ -226,10 +219,9 @@ fn compute_rerouting(
 
     for pk in sorted_keys {
         info!(
-            "reroute_detail: validator {} avg_qd={:.1}ms avg_ql={:.1}ms qm_samples={}",
+            "reroute_detail: validator {} avg_qd={:.1}ms qm_samples={}",
             pk,
             avg_queue_delay.get(pk).copied().unwrap_or(0.0),
-            avg_quorum_latency.get(pk).copied().unwrap_or(0.0),
             quorum_metrics.get(pk).map(|v| v.len()).unwrap_or(0),
         );
     }
@@ -240,31 +232,7 @@ fn compute_rerouting(
         delays.sort_by(|a, b| a.partial_cmp(b).unwrap());
         delays[delays.len() / 2]
     };
-    let median_latency = {
-        let mut latencies: Vec<f64> = avg_quorum_latency.values().copied().collect();
-        if latencies.is_empty() {
-            0.0
-        } else {
-            latencies.sort_by(|a, b| a.partial_cmp(b).unwrap());
-            latencies[latencies.len() / 2]
-        }
-    };
-
-
-    // Step 3: Quorum-limited check — if >f validators have high quorum_latency,
-    // the system is network-bottlenecked and rerouting cannot help.
-    let high_latency_count = avg_quorum_latency.values()
-        .filter(|&&lat| lat > 2.0 * median_latency)
-        .count();
-    if high_latency_count > f {
-        info!(
-            "reroute: {} validators with high quorum_latency > f={}, quorum-limited — skipping",
-            high_latency_count, f
-        );
-        return vec![];
-    }
-
-    // Step 4: Identify donors — validators with queue_delay significantly above median
+    // Step 2: Identify donors — validators with queue_delay significantly above median
     let donor_set: HashSet<PublicKey> = sorted_keys.iter()
         .filter(|pk| {
             avg_queue_delay.get(pk).copied().unwrap_or(0.0) > 2.0 * median_delay
@@ -276,7 +244,7 @@ fn compute_rerouting(
         avg_queue_delay[b].partial_cmp(&avg_queue_delay[a]).unwrap().then_with(|| a.cmp(b))
     });
 
-    // Step 5: Spare capacity and receivers
+    // Step 3: Spare capacity and receivers
     let mut spare_capacity: HashMap<PublicKey, f64> = sorted_keys.iter().map(|&pk| {
         let t = tps.get(&pk).copied().unwrap_or(0.0);
         let cap = capacities.get(&pk).copied().unwrap_or(0) as f64;
@@ -298,7 +266,7 @@ fn compute_rerouting(
         return vec![];
     }
 
-    // Step 6: Per-account migration
+    // Step 4: Per-account migration
     let pk_to_idx: HashMap<PublicKey, usize> = sorted_keys.iter()
         .enumerate()
         .map(|(i, pk)| (*pk, i))
@@ -455,8 +423,8 @@ fn compute_rerouting(
             donor_pk, migrated_count, skip_count, cooldown_count, sorted_accounts.len(), shed_so_far, shed_target
         );
     }
-
-    migrations
+    return vec![];
+    // migrations
 }
 
 struct AccountDistributionTracker {
@@ -677,13 +645,11 @@ impl Consensus {
                 let qm_list: Vec<&QuorumMetrics> = certificate.header.quorum_metrics.values().collect();
                 let n = qm_list.len() as u64;
                 let qd_sum: u64 = qm_list.iter().map(|m| m.queue_delay_ms).sum();
-                let ql_sum: u64 = qm_list.iter().map(|m| m.quorum_latency_ms).sum();
                 let qd_avg = if n > 0 { qd_sum as f64 / n as f64 } else { 0.0 };
-                let ql_avg = if n > 0 { ql_sum as f64 / n as f64 } else { 0.0 };
                 info!(
-                    "cert_qm (round={}) validator {}: created_at={} n={} qd_sum={} qd_avg={:.3} ql_sum={} ql_avg={:.3}",
+                    "cert_qm (round={}) validator {}: created_at={} n={} qd_sum={} qd_avg={:.3}",
                     certificate.round(), certificate.origin(), certificate.header.created_at,
-                    n, qd_sum, qd_avg, ql_sum, ql_avg
+                    n, qd_sum, qd_avg
                 );
             }
             if !self.baseline_mode && certificate.origin() == self.name && round % REROUTE_INTERVAL == 0 {

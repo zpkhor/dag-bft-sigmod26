@@ -50,7 +50,7 @@ async fn wait_for_quorum() {
     // Wait for the `QuorumWaiter` to gather enough acknowledgements and output the batch.
     let (output_batch, output_metrics) = rx_batch.recv().await.unwrap();
     assert_eq!(output_batch, serialized);
-    assert!(output_metrics.quorum_latency_ms <= 10_000);
+    assert!(output_metrics.queue_delay_ms <= 10_000);
 
     // Ensure the other listeners correctly received the batch.
     assert!(try_join_all(listener_handles).await.is_ok());
