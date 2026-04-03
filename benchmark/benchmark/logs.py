@@ -66,15 +66,33 @@ class LogParser:
                 key_to_id[m.group(1)] = i
 
         raw_timeline = self._parse_primaries_dags(primaries[0])
+        raw_certified = self._parse_certified_tps(primaries[0])
+        raw_migration = self._parse_migration_tallies(primaries[0])
+
+        # Assign IDs to faulty validators referenced in logs but not booted
+        all_keys = set()
+        for row in raw_timeline.values():
+            all_keys.update(row.keys())
+        for row in raw_certified.values():
+            all_keys.update(row.keys())
+        all_keys.update(raw_migration.keys())
+        next_id = len(primaries)
+        for k in sorted(all_keys - set(key_to_id)):
+            key_to_id[k] = next_id
+            next_id += 1
+
         self.dag_timeline = {
-            sr: {key_to_id.get(k, k): v for k, v in row.items()}
+            sr: {key_to_id[k]: v for k, v in row.items()}
             for sr, row in raw_timeline.items()
         }
 
-        raw_certified = self._parse_certified_tps(primaries[0])
         self.certified_tps_timeline = {
-            r: {key_to_id.get(k, k): v for k, v in row.items()}
+            r: {key_to_id[k]: v for k, v in row.items()}
             for r, row in raw_certified.items()
+        }
+
+        self.migration_tallies = {
+            key_to_id[k]: v for k, v in raw_migration.items()
         }
 
         # Warmup trimming: discard commits/proposals in the warmup window.
@@ -738,6 +756,14 @@ class LogParser:
             result.setdefault(int(round_s), {})[key] = (float(tps_s), int(cap_s), float(spare_s))
         return result
 
+    def _parse_migration_tallies(self, log):
+        pattern = r'reroute \(round=\d+\) migration_tally (\S+): donated=(\d+) received=(\d+)'
+        cumulative = {}
+        for key, donated_s, received_s in findall(pattern, log):
+            prev = cumulative.get(key, (0, 0))
+            cumulative[key] = (prev[0] + int(donated_s), prev[1] + int(received_s))
+        return cumulative
+
     def _format_dag_timeline(self):
         if not self.dag_timeline:
             return ''
@@ -768,6 +794,16 @@ class LogParser:
                 row_str += f'{cell:>{col_w}}'
             output += row_str + '\n'
         return output
+
+    def _format_migration_section(self):
+        if not self.migration_tallies:
+            return ''
+        lines = ['\n + ACCOUNT MIGRATIONS (cumulative):\n']
+        lines.append(f' {"Validator":<12} {"Donated":>10} {"Received":>10}\n')
+        for v in sorted(self.migration_tallies.keys()):
+            donated, received = self.migration_tallies[v]
+            lines.append(f' {v:<12} {donated:>10,} {received:>10,}\n')
+        return ''.join(lines)
 
     def _format_certified_tps_timeline(self):
         if not self.certified_tps_timeline:
@@ -1009,6 +1045,7 @@ class LogParser:
                     'PER-VALIDATOR PER-STAGE TAIL LATENCY BREAKDOWN (p99, ms)', 'p99', stage_data
                 ))
         sections.append(self._format_certified_tps_timeline())
+        sections.append(self._format_migration_section())
         sections.append(self._format_warnings_section())
         sections.append('-----------------------------------------\n')
         return ''.join(s for s in sections if s)

@@ -49,8 +49,8 @@ impl Processor {
                         Ok(crate::worker::WorkerMessage::Batch(txs)) => {
                             let mut counts = std::collections::BTreeMap::new();
                             for tx in &txs {
-                                if tx.len() >= 8 {
-                                    let account_id = u64::from_be_bytes(tx[..8].try_into().unwrap());
+                                if tx.len() >= 18 {
+                                    let account_id = u64::from_be_bytes(tx[10..18].try_into().unwrap());
                                     *counts.entry(account_id).or_insert(0) += 1;
                                 }
                             }

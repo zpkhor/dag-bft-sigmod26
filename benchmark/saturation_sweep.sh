@@ -18,7 +18,6 @@ PRIMARY_BW=${PRIMARY_BW:-250mbit}
 
 # CloudLab-specific defaults
 MANIFEST=${MANIFEST:-manifest.xml}
-LATENCY_MS=${LATENCY_MS:-100}
 
 cd "$(dirname "$0")"
 RESULTS_DIR="$(pwd)/results/saturation_${MODE}_$(date +%Y%m%d_%H%M%S)"
@@ -129,7 +128,7 @@ for CONFIG in "${CONFIGS[@]}"; do
             if [[ "$MODE" == "docker" ]]; then
                 FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             elif [[ "$MODE" == "cloudlab" ]]; then
-                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=1 RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             else
                 echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
                 exit 1

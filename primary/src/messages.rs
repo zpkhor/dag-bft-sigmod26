@@ -91,6 +91,10 @@ impl Hash for Header {
             // account_counts of a batch is part of the payload, so the digest contains it implicitly
             hasher.update(x);
             hasher.update(y.to_le_bytes());
+            if let Some(m) = self.quorum_metrics.get(x) {
+                hasher.update(m.queue_delay_ms.to_le_bytes());
+                hasher.update(m.quorum_latency_ms.to_le_bytes());
+            }
         }
         for x in &self.parents {
             hasher.update(x);

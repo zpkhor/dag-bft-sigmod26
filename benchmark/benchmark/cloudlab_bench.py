@@ -1,6 +1,7 @@
 # CloudLab benchmark orchestrator.
 # Deploys Narwhal on CloudLab physical machines using SSH + tmux.
 import json
+import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from os.path import basename, splitext
@@ -77,9 +78,18 @@ class CloudLabBench:
     def __getattr__(self, attr):
         return getattr(self.bench_parameters, attr)
 
-    def _ssh(self, host):
-        """Create a Fabric Connection to a host."""
-        return Connection(host, user=self.username)
+    def _ssh(self, host, retries=3, delay=2):
+        """Create a Fabric Connection to a host with retry on DNS failures."""
+        for attempt in range(retries):
+            try:
+                conn = Connection(host, user=self.username)
+                conn.open()
+                return conn
+            except socket.gaierror as e:
+                if attempt == retries - 1:
+                    raise
+                Print.warn(f'DNS resolution failed for {host}: {e}, retrying in {delay}s...')
+                sleep(delay)
 
     def _background_run(self, ssh_host, command, log_file):
         """Run a command in a tmux session on a remote host."""
@@ -419,6 +429,10 @@ class CloudLabBench:
 
             committee.print(PathMaker.committee_file())
 
+            # Exclude faulty validators from running processes
+            good_nodes = nodes - self.faults
+            names = names[:good_nodes]
+
             # Upload config files to all machines (parallel)
             Print.info('Uploading config files...')
             def _upload_validator(i):
@@ -484,9 +498,9 @@ class CloudLabBench:
             ar_args = ' '.join(ar_args_parts)
 
             # --rate-weights aligned with sorted validator order
-            weights = self.rate_weights or [1] * nodes
-            sorted_names = committee.sorted_authority_names()
+            weights = (self.rate_weights or [1] * nodes)[:good_nodes]
             name_to_idx = {name: i for i, name in enumerate(names)}
+            sorted_names = [n for n in committee.sorted_authority_names() if n in name_to_idx]
             sorted_weights = [weights[name_to_idx[n]] for n in sorted_names]
             rate_weights_str = ','.join(str(w) for w in sorted_weights)
 
@@ -519,7 +533,7 @@ class CloudLabBench:
 
             # Start primaries
             Print.info('Starting primaries...')
-            for i in range(nodes):
+            for i in range(good_nodes):
                 primary_cmd = CommandMaker.run_primary(
                     PathMaker.key_file(i),
                     PathMaker.committee_file(),

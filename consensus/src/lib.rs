@@ -83,6 +83,11 @@ impl ValidatorThroughputTracker {
         result
     }
 
+    /// Get median timestamp (ms) for a given round, or None if the round has no data.
+    fn round_timestamp_ms(&self, round: Round) -> Option<u64> {
+        self.rounds.get(&round).map(|v| Self::median_ts(v))
+    }
+
     fn median_ts(validators: &HashMap<PublicKey, (u64, u64)>) -> u64 {
         let mut timestamps: Vec<u64> = validators.values().map(|(ts, _)| *ts).collect();
         assert!(!timestamps.is_empty(), "median_ts called on empty round");
@@ -152,8 +157,7 @@ impl ValidatorThroughputTracker {
 ///
 /// Donors are identified by: queue_delay >> median (congested).
 /// Quorum-limited safety valve: bail if >f validators have high quorum_latency.
-/// Shed target per donor: max(donor_tps * 10%, donor_tps - capacity * 75%).
-/// Per-account load derived from actual certificate account_counts (heaviest first).
+/// Shed target derived from queue delay growth: λ = C(1 + ΔW/Δt), excess = C·ΔW/Δt.
 /// Receivers selected per-account by lowest client-to-receiver latency.
 fn compute_rerouting(
     tps: &HashMap<PublicKey, f64>,
@@ -164,11 +168,40 @@ fn compute_rerouting(
     sorted_keys: &[PublicKey],
     current_assignments: &mut Vec<HashSet<u64>>,
     f: usize,
+    last_migrated: &HashMap<u64, Round>,
+    current_round: Round,
+    prev_avg_qd: &HashMap<PublicKey, f64>,
+    delta_t_secs: f64,
 ) -> Vec<MigrationNotice> {
     let n = sorted_keys.len();
     if n < 2 {
         return vec![];
     }
+
+    // [STUDY] Simulate Byzantine worst-case: last f validators report quorum_latency
+    // at the proven upper bound (1 worker): sum(L_i) <= delta_t * 1000ms.
+    // let quorum_metrics = {
+    //     let mut qm = quorum_metrics.clone();
+    //     let elapsed_ms = (delta_t_secs * 1000.0) as u64;
+    //     for &pk in sorted_keys.iter().rev().take(f) {
+    //         if let Some(metrics) = qm.get_mut(&pk) {
+    //             let n_batches = metrics.len() as u64;
+    //             if n_batches > 0 {
+    //                 let ub_per_batch = elapsed_ms / n_batches;
+    //                 info!(
+    //                     "reroute_byzantine: validator {} quorum_latency mutated to upper bound {}ms \
+    //                      (n_batches={}, elapsed={}ms)",
+    //                     pk, ub_per_batch, n_batches, elapsed_ms
+    //                 );
+    //                 for m in metrics.iter_mut() {
+    //                     m.quorum_latency_ms = ub_per_batch;
+    //                     m.queue_delay_ms *= 5;
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     qm
+    // };
 
     // Step 1: Compute avg_queue_delay and avg_quorum_latency from raw metrics
     let avg_queue_delay: HashMap<PublicKey, f64> = quorum_metrics.iter()
@@ -309,11 +342,29 @@ fn compute_rerouting(
         }).collect();
 
         let donor_cap = capacities.get(donor_pk).copied().unwrap_or(0) as f64;
-        // shed excess above 75% of capacity; floor at 10% of current tps
-        let shed_target = f64::max(donor_tps * 0.1, donor_tps - donor_cap * 0.75);
+        // Estimate true excess from queue delay growth: λ = C(1 + ΔW/Δt), excess = C·ΔW/Δt
+        let donor_qd = avg_queue_delay.get(donor_pk).copied().unwrap_or(0.0);
+        let prev_qd = prev_avg_qd.get(donor_pk).copied().unwrap_or(0.0);
+        let delta_w_secs = (donor_qd - prev_qd) / 1000.0;
+        let estimated_excess = if delta_t_secs > 0.0 {
+            donor_tps as f64 * delta_w_secs / delta_t_secs
+        } else {
+            0.0
+        };
+        let delay_increasing = delta_w_secs > 0.0 && prev_qd > 0.0;
+        let shed_target = if delay_increasing {
+            // Queue still growing despite previous migration — escalate 1.5x
+            f64::max(donor_tps * 0.05, estimated_excess * 0.8 * 1.5)
+        } else if prev_qd > 0.0 {
+            // Queue draining — gentle 5% to keep converging
+            donor_tps * 0.05
+        } else {
+            // First evaluation — use the model estimate
+            f64::max(donor_tps * 0.05, estimated_excess * 0.8)
+        };
         info!(
-            "reroute: donor {} cap={:.0} shed_target={:.1} (10%={:.1} excess={:.1})",
-            donor_pk, donor_cap, shed_target, donor_tps * 0.1, donor_tps - donor_cap * 0.75
+            "reroute: donor {} cap={:.0} qd={:.0}ms prev_qd={:.0}ms ΔW={:.1}s Δt={:.1}s estimated_excess={:.1} shed_target={:.1} increasing={}",
+            donor_pk, donor_cap, donor_qd, prev_qd, delta_w_secs, delta_t_secs, estimated_excess, shed_target, delay_increasing
         );
         if shed_target <= 0.0 {
             info!("reroute: donor {} shed_target <= 0, skipping", donor_pk);
@@ -344,9 +395,19 @@ fn compute_rerouting(
         let mut shed_so_far = 0.0;
         let mut migrated_count: u64 = 0;
         let mut skip_count: u64 = 0;
+        let mut cooldown_count: u64 = 0;
+        let cooldown_rounds = REROUTE_INTERVAL * 2;
         for &acct in &sorted_accounts {
             if shed_so_far >= shed_target {
                 break;
+            }
+
+            // Skip accounts that were recently migrated to prevent bouncing
+            if let Some(&migrated_round) = last_migrated.get(&acct) {
+                if current_round.saturating_sub(migrated_round) < cooldown_rounds {
+                    cooldown_count += 1;
+                    continue;
+                }
             }
 
             let load = acct_load[&acct];
@@ -390,8 +451,8 @@ fn compute_rerouting(
         }
 
         info!(
-            "reroute: donor {} migrated={} skipped={} total={} shed={:.1}/{:.1} tx/s",
-            donor_pk, migrated_count, skip_count, sorted_accounts.len(), shed_so_far, shed_target
+            "reroute: donor {} migrated={} skipped={} cooldown={} total={} shed={:.1}/{:.1} tx/s",
+            donor_pk, migrated_count, skip_count, cooldown_count, sorted_accounts.len(), shed_so_far, shed_target
         );
     }
 
@@ -576,6 +637,12 @@ impl Consensus {
             info!("Validator capacity: {} -> {} req/s", pk, cap);
         }
 
+        // Per-account migration cooldown: tracks the round each account was last migrated.
+        let mut last_migrated: HashMap<u64, Round> = HashMap::new();
+        // Previous evaluation state for queue-delay-derived excess estimation.
+        let mut prev_avg_qd: HashMap<PublicKey, f64> = HashMap::new();
+        let mut prev_eval_ts_ms: Option<u64> = None;
+
         // Routing state: current_assignments[i] = set of account IDs assigned to validator i.
         // Initialized from account_ranges, updated by compute_rerouting each evaluation round.
         let mut current_assignments: Vec<HashSet<u64>> = self.committee.account_ranges
@@ -607,6 +674,17 @@ impl Consensus {
             if !self.baseline_mode {
                 account_tracker.record(&certificate);
                 throughput_tracker.record(&certificate);
+                let qm_list: Vec<&QuorumMetrics> = certificate.header.quorum_metrics.values().collect();
+                let n = qm_list.len() as u64;
+                let qd_sum: u64 = qm_list.iter().map(|m| m.queue_delay_ms).sum();
+                let ql_sum: u64 = qm_list.iter().map(|m| m.quorum_latency_ms).sum();
+                let qd_avg = if n > 0 { qd_sum as f64 / n as f64 } else { 0.0 };
+                let ql_avg = if n > 0 { ql_sum as f64 / n as f64 } else { 0.0 };
+                info!(
+                    "cert_qm (round={}) validator {}: created_at={} n={} qd_sum={} qd_avg={:.3} ql_sum={} ql_avg={:.3}",
+                    certificate.round(), certificate.origin(), certificate.header.created_at,
+                    n, qd_sum, qd_avg, ql_sum, ql_avg
+                );
             }
             if !self.baseline_mode && certificate.origin() == self.name && round % REROUTE_INTERVAL == 0 {
                 let stable_round = round.saturating_sub(2);
@@ -631,6 +709,20 @@ impl Consensus {
                         );
                     }
 
+                    // Compute Δt for queue-delay excess estimation
+                    let current_ts_ms = throughput_tracker.round_timestamp_ms(stable_round)
+                        .unwrap_or(certificate.header.created_at);
+                    let delta_t_secs = prev_eval_ts_ms
+                        .map(|prev| (current_ts_ms.saturating_sub(prev)) as f64 / 1000.0)
+                        .unwrap_or_else(|| {
+                            // First evaluation: use time since first tracked round
+                            let first_round = stable_round.saturating_sub(TRACKING_WINDOW);
+                            throughput_tracker.round_timestamp_ms(first_round)
+                                .map(|first_ts| (current_ts_ms.saturating_sub(first_ts)) as f64 / 1000.0)
+                                .unwrap_or(1.0)
+                        });
+
+                    let old_assignment_sizes: Vec<usize> = current_assignments.iter().map(|s| s.len()).collect();
                     let migrations = compute_rerouting(
                         &tps,
                         &self.validator_capacities,
@@ -640,9 +732,22 @@ impl Consensus {
                         &sorted_keys,
                         &mut current_assignments,
                         f,
+                        &last_migrated,
+                        round,
+                        &prev_avg_qd,
+                        delta_t_secs,
                     );
+                    // Update previous evaluation state
+                    prev_avg_qd = avg_qd;
+                    prev_eval_ts_ms = Some(current_ts_ms);
+
+                    // Record migration cooldowns
+                    for m in &migrations {
+                        last_migrated.insert(m.account_id, round);
+                    }
+
                     if migrations.is_empty() {
-                        info!("reroute (round={}) no migration needed", round);
+                        info!("reroute (round={}) no migrations needed", round);
                     } else {
                         info!(
                             "reroute (round={}) {} account migrations",
@@ -656,6 +761,16 @@ impl Consensus {
                         }
                         if migrations.len() > 10 {
                             info!("reroute (round={}) ... and {} more", round, migrations.len() - 10);
+                        }
+                        for (i, pk) in sorted_keys.iter().enumerate() {
+                            let donated = old_assignment_sizes[i].saturating_sub(current_assignments[i].len());
+                            let received = current_assignments[i].len().saturating_sub(old_assignment_sizes[i]);
+                            if donated > 0 || received > 0 {
+                                info!(
+                                    "reroute (round={}) migration_tally {}: donated={} received={}",
+                                    round, pk, donated, received
+                                );
+                            }
                         }
                         // Send migration notices to application layer
                         if let Err(e) = self.tx_output.send(

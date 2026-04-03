@@ -17,6 +17,7 @@ pub enum StoreCommand {
     Write(Key, Value),
     Read(Key, oneshot::Sender<StoreResult<Option<Value>>>),
     NotifyRead(Key, oneshot::Sender<StoreResult<Value>>),
+    Delete(Key),
 }
 
 #[derive(Clone)]
@@ -56,6 +57,9 @@ impl Store {
                             }
                         }
                     }
+                    StoreCommand::Delete(_key) => {
+                        // No-op for RocksDB — only used for in-memory GC.
+                    }
                 }
             }
         });
@@ -92,6 +96,9 @@ impl Store {
                                 .push_back(sender),
                         }
                     }
+                    StoreCommand::Delete(key) => {
+                        data.remove(&key);
+                    }
                 }
             }
         });
@@ -112,6 +119,12 @@ impl Store {
         receiver
             .await
             .expect("Failed to receive reply to Read command from store")
+    }
+
+    pub async fn delete(&mut self, key: Key) {
+        if let Err(e) = self.channel.send(StoreCommand::Delete(key)).await {
+            panic!("Failed to send Delete command to store: {}", e);
+        }
     }
 
     pub async fn notify_read(&mut self, key: Key) -> StoreResult<Value> {

@@ -34,7 +34,7 @@
 2. **Handle client transactions**:
    - Receiver → Batch Maker (assembles txs into batches)
        - Seals when current_batch_size >= batch_size OR max_batch_delay timer. At low rates, batches are always timer-sealed.
-       - account_id is first 8 bytes of transaction
+       - account_id is at bytes 10..18 of raw transaction (after 1B tx_type + 1B client_id + 8B counter)
    - QuorumWaiter (waits for quorum of acks)
    - Processor (hashes and stores batches)
    - PrimaryConnector (sends batch digests to our primary)
@@ -75,3 +75,6 @@ Before implementing:
 - If multiple interpretations exist, present them - don't pick silently.
 - If a simpler approach exists, say so. Push back when warranted.
 - If something is unclear, stop. Name what's confusing. Ask.
+
+# Performance
+"f+1 Commit latency (workers)" is per batch logging from primary, "PER-VALIDATOR COMMIT METRICS" is by per sample tx reply (worker needs to fetch the batch and reply). If the former is greater than later a lot, then it means the store is bottleneck, IN_MEMORY_STORE is used to bypass this bottleneck

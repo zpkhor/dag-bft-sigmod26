@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from plot_worker_batches import WINDOW_SIZE
-from plot_common import plot_experiment
+from plot_common import plot_experiment, CONFIG_ORDER
 
 
 # <label>_run_<N>
@@ -14,14 +14,6 @@ RUN_DIR_RE = re.compile(r"^(.+)_run_(\d+)$")
 
 # <config>_r<rate> within a label
 LABEL_RATE_RE = re.compile(r"^(.+)_r(\d+)$")
-
-CONFIG_ORDER = [
-    "balanced",
-    "imbalanced",
-    "imbalanced_bw1",
-    "imbalanced_bw2",
-    "imbalanced_bw3",
-]
 
 
 def label_sort_key(label: str) -> tuple:
@@ -34,7 +26,7 @@ def label_sort_key(label: str) -> tuple:
         config_idx = CONFIG_ORDER.index(config)
     except ValueError:
         config_idx = len(CONFIG_ORDER)
-    return (config_idx, rate, label)
+    return (rate, -config_idx, label)
 
 
 def parse_args() -> argparse.Namespace:

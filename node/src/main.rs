@@ -205,7 +205,7 @@ async fn analyze(mut rx_output: Receiver<ConsensusOutput>, committee: Committee,
                 // Send CommittedBatches and Execute to each of our workers.
                 for (worker_id, digests) in per_worker {
                     if let Some(&address) = our_workers.get(&worker_id) {
-                        let message = PrimaryWorkerMessage::CommittedBatches(digests.clone());
+                        let message = PrimaryWorkerMessage::CommittedBatches(certificate.round(), digests.clone());
                         let bytes = bincode::serialize(&message)
                             .expect("Failed to serialize CommittedBatches");
                         network.send(address, Bytes::from(bytes)).await;

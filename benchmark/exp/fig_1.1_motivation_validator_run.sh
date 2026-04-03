@@ -7,7 +7,7 @@ MODE=${MODE:-docker}
 
 # Common defaults
 RETRIES=${RETRIES:-2}
-DURATION=${DURATION:-240}
+DURATION=${DURATION:-80}
 WARMUP=${WARMUP:-10}
 
 # Docker-specific defaults
@@ -17,61 +17,26 @@ PRIMARY_BW=${PRIMARY_BW:-250mbit}
 
 # CloudLab-specific defaults
 MANIFEST=${MANIFEST:-manifest.xml}
+LATENCY_MS=${LATENCY_MS:-100}
 
-cd "$(dirname "$0")"
-RESULTS_DIR="$(pwd)/results/scenario_${MODE}_$(date +%Y%m%d_%H%M%S)"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+BENCH_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+RESULTS_DIR="$SCRIPT_DIR/results/scenario_${MODE}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
-# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES|BASELINE|ROUTING_MODE"
-# label must end with _r<rate> (e.g. n4_rate_imb_r100000); rate is extracted from there.
-# ROUTING_MODE: empty for default routing, "round-robin" for round-robin baseline.
-# CONFIGS=(
-#     "n4_r90000|500,500,500,500|1,1,1,1|4|0|"
-#     "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|0|"
-
-#     # n4 versions (for comparison with n7 configs above)
-#     "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|0|"
-#     "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|0|"
-#     # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|0|round-robin"
-
-#     # bw_f
-#     "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|0|"
-#     "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|0|"
-#     # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|0|round-robin"
-
-#     # bw_f1
-#     "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|0|"
-#     "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|0|"
-#     # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|0|round-robin"
-
-#     # rr (baseline has no certificate overhead)
-#     # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|0|round-robin"
-# )
-
-# BASELINE: 1
+# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES|BASELINE|RATES"
+# n=4, f=1; for ~60% rate to v0: weight_0 = 1.5*(n-1), others = 1
+# Per-config RATES tuned to each config's saturation region:
+#   balanced  saturates ~105k TPS
+#   rate_imb  saturates ~70k  TPS
+#   bw_f      saturates ~50k  TPS
+#   bw_f1     saturates ~35k  TPS
 CONFIGS=(
-    "n4_r90000|500,500,500,500|1,1,1,1|4|0|"
-    "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|0|"
-
-    # n4 versions (for comparison with n7 configs above)
-    "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|0|"
-    "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|0|"
-    # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|0|round-robin"
-
-    # bw_f
-    "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|0|"
-    "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|0|"
-    # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|0|round-robin"
-
-    # bw_f1
-    "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|0|"
-    "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|0|"
-    # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|0|round-robin"
-
-    # rr (baseline has no certificate overhead)
-    # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|0|round-robin"
-
+    "n4_balanced|500,500,500,500|1,1,1,1|4|1|30000,50000,70000,90000,100000,110000,120000,130000"
+    "n4_rate_imb|500,500,500,500|4.5,1,1,1|4|1|20000,33000,45000,56000,65000,72000,80000,90000"
+    "n4_bw_f|500,500,500,150|1,1,1,1|4|1|20000,30000,38000,45000,50000,56000,65000,78000"
+    "n4_bw_f1|500,500,150,150|1,1,1,1|4|1|10000,18000,25000,30000,33000,36000,40000,45000"
 )
 
 check_certified_tps_consistency() {
@@ -143,29 +108,29 @@ for CONFIG in "${CONFIGS[@]}"; do
 done
 
 echo "Scenario sweep ($MODE)"
-echo "Configs: ${#CONFIGS[@]}"
+echo "Configs: ${#CONFIGS[@]} (per-config rates)"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
 echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
-for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL BASELINE ROUTING_MODE_VAL <<< "$CONFIG"
-    [[ $LABEL =~ _r([0-9]+)$ ]] || { echo "ERROR: label '$LABEL' missing _r<rate> suffix" >&2; exit 1; }
-    RATE="${BASH_REMATCH[1]}"
-    ROUTING_MODE_ENV=""
-    [[ -n "$ROUTING_MODE_VAL" ]] && ROUTING_MODE_ENV="ROUTING_MODE=$ROUTING_MODE_VAL"
+cd "$BENCH_DIR"
 
-    for RETRY in $(seq 1 "$RETRIES"); do
-            RUN_DIR="$RESULTS_DIR/${LABEL}_run_${RETRY}"
+for CONFIG in "${CONFIGS[@]}"; do
+    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL BASELINE RATES_STR <<< "$CONFIG"
+    IFS=',' read -ra RATES <<< "$RATES_STR"
+
+    for RATE in "${RATES[@]}"; do
+        for RETRY in $(seq 1 "$RETRIES"); do
+            RUN_DIR="$RESULTS_DIR/${LABEL}_r${RATE}_run_${RETRY}"
             mkdir -p "$RUN_DIR"
 
             echo ""
-            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS baseline=$BASELINE routing=${ROUTING_MODE_VAL:-default} rate=$RATE Run: $RETRY/$RETRIES ---"
+            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS baseline=$BASELINE rate=$RATE Run: $RETRY/$RETRIES ---"
 
             if [[ "$MODE" == "docker" ]]; then
-                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             elif [[ "$MODE" == "cloudlab" ]]; then
-                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab cloudlab --manifest=$MANIFEST --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP fab cloudlab --manifest=$MANIFEST --latency-ms=$LATENCY_MS"
             else
                 echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
                 exit 1
@@ -185,12 +150,13 @@ for CONFIG in "${CONFIGS[@]}"; do
 
             sleep 2
         done
+    done
 done
 
 echo ""
 echo "==========================================="
 echo "Plotting combined figure..."
-python plot_sweep.py "$RESULTS_DIR" -o "$RESULTS_DIR/sweep.png" || \
+python "$BENCH_DIR/plot_sweep.py" "$RESULTS_DIR" -o "$RESULTS_DIR/sweep.png" || \
     echo "WARNING: combined plot failed"
 
 echo ""

@@ -2,7 +2,6 @@ import json
 import os
 from fabric import task, Connection
 
-from benchmark.local import LocalBench
 from benchmark.docker_bench import DockerBench
 from benchmark.logs import ParseError, LogParser
 from benchmark.utils import Print
@@ -216,7 +215,8 @@ def logs(ctx):
 
 @task
 def cloudlab(ctx, debug=False,
-             manifest='manifest.xml', username='zpkhor', latency_ms=100, worker_bw='75mbit'):
+             manifest='manifest.xml', username='zpkhor', latency='100ms', worker_bw='75mbit',
+             primary_bw='25mbit'):
     ''' Run benchmarks on CloudLab physical machines '''
     nodes = int(os.environ.get('NODES', 4))
     rate = int(os.environ.get('RATE', 8300))
@@ -227,7 +227,10 @@ def cloudlab(ctx, debug=False,
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
-    primary_bw_kbps = int(os.environ.get('PRIMARY_BW_KBPS', 25000))
+    assert latency.endswith('ms'), f"latency must be in ms format (e.g. '100ms'), got: {latency!r}"
+    latency_ms = int(latency[:-2])
+    assert primary_bw.endswith('mbit'), f"primary_bw must be in mbit format (e.g. '25mbit'), got: {primary_bw!r}"
+    primary_bw_kbps = int(primary_bw[:-4]) * 1000
     assert worker_bw.endswith('mbit'), f"worker_bw must be in mbit format (e.g. '75mbit'), got: {worker_bw!r}"
     worker_bws_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
     routing_mode = os.environ.get('ROUTING_MODE', '')
@@ -269,7 +272,7 @@ def cloudlab(ctx, debug=False,
             username=username,
             baseline=baseline,
             round_robin=round_robin,
-            latency_ms=int(latency_ms),
+            latency_ms=latency_ms,
             primary_bw_kbps=primary_bw_kbps,
             worker_bws_kbps=worker_bws_kbps,
             in_memory_store=in_memory_store,

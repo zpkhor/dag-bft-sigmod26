@@ -10,8 +10,8 @@ from typing import Dict, List, Optional, Tuple
 import matplotlib.pyplot as plt
 
 
-WINDOW_SIZE = 20
-SKIP_NUM_BATCHES = 15
+WINDOW_SIZE = 1
+SKIP_NUM_BATCHES = 0
 
 
 def moving_average(values: List[float], window: int) -> List[float]:
@@ -21,6 +21,10 @@ def moving_average(values: List[float], window: int) -> List[float]:
         result.append(sum(values[start : i + 1]) / (i - start + 1))
     return result
 
+
+CERTIFIED_LINE_PATTERN = re.compile(
+    r"Certified B(\d+)\([^)]+\) -> (\S+)"
+)
 
 BATCH_LINE_PATTERN = re.compile(
     r"^\[(?P<timestamp>[^\]]+)\s+INFO\s+worker::batch_maker\]\s+"
@@ -55,6 +59,23 @@ def parse_args() -> argparse.Namespace:
         help=f"Disable moving average smoothing (window={WINDOW_SIZE}).",
     )
     return parser.parse_args()
+
+
+def group_by_round(rounds: List[int], values: List[float]) -> Tuple[List[int], List[float]]:
+    bins: Dict[int, List[float]] = {}
+    for r, v in zip(rounds, values):
+        bins.setdefault(r, []).append(v)
+    sorted_bins = sorted(bins.items())
+    return [r for r, _ in sorted_bins], [sum(vals) / len(vals) for _, vals in sorted_bins]
+
+
+def _make_stats_label(label: str, values: List[float]) -> str:
+    if len(values) >= 2:
+        p95 = statistics.quantiles(values, n=20)[18]
+        std = statistics.stdev(values)
+        mean = statistics.mean(values)
+        return f"{label}  mean={mean:.0f}  p95={p95:.0f}  σ={std:.0f}"
+    return label
 
 
 def parse_timestamp(raw_timestamp: str) -> datetime:
@@ -93,11 +114,29 @@ def extract_quorum_metrics_by_digest(log_path: Path) -> Dict[str, Tuple[int, int
     return metrics
 
 
+def extract_digest_to_round(primary_log_path: Path) -> Dict[str, int]:
+    mapping: Dict[str, int] = {}
+    with primary_log_path.open("r", encoding="utf-8") as handle:
+        for line in handle:
+            m = CERTIFIED_LINE_PATTERN.search(line)
+            if m:
+                mapping[m.group(2)] = int(m.group(1))
+    return mapping
+
+
+def collect_digest_to_round(logs_dir: Path) -> Dict[str, int]:
+    merged: Dict[str, int] = {}
+    for primary_log in sorted(logs_dir.glob("primary-*.log")):
+        merged.update(extract_digest_to_round(primary_log))
+    return merged
+
+
 def plot_worker_log(
     worker_log: Path,
     batch_ax,
     latency_ax,
     queue_ax,
+    digest_to_round: Dict[str, int],
     label: str,
     smooth: bool,
     linewidth: float = 1.2,
@@ -111,42 +150,42 @@ def plot_worker_log(
     if not batches:
         return False, False
 
-    sizes = [s for _, _, s in batches]
-    if len(sizes) >= 2:
-        p95 = statistics.quantiles(sizes, n=20)[18]
-        std = statistics.stdev(sizes)
-        mean = statistics.mean(sizes)
-        batch_label = f"{label}  mean={mean:.0f}  p95={p95:.0f}  σ={std:.0f}"
-    else:
-        batch_label = label
-    y_sizes = moving_average(sizes, WINDOW_SIZE) if smooth else sizes
-    batch_ax.plot(range(len(sizes)), y_sizes, linewidth=linewidth, alpha=alpha, label=batch_label)
+    batch_rounds = []
+    filtered_batches = []
+    for ts, digest, size in batches:
+        r = digest_to_round.get(digest)
+        if r is not None:
+            batch_rounds.append(r)
+            filtered_batches.append((ts, digest, size))
+
+    if not batch_rounds:
+        return False, False
+
+    sizes = [s for _, _, s in filtered_batches]
+    grp_rounds, grp_sizes = group_by_round(batch_rounds, sizes)
+    batch_label = _make_stats_label(label, grp_sizes)
+    y_sizes = moving_average(grp_sizes, WINDOW_SIZE) if smooth else grp_sizes
+    batch_ax.plot(grp_rounds, y_sizes, linewidth=linewidth, alpha=alpha, label=batch_label)
 
     quorum_by_digest = extract_quorum_metrics_by_digest(worker_log)
-    latency_idxs, latency_ms, queue_ms = [], [], []
-    for i, (_, digest, _) in enumerate(batches):
+    latency_rounds, latency_ms, queue_ms = [], [], []
+    for r, (_, digest, _) in zip(batch_rounds, filtered_batches):
         m = quorum_by_digest.get(digest)
         if m is not None:
-            latency_idxs.append(i)
+            latency_rounds.append(r)
             queue_ms.append(m[0])
             latency_ms.append(m[1])
 
     if latency_ms:
-        if len(latency_ms) >= 2:
-            lat_p95 = statistics.quantiles(latency_ms, n=20)[18]
-            lat_std = statistics.stdev(latency_ms)
-            lat_mean = statistics.mean(latency_ms)
-            q_p95 = statistics.quantiles(queue_ms, n=20)[18]
-            q_std = statistics.stdev(queue_ms)
-            q_mean = statistics.mean(queue_ms)
-            lat_label = f"{label}  mean={lat_mean:.0f}  p95={lat_p95:.0f}  σ={lat_std:.0f}"
-            q_label = f"{label}  mean={q_mean:.0f}  p95={q_p95:.0f}  σ={q_std:.0f}"
-        else:
-            lat_label, q_label = label, label
-        y_latency = moving_average(latency_ms, WINDOW_SIZE) if smooth else latency_ms
-        y_queue = moving_average(queue_ms, WINDOW_SIZE) if smooth else queue_ms
-        latency_ax.plot(latency_idxs, y_latency, linewidth=linewidth, alpha=alpha, label=lat_label)
-        queue_ax.plot(latency_idxs, y_queue, linewidth=linewidth, alpha=alpha, label=q_label)
+        grp_r, grp_lat = group_by_round(latency_rounds, latency_ms)
+        _, grp_q = group_by_round(latency_rounds, queue_ms)
+
+        lat_label = _make_stats_label(label, grp_lat)
+        q_label = _make_stats_label(label, grp_q)
+        y_latency = moving_average(grp_lat, WINDOW_SIZE) if smooth else grp_lat
+        y_queue = moving_average(grp_q, WINDOW_SIZE) if smooth else grp_q
+        latency_ax.plot(grp_r, y_latency, linewidth=linewidth, alpha=alpha, label=lat_label)
+        queue_ax.plot(grp_r, y_queue, linewidth=linewidth, alpha=alpha, label=q_label)
         return True, True
 
     return True, False
@@ -174,13 +213,16 @@ def plot_batches(path: Path, output_path: Optional[Path], smooth: bool) -> None:
     if not worker_logs:
         raise ValueError("No worker log files were found")
 
+    logs_dir = path if path.is_dir() else path.parent
+    digest_to_round = collect_digest_to_round(logs_dir)
+
     fig, axes = plt.subplots(3, 1, figsize=(12, 10), sharex=False)
 
     plotted_logs = 0
     plotted_quorum_latency_logs = 0
     for worker_log in worker_logs:
         label = worker_log.stem
-        plotted_batches, plotted_quorum = plot_worker_log(worker_log, axes[0], axes[1], axes[2], label, smooth)
+        plotted_batches, plotted_quorum = plot_worker_log(worker_log, axes[0], axes[1], axes[2], digest_to_round, label, smooth)
         if plotted_batches:
             plotted_logs += 1
         if plotted_quorum:
@@ -188,7 +230,7 @@ def plot_batches(path: Path, output_path: Optional[Path], smooth: bool) -> None:
 
     if plotted_logs == 0:
         raise ValueError(
-            "No worker::batch_maker lines matching 'Batch ... contains ... B' were found"
+            "No batches could be mapped to a round — check that primary-*.log files are present in the same directory"
         )
 
     axes[0].set_ylabel("Batch size (B)")
@@ -200,7 +242,7 @@ def plot_batches(path: Path, output_path: Optional[Path], smooth: bool) -> None:
     if plotted_quorum_latency_logs > 0:
         axes[1].legend(loc="upper right")
 
-    axes[2].set_xlabel("Batch index")
+    axes[2].set_xlabel("Round")
     axes[2].set_ylabel("Queue delay (ms)")
     axes[2].grid(True, alpha=0.3)
     if plotted_quorum_latency_logs > 0:

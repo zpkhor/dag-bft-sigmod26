@@ -7,8 +7,27 @@ from typing import Callable, List, Tuple
 import matplotlib.pyplot as plt
 import matplotlib.gridspec as gridspec
 
-from plot_worker_batches import find_worker_logs, plot_worker_log
+from plot_worker_batches import find_worker_logs, plot_worker_log, collect_digest_to_round
 
+
+CONFIG_ORDER = [
+    "n7",
+    "n7_rate_imb",
+    "n7_rate_imb_rr",
+    "n7_bw_f",
+    "n7_bw_f_rr",
+    "n7_bw_f1",
+    "n7_bw_f1_rr",
+    "n7_rr",
+    "n4",
+    "n4_rate_imb",
+    "n4_rate_imb_rr",
+    "n4_bw_f",
+    "n4_bw_f_rr",
+    "n4_bw_f1",
+    "n4_bw_f1_rr",
+    "n4_rr",
+]
 
 LATENCY_RE = re.compile(r"f\+1 Commit latency \(workers\) \(mean\): ([\d,]+) ms")
 TPS_RE = re.compile(r"Committed TPS: ([\d,]+) tx/s")
@@ -85,14 +104,16 @@ def plot_experiment(
 
         for run_num, run_dir in runs:
             alpha = 1.0 if run_num == runs[0][0] else 0.5
-            worker_logs = find_worker_logs(worker_logs_dir(run_dir))
+            logs_dir = worker_logs_dir(run_dir)
+            worker_logs = find_worker_logs(logs_dir)
+            digest_to_round = collect_digest_to_round(logs_dir)
 
             for worker_log in worker_logs:
                 worker_label = f"{worker_log.stem} (run {run_num})"
                 plot_worker_log(
                     worker_log,
                     axes[0][col_idx], axes[1][col_idx], axes[2][col_idx],
-                    worker_label, smooth, 1.0, alpha,
+                    digest_to_round, worker_label, smooth, 1.0, alpha,
                 )
 
             latency, tps = parse_metrics(run_dir)

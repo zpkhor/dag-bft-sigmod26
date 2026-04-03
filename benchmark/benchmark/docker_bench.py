@@ -484,6 +484,11 @@ networks:
 
             committee.print(PathMaker.committee_file())
 
+            # Exclude faulty validators from running processes
+            good_nodes = nodes - self.faults
+            names = names[:good_nodes]
+            container_ips = container_ips[:good_nodes]
+
             # Build --validator-workers args for all validators
             vw_args_parts = []
             for name in names:
@@ -503,9 +508,9 @@ networks:
             ar_args = " ".join(ar_args_parts)
 
             # Build --rate-weights aligned with sorted validator order
-            weights = self.rate_weights or [1] * nodes
-            sorted_names = committee.sorted_authority_names()
+            weights = (self.rate_weights or [1] * nodes)[:good_nodes]
             name_to_idx = {name: i for i, name in enumerate(names)}
+            sorted_names = [n for n in committee.sorted_authority_names() if n in name_to_idx]
             sorted_weights = [weights[name_to_idx[n]] for n in sorted_names]
             rate_weights_str = ",".join(str(w) for w in sorted_weights)
 
@@ -558,7 +563,7 @@ networks:
 
             # Build executor commands (separate containers)
             executor_commands = {}  # (validator_idx, executor_id) -> cmd
-            for i in range(nodes):
+            for i in range(good_nodes):
                 for e in range(self.num_executors):
                     e_cmd = (
                         f"./node {v} run --keys .node-{i}.json --committee .committee.json "
@@ -596,7 +601,7 @@ networks:
                 Print.info("Docker image up to date, skipping build.")
 
             # Generate docker-compose.yml.
-            self._generate_compose(nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str, executor_commands=executor_commands, executor_ips=executor_ips)
+            self._generate_compose(good_nodes, commands_per_validator, wait_ports_per_validator, client_command, client_ip, container_ips, client_wait_ports, primary_ports_str, executor_commands=executor_commands, executor_ips=executor_ips)
 
             # Start containers.
             Print.info("Starting containers...")

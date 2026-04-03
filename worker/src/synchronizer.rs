@@ -50,6 +50,8 @@ pub struct Synchronizer {
     /// processing will resume when we get the missing batches in the store or we no longer need them.
     /// It also keeps the round number and a timestamp (`u128`) of each request we sent.
     pending: HashMap<Digest, (Round, Sender<()>, u128)>,
+    /// Tracks committed batch digests per consensus round for in-memory store GC.
+    committed_batches: HashMap<Round, Vec<Digest>>,
 }
 
 impl Synchronizer {
@@ -77,6 +79,7 @@ impl Synchronizer {
                 network: SimpleSender::new(),
                 round: Round::default(),
                 pending: HashMap::new(),
+                committed_batches: HashMap::new(),
             }
             .run()
             .await;
@@ -100,7 +103,8 @@ impl Synchronizer {
     }
 
     /// Handle committed batches: wait for each batch to be available and log sample txs.
-    async fn handle_committed_batches(&mut self, digests: Vec<Digest>) {
+    async fn handle_committed_batches(&mut self, round: Round, digests: Vec<Digest>) {
+        self.committed_batches.entry(round).or_default().extend(digests.iter().cloned());
         for digest in digests {
             let batch_data = self.store
                 .notify_read(digest.to_vec())
@@ -215,8 +219,8 @@ impl Synchronizer {
                         let serialized = bincode::serialize(&message).expect("Failed to serialize our own message");
                         self.network.send(address, Bytes::from(serialized)).await;
                     },
-                    PrimaryWorkerMessage::CommittedBatches(digests) => {
-                        self.handle_committed_batches(digests).await;
+                    PrimaryWorkerMessage::CommittedBatches(round, digests) => {
+                        self.handle_committed_batches(round, digests).await;
                     },
                     PrimaryWorkerMessage::MigrationNotices(notices) => {
                         self.handle_migration_notices(notices).await;
@@ -240,6 +244,24 @@ impl Synchronizer {
                             }
                         }
                         self.pending.retain(|_, (r, _, _)| r > &mut gc_round);
+
+                        // GC old batches from the in-memory store.
+                        if self.round >= 2 * self.gc_depth {
+                            let batch_gc_round = self.round - 2 * self.gc_depth;
+                            let old_rounds: Vec<Round> = self.committed_batches
+                                .keys()
+                                .filter(|&&r| r <= batch_gc_round)
+                                .copied()
+                                .collect();
+                            for r in old_rounds {
+                                if let Some(digests) = self.committed_batches.remove(&r) {
+                                    for digest in &digests {
+                                        self.store.delete(digest.to_vec()).await;
+                                    }
+                                    debug!("GC'd {} batches from round {}", digests.len(), r);
+                                }
+                            }
+                        }
                     }
                 },
 
