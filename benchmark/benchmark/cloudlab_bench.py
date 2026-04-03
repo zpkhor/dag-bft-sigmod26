@@ -530,6 +530,7 @@ class CloudLabBench:
                 f'{ar_args} --rate-weights {rate_weights_str} '
                 f'--reply-addr {reply_addr} --own-validator {names[0]} '
                 f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}'
+                f' --rampup-secs {self.warmup}'
             )
 
             # Apply QoS TC shaping BEFORE starting processes so TCP connections

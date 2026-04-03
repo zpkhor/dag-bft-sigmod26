@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--client-id=[INT] 'Client identifier (default 0)'")
         .args_from_usage("--no-send-payment 'Exclude SendPayment transactions'")
         .args_from_usage("--zipf-exponent=[FLOAT] 'Zipf exponent for account selection (0.0=uniform, default 0.0)'")
+        .args_from_usage("--rampup-secs=[INT] 'Ramp-up duration in seconds (default 5)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -149,6 +150,12 @@ async fn main() -> Result<()> {
         .parse::<f64>()
         .context("--zipf-exponent must be a float")?;
 
+    let rampup_secs: u64 = matches
+        .value_of("rampup-secs")
+        .unwrap_or("5")
+        .parse::<u64>()
+        .context("--rampup-secs must be a non-negative integer")?;
+
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
     ).context("Invalid --own-validator public key")?;
@@ -241,6 +248,7 @@ async fn main() -> Result<()> {
         no_send_payment,
         zipf_exponent,
         num_tx_types,
+        rampup_secs,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -266,6 +274,7 @@ struct Client {
     no_send_payment: bool,
     zipf_exponent: f64,
     num_tx_types: u8,
+    rampup_secs: u64,
 }
 
 impl Client {
@@ -378,6 +387,7 @@ impl Client {
             let size = self.size;
             let client_id = self.client_id;
             let num_tx_types = self.num_tx_types;
+            let rampup_secs = self.rampup_secs;
             let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
             handles.push(tokio::spawn(async move {
@@ -393,6 +403,7 @@ impl Client {
                     size,
                     client_id,
                     num_tx_types,
+                    rampup_secs,
                 ).await
             }));
         }
@@ -428,11 +439,11 @@ async fn send_shard(
     size: usize,
     client_id: u8,
     num_tx_types: u8,
+    rampup_secs: u64,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
-    const RAMPUP_SECS: u64 = 2;
-    const RAMPUP_TICKS: u64 = RAMPUP_SECS * PRECISION;
+    let rampup_ticks = rampup_secs * PRECISION;
 
     let own_senders = &validator_senders[&own_validator];
     let num_workers = own_senders.len();
@@ -458,10 +469,10 @@ async fn send_shard(
         interval.as_mut().tick().await;
         let now = Instant::now();
 
-        let next_total = if counter < RAMPUP_TICKS {
-            rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * RAMPUP_SECS)
+        let next_total = if rampup_ticks > 0 && counter < rampup_ticks {
+            rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * rampup_secs)
         } else {
-            rate * RAMPUP_SECS / 2 + rate * (counter + 1 - RAMPUP_TICKS) / PRECISION
+            rate * rampup_secs / 2 + rate * (counter + 1 - rampup_ticks) / PRECISION
         };
         let burst = next_total - total_sent;
 
