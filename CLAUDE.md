@@ -59,6 +59,12 @@
 - When editing, verify variable names match exactly what's already used in the `benchmark/fabfile.py` Grep for existing usage before introducing variable references.
 - Print abs path over relative path
 
+# Batch run scripts and parsing label for validator level load balancing
+- label starts starts and ends with `n<num_nodes>_` and ends with `_r<rate>`
+- There are 4 general scenarios: balanced, imbalanced rate, ≤ f low bandwidth validator, f+1 bandwidth validator. The later three labels are `rate_imb`, `bw_f`, `bw_f1`. Balanced has no scenario label
+- There few routing-mode labels: default, rr, bl. The later two are round-robin and baseline, the default is the load balancing algorithm this repo study and has no scenario label
+- These together form a full label  `n<num_nodes>_(scenario)(routing-mode)_r<rate>`
+- The scenarios and routing-mode can be configured using env var in the `benchmark/fabfile.py`
 
 # Dev note
 - Don't run tests at all, I will handle testing manually.
