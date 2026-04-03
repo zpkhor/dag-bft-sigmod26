@@ -519,12 +519,17 @@ class CloudLabBench:
                 exec_reply_addr = f'{c_ip}:{self.BASE_PORT + 9000}'
                 exec_reply_flag = f' --execution-reply-addr {exec_reply_addr}'
 
+            e_skew_flag = ''
+            if self.e_skew_weights:
+                e_skew_weights_str = ','.join(str(w) for w in self.e_skew_weights)
+                e_skew_flag = f' --executor-skew-weights {e_skew_weights_str}'
+
             client_command = (
                 f'./benchmark_client --size {self.tx_size} '
                 f'--rate {rate} --nodes {all_nodes_arg} '
                 f'{ar_args} --rate-weights {rate_weights_str} '
                 f'--reply-addr {reply_addr} --own-validator {names[0]} '
-                f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}'
+                f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}{e_skew_flag}'
             )
 
             # Apply QoS TC shaping BEFORE starting processes so TCP connections
