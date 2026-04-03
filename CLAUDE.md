@@ -4,6 +4,9 @@
 
 `narwhal-cloudlab-smallbank/` is another fork repo, please ignore
 
+# BFT system model
+- The network is partial synchronous, there is a known bound ∆ on message transmission after some unknown Global Stabilization Time
+
 # Architecture
 - Narwhal is a BFT system with a **two-tier process architecture**:
   - **Tier 1 (Primary)**: One per validator (handles consensus)
