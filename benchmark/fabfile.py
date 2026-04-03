@@ -242,7 +242,7 @@ def cloudlab(ctx, debug=False,
     bench_params = {
         'faults': 0,
         'nodes': nodes,
-        'workers': 1,
+        'workers': int(os.environ.get('WORKER', 1)),
         'rate': rate,
         'tx_size': 512,
         'duration': duration,
