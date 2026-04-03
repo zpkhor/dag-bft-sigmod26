@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Scenario sweep: full flexibility, each config specifies all params independently.
 # Supports both docker and cloudlab via MODE env var.
-# In cloudlab mode, configs run in parallel (each uses its own log dir).
+# All configs run sequentially (single cluster).
 set -euo pipefail
 
 MODE=${MODE:-docker}
@@ -170,30 +170,10 @@ echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: ${RETRIES}"
 echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
-if [[ "$MODE" == "cloudlab" ]]; then
-    # Run all configs in parallel — each uses a different CloudLab cluster (manifest)
-    declare -a pids=()
-    declare -a config_labels=()
-    for CONFIG in "${CONFIGS[@]}"; do
-        IFS='|' read -r LABEL _ _ _ _ <<< "$CONFIG"
-        run_one_config "$CONFIG" &
-        pids+=($!)
-        config_labels+=("$LABEL")
-    done
-
-    for i in "${!pids[@]}"; do
-        wait "${pids[$i]}" || echo "WARNING: ${config_labels[$i]} had failures"
-    done
-
-    # Merge per-run output logs
-    cat "$RESULTS_DIR"/*/output.log > "$OUTPUT_LOG" 2>/dev/null || true
-else
-    # Docker: run sequentially
-    for CONFIG in "${CONFIGS[@]}"; do
-        run_one_config "$CONFIG"
-    done
-    cat "$RESULTS_DIR"/*/output.log > "$OUTPUT_LOG" 2>/dev/null || true
-fi
+for CONFIG in "${CONFIGS[@]}"; do
+    run_one_config "$CONFIG"
+done
+cat "$RESULTS_DIR"/*/output.log > "$OUTPUT_LOG" 2>/dev/null || true
 
 echo ""
 echo "==========================================="
