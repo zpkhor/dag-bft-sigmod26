@@ -14,6 +14,11 @@ class ParseError(Exception):
     pass
 
 
+def to_posix(string):
+    x = datetime.fromisoformat(string.replace('Z', '+00:00'))
+    return datetime.timestamp(x)
+
+
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
@@ -315,8 +320,7 @@ class LogParser:
         return sizes, samples, ip, arrival_times, seal_times, quorum_times, processed_times, committed_times_by_batch, queue_delay_by_batch, quorum_latency_by_batch
 
     def _to_posix(self, string):
-        x = datetime.fromisoformat(string.replace('Z', '+00:00'))
-        return datetime.timestamp(x)
+        return to_posix(string)
 
     def _calculate_latency_metrics(self, latency_list):
         """Calculate mean, p50, p95, and p99 latency from a list of latencies."""
