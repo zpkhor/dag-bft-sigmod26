@@ -18,12 +18,14 @@ def parse_block(block):
     label = find(r'\bLABEL=(\S+)', cmd_line)
     committed_tps = find(r'Committed TPS:\s*([\d,]+)\s*tx/s', block)
     commit_lat_mean_ms = find(r'f\+1 Commit latency \(workers\) \(mean\):\s*([\d,]+)\s*ms', block)
+    commit_lat_p50_ms = find(r'f\+1 Commit latency \(workers\) \(p50\):\s*([\d,]+)\s*ms', block)
+    commit_lat_p90_ms = find(r'f\+1 Commit latency \(workers\) \(p90\):\s*([\d,]+)\s*ms', block)
     commit_lat_p95_ms = find(r'f\+1 Commit latency \(workers\) \(p95\):\s*([\d,]+)\s*ms', block)
 
-    return [label, committed_tps, commit_lat_mean_ms, commit_lat_p95_ms, cmd_line]
+    return [label, committed_tps, commit_lat_mean_ms, commit_lat_p50_ms, commit_lat_p90_ms, commit_lat_p95_ms, cmd_line]
 
 
-HEADER = ['label', 'committed_tps', 'commit_lat_mean_ms', 'commit_lat_p95_ms', 'cmd']
+HEADER = ['label', 'committed_tps', 'commit_lat_mean_ms', 'commit_lat_p50_ms', 'commit_lat_p90_ms', 'commit_lat_p95_ms', 'cmd']
 
 
 def main():

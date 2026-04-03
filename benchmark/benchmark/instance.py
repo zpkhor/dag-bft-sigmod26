@@ -255,9 +255,25 @@ class CloudLabInstanceManager:
         self.manifest = manifest
 
     @classmethod
-    def make(cls, manifest_file, username):
+    def make(cls, manifest_file, username, ban_file='cloudlab_ban.txt'):
         from benchmark.manifest import Manifest
-        return cls(Manifest.load(manifest_file, username))
+        manifest = Manifest.load(manifest_file, username)
+        if ban_file is not None:
+            banned = Manifest.load_ban_list(ban_file)
+            if banned:
+                before_v = len(manifest.validators)
+                before_c = len(manifest.clients)
+                manifest.validators = [v for v in manifest.validators if v['client_id'] not in banned]
+                manifest.clients = [c for c in manifest.clients if c['client_id'] not in banned]
+                Print.info(
+                    f'Ban list ({ban_file}): removed '
+                    f'{before_v - len(manifest.validators)} validators, '
+                    f'{before_c - len(manifest.clients)} clients '
+                    f'({sorted(banned)})'
+                )
+                assert len(manifest.validators) > 0, 'All validators are banned'
+                assert len(manifest.clients) > 0, 'All clients are banned'
+        return cls(manifest)
 
     def num_validators(self):
         return len(self.manifest.validators)
