@@ -323,9 +323,9 @@ class LogParser:
         return to_posix(string)
 
     def _calculate_latency_metrics(self, latency_list):
-        """Calculate mean, p50, p95, and p99 latency from a list of latencies."""
+        """Calculate mean, p50, p90, p95, and p99 latency from a list of latencies."""
         if not latency_list:
-            return {'mean': 0, 'p50': 0, 'p95': 0, 'p99': 0}
+            return {'mean': 0, 'p50': 0, 'p90': 0, 'p95': 0, 'p99': 0}
 
         result = {'mean': mean(latency_list)}
 
@@ -333,11 +333,13 @@ class LogParser:
             # quantiles(data, n=100) gives 99 cut points at 1st through 99th percentile
             q = quantiles(latency_list, n=100)
             result['p50'] = q[49]
+            result['p90'] = q[89]
             result['p95'] = q[94]
             result['p99'] = q[98]
         else:
             sorted_list = sorted(latency_list)
             result['p50'] = sorted_list[len(sorted_list) // 2]
+            result['p90'] = max(latency_list)
             result['p95'] = max(latency_list)
             result['p99'] = max(latency_list)
 
@@ -464,7 +466,7 @@ class LogParser:
 
     def _worker_committed_latency(self):
         if not isinstance(self.faults, int):
-            return {'mean': 0, 'p95': 0, 'p50': 0, 'p99': 0}
+            return {'mean': 0, 'p50': 0, 'p90': 0, 'p95': 0, 'p99': 0}
         # BFT f+1 threshold: n = 3f+1 → f = (n-1)/3 → f+1 = (n-1)//3 + 1
         threshold = (self.committee_size - 1) // 3 + 1
 
@@ -909,6 +911,8 @@ class LogParser:
     def _format_results_section(self):
         commit_metrics = self._worker_committed_latency()
         commit_latency = commit_metrics['mean'] * 1_000
+        commit_p50 = commit_metrics['p50'] * 1_000
+        commit_p90 = commit_metrics['p90'] * 1_000
         commit_p95 = commit_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
         committed_tps, committed_bps, _ = self._committed_throughput()
@@ -930,6 +934,8 @@ class LogParser:
         return (
             ' + RESULTS:\n'
             f' f+1 Commit latency (workers) (mean): {round(commit_latency):,} ms\n'
+            f' f+1 Commit latency (workers) (p50): {round(commit_p50):,} ms\n'
+            f' f+1 Commit latency (workers) (p90): {round(commit_p90):,} ms\n'
             f' f+1 Commit latency (workers) (p95): {round(commit_p95):,} ms\n'
             + e2e_lines1 +
             '\n'
