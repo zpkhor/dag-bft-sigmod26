@@ -167,16 +167,12 @@ fn compute_rerouting(
     per_validator_account_counts: &HashMap<PublicKey, HashMap<u64, u64>>,
     sorted_keys: &[PublicKey],
     current_assignments: &mut Vec<HashSet<u64>>,
-    _f: usize,
+    f: usize,
     last_migrated: &HashMap<u64, Round>,
     current_round: Round,
     prev_avg_qd: &HashMap<PublicKey, f64>,
     delta_t_secs: f64,
 ) -> Vec<MigrationNotice> {
-    let n = sorted_keys.len();
-    if n < 2 {
-        return vec![];
-    }
 
     // [STUDY] Simulate Byzantine worst-case: last f validators report quorum_latency
     // at the proven upper bound (1 worker): sum(L_i) <= delta_t * 1000ms.
@@ -226,16 +222,19 @@ fn compute_rerouting(
         );
     }
 
-    // Step 2: Compute medians
-    let median_delay = {
+    // Step 2: Compute (f+1)-th highest queue delay threshold.
+    // Among the top f+1 values, at most f are Byzantine, so the (f+1)-th highest
+    // is guaranteed to be an honest value. Index: n - f - 1 in sorted ascending order.
+    let thresh_delay = {
         let mut delays: Vec<f64> = avg_queue_delay.values().copied().collect();
         delays.sort_by(|a, b| a.partial_cmp(b).unwrap());
-        delays[delays.len() / 2]
+        delays[f]
     };
-    // Step 2: Identify donors — validators with queue_delay significantly above median
+
+    // Step 3: Identify donors — validators with queue_delay significantly above (f+1)-th highest
     let donor_set: HashSet<PublicKey> = sorted_keys.iter()
         .filter(|pk| {
-            avg_queue_delay.get(pk).copied().unwrap_or(0.0) > 2.0 * median_delay
+            avg_queue_delay.get(pk).copied().unwrap_or(0.0) > 2.0 * thresh_delay
         })
         .copied()
         .collect();
@@ -244,7 +243,7 @@ fn compute_rerouting(
         avg_queue_delay[b].partial_cmp(&avg_queue_delay[a]).unwrap().then_with(|| a.cmp(b))
     });
 
-    // Step 3: Spare capacity and receivers
+    // Step 4: Spare capacity and receivers
     let mut spare_capacity: HashMap<PublicKey, f64> = sorted_keys.iter().map(|&pk| {
         let t = tps.get(&pk).copied().unwrap_or(0.0);
         let cap = capacities.get(&pk).copied().unwrap_or(0) as f64;
@@ -266,7 +265,7 @@ fn compute_rerouting(
         return vec![];
     }
 
-    // Step 4: Per-account migration
+    // Step 5: Per-account migration
     let pk_to_idx: HashMap<PublicKey, usize> = sorted_keys.iter()
         .enumerate()
         .map(|(i, pk)| (*pk, i))
