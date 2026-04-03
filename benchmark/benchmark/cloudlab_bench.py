@@ -585,6 +585,8 @@ class CloudLabBench:
                             f'.db-exec-{i}-{e}',
                             PathMaker.parameters_file(),
                             e,
+                            acct_starts[i],
+                            acct_counts[i],
                             debug=debug,
                         )
                         self._background_run(

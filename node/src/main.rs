@@ -45,7 +45,9 @@ async fn main() -> Result<()> {
                 .subcommand(
                     SubCommand::with_name("executor")
                         .about("Run a single executor")
-                        .args_from_usage("--id=<INT> 'The executor id'"),
+                        .args_from_usage("--id=<INT> 'The executor id'")
+                        .args_from_usage("--account-start=<INT> 'Start of this validator\\'s account range'")
+                        .args_from_usage("--account-count=<INT> 'Number of accounts in this validator\\'s range'"),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -149,11 +151,22 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .unwrap()
                 .parse::<ExecutorId>()
                 .context("The executor id must be a positive integer")?;
+            let account_start = sub_matches
+                .value_of("account-start")
+                .unwrap()
+                .parse::<u64>()
+                .context("--account-start must be a non-negative integer")?;
+            let account_count = sub_matches
+                .value_of("account-count")
+                .unwrap()
+                .parse::<u64>()
+                .context("--account-count must be a positive integer")?;
             let sharding_strategy =
                 ShardingStrategy::from_str(&parameters.sharding_strategy);
             let initial_partition = config::create_initial_partition(
                 parameters.num_executors,
-                parameters.num_accounts,
+                account_start,
+                account_count,
                 sharding_strategy,
             );
             Executor::spawn(

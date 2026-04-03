@@ -573,7 +573,8 @@ networks:
                 for e in range(self.num_executors):
                     e_cmd = (
                         f"./node {v} run --keys .node-{i}.json --committee .committee.json "
-                        f"--store .db-{i} --parameters .parameters.json executor --id {e}"
+                        f"--store .db-{i} --parameters .parameters.json executor --id {e} "
+                        f"--account-start {acct_starts[i]} --account-count {acct_counts[i]}"
                         f" 2> /logs/executor-{i}-{e}.log"
                     )
                     executor_commands[(i, e)] = e_cmd
