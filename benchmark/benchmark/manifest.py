@@ -1,3 +1,4 @@
+import os
 import re
 import xml.etree.ElementTree as ET
 
@@ -125,3 +126,20 @@ class Manifest:
             hosts.append(ssh_host)
         assert hosts, 'No nodes found in manifest'
         return hosts
+
+    @staticmethod
+    def load_ban_list(ban_file):
+        """Load banned client_ids from a ban file.
+        Returns empty set if file doesn't exist.
+        Lines starting with '#' and empty lines are ignored.
+        """
+        assert isinstance(ban_file, str)
+        if not os.path.exists(ban_file):
+            return set()
+        banned = set()
+        with open(ban_file) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith('#'):
+                    banned.add(line)
+        return banned

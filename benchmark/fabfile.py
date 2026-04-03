@@ -216,7 +216,7 @@ def logs(ctx):
 @task
 def cloudlab(ctx, debug=False,
              manifest='manifest.xml', username='zpkhor', latency='100ms', worker_bw='75mbit',
-             primary_bw='25mbit'):
+             primary_bw='25mbit', log_dir=''):
     ''' Run benchmarks on CloudLab physical machines '''
     nodes = int(os.environ.get('NODES', 4))
     rate = int(os.environ.get('RATE', 8300))
@@ -280,7 +280,7 @@ def cloudlab(ctx, debug=False,
             no_send_payment=no_send_payment,
             zipf_exponent=zipf_exponent,
             new_scheduler=new_scheduler,
-        ).run(debug)
+        ).run(debug, log_dir=log_dir if log_dir else None)
         print(ret.result())
     except BenchError as e:
         Print.error(e)
@@ -293,6 +293,120 @@ def cloudlab_install(ctx, manifest='manifest.xml', username='zpkhor'):
         CloudLabInstaller(manifest, username).install()
     except BenchError as e:
         Print.error(e)
+
+
+@task
+def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
+    ''' Probe all CloudLab nodes via SSH, then ping LAN IPs from client.
+        Writes unreachable nodes to cloudlab_ban.txt. '''
+    from benchmark.instance import CloudLabInstanceManager
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    import datetime
+
+    timeout = int(timeout)
+    try:
+        mgr = CloudLabInstanceManager.make(manifest, username, ban_file=None)
+
+        # --- Stage 1: SSH reachability from this machine ---
+        all_entries = (
+            [(v, 'validator') for v in mgr.manifest.validators]
+            + [(c, 'client') for c in mgr.manifest.clients]
+        )
+        Print.info(f'Stage 1: SSH probe {len(all_entries)} nodes (timeout={timeout}s)...')
+
+        def _ssh_probe(entry):
+            client_id = entry['client_id']
+            ssh_host = entry['ssh_host']
+            ssh_ok = False
+            ssh_err = ''
+            try:
+                result = Connection(ssh_host, user=username).run(
+                    'echo ok', hide=True, timeout=timeout,
+                )
+                ssh_ok = result.stdout.strip() == 'ok'
+            except Exception as e:
+                ssh_err = str(e)
+            return client_id, ssh_host, ssh_ok, ssh_err
+
+        ssh_results = {}
+        with ThreadPoolExecutor(max_workers=min(len(all_entries), 32)) as pool:
+            futures = {pool.submit(_ssh_probe, e): (e, role) for e, role in all_entries}
+            for f in as_completed(futures):
+                entry, role = futures[f]
+                client_id, ssh_host, ssh_ok, ssh_err = f.result()
+                ssh_results[client_id] = (role, ssh_host, entry['ip'], ssh_ok, ssh_err)
+
+        banned = []
+        for client_id in sorted(ssh_results):
+            role, ssh_host, ip, ssh_ok, ssh_err = ssh_results[client_id]
+            status = 'OK' if ssh_ok else 'SSH_FAIL'
+            detail = f'  {status:12s} {role:10s} {client_id:12s} {ssh_host:40s} {ip}'
+            if not ssh_ok:
+                detail += f'  err={ssh_err}'
+                banned.append(client_id)
+            Print.info(detail)
+
+        # --- Stage 2: Ping LAN IPs from the client node ---
+        # Find a reachable client to use as the ping source
+        reachable_clients = [
+            c for c in mgr.manifest.clients
+            if ssh_results[c['client_id']][3]  # ssh_ok
+        ]
+        assert len(reachable_clients) > 0, 'No reachable client node to run ping from'
+        ping_client = reachable_clients[0]
+        ping_ssh_host = ping_client['ssh_host']
+        Print.info(f'\nStage 2: Ping LAN IPs from {ping_client["client_id"]} ({ping_ssh_host})...')
+
+        # Only ping nodes that passed SSH (no point pinging already-banned nodes)
+        ssh_ok_entries = [
+            (e, role) for e, role in all_entries
+            if e['client_id'] not in banned and e['client_id'] != ping_client['client_id']
+        ]
+
+        def _ping_from_client(entry):
+            client_id = entry['client_id']
+            ip = entry['ip']
+            ping_ok = False
+            try:
+                result = Connection(ping_ssh_host, user=username).run(
+                    f'ping -c 3 -W 2 {ip}', hide=True, timeout=timeout + 10,
+                )
+                ping_ok = result.return_code == 0
+            except Exception:
+                pass
+            return client_id, ip, ping_ok
+
+        ping_results = {}
+        with ThreadPoolExecutor(max_workers=min(len(ssh_ok_entries) + 1, 32)) as pool:
+            futures = {pool.submit(_ping_from_client, e): role for e, role in ssh_ok_entries}
+            for f in as_completed(futures):
+                client_id, ip, ping_ok = f.result()
+                ping_results[client_id] = ping_ok
+
+        for client_id in sorted(ping_results):
+            role, ssh_host, ip, _, _ = ssh_results[client_id]
+            ping_ok = ping_results[client_id]
+            status = 'OK' if ping_ok else 'PING_FAIL'
+            Print.info(f'  {status:12s} {role:10s} {client_id:12s} {ip}')
+            if not ping_ok:
+                banned.append(client_id)
+
+        # --- Write ban file ---
+        ban_file = 'cloudlab_ban.txt'
+        if banned:
+            with open(ban_file, 'w') as f:
+                f.write(f'# Generated by: fab cloudlab-check\n')
+                f.write(f'# {datetime.datetime.now().isoformat()}\n')
+                for cid in sorted(set(banned)):
+                    f.write(f'{cid}\n')
+            Print.warn(f'Wrote {len(set(banned))} banned nodes to {os.path.abspath(ban_file)}')
+        else:
+            if os.path.exists(ban_file):
+                os.remove(ban_file)
+            Print.heading(f'All {len(all_entries)} nodes reachable. No ban file needed.')
+
+    except Exception as e:
+        Print.error(BenchError('CloudLab check failed', e))
 
 
 @task
