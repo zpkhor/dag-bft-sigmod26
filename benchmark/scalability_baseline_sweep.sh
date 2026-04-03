@@ -105,7 +105,7 @@ run_one_config() {
         echo "CMD: LABEL=$LABEL $FAB_CMD"
         local OUTPUT
         OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
-        echo "$OUTPUT" | tee "$RUN_DIR/output.log"
+        echo "$OUTPUT" > "$RUN_DIR/output.log"
 
         check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$RUN_DIR/output.log" || true
 
