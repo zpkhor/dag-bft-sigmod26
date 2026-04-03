@@ -9,131 +9,38 @@ def parse_block(block):
     lines = block.split('\n')
     cmd_line = lines[0].strip()
 
-    def find(pattern, text, default='', keep_commas=False):
+    def find(pattern, text):
         m = re.search(pattern, text)
         if not m:
-            return default
-        return m.group(1) if keep_commas else m.group(1).replace(',', '')
+            return ''
+        return m.group(1).replace(',', '')
 
-    open_loop = find(r'\bOPEN_LOOP=(\S+)', cmd_line)
-    rate_weights = find(r'\bRATE_WEIGHTS=(\S+)', cmd_line, keep_commas=True)
-    routing_mode = find(r'\bROUTING_MODE=(\S+)', cmd_line)
-    rate = find(r'\bRATE=(\S+)', cmd_line)
-    duration = find(r'\bDURATION=(\S+)', cmd_line)
-    warmup = find(r'\bWARMUP=(\S+)', cmd_line)
-    cpus_per_validator = find(r'--cpus-per-validator=(\S+)', cmd_line)
-    worker_bw = find(r'--worker-bw=(\S+)', cmd_line)
-    workers_bw_mbps = find(r'\bWORKER_BANDWIDTHS_MBPS=(\S+)', cmd_line, keep_commas=True)
-    latency = find(r'--latency=(\S+)', cmd_line)
-    primary_bw = find(r'--primary-bw=(\S+)', cmd_line)
-    baseline = find(r'\bBASELINE=(\S+)', cmd_line)
-
-    committee_size = find(r'Committee size:\s*([\d,]+)\s*node', block)
-    input_rate = find(r'Input rate:\s*([\d,]+)\s*tx/s', block)
-    tx_size_B = find(r'Transaction size:\s*([\d,]+)\s*B', block)
-    bench_duration_s = find(r'Benchmark duration:\s*([\d,.]+)\s*s', block)
+    label = find(r'\bLABEL=(\S+)', cmd_line)
+    committed_tps = find(r'Committed TPS:\s*([\d,]+)\s*tx/s', block)
     commit_lat_mean_ms = find(r'f\+1 Commit latency \(workers\) \(mean\):\s*([\d,]+)\s*ms', block)
     commit_lat_p95_ms = find(r'f\+1 Commit latency \(workers\) \(p95\):\s*([\d,]+)\s*ms', block)
-    consensus_tps = find(r'Consensus TPS:\s*([\d,]+)\s*tx/s', block)
-    consensus_bps = find(r'Consensus BPS:\s*([\d,]+)\s*B/s', block)
-    committed_tps = find(r'Committed TPS:\s*([\d,]+)\s*tx/s', block)
-    committed_bps = find(r'Committed BPS:\s*([\d,]+)\s*B/s', block)
 
-    # Batch seal -> Quorum from the PER-STAGE section (the "All" column, not per-validator)
-    # Match the line in "PER-STAGE LATENCY BREAKDOWN (mean, ms)" section
-    # The line looks like: "  Batch seal -> Quorum:            475"
-    # We want only the first occurrence (the "All" column table)
-    batch_seal_to_quorum_mean_ms = find(r'Batch seal -> Quorum:\s*([\d,]+)', block)
-
-    # Per-validator TPS, mean latency, and p95 from PER-VALIDATOR COMMIT METRICS
-    # Lines look like: " 0            647           52,615       65,234       0"
-    validator_metrics = re.findall(r'^\s+(\d+)\s+([\d,]+)\s+([\d,]+)\s+([\d,]+)\s+\d+\s*$', block, re.MULTILINE)
-    per_validator_tps = ','.join(m[1].replace(',', '') for m in validator_metrics)
-    per_validator_latency = ','.join(m[2].replace(',', '') for m in validator_metrics)
-    per_validator_p95 = ','.join(m[3].replace(',', '') for m in validator_metrics)
-
-    return [
-        duration, open_loop, rate_weights, routing_mode, warmup,
-        cpus_per_validator, worker_bw, workers_bw_mbps, latency, primary_bw, baseline,
-        committee_size, input_rate, tx_size_B,
-        commit_lat_mean_ms, commit_lat_p95_ms,
-        consensus_tps, consensus_bps,
-        committed_tps, committed_bps,
-        batch_seal_to_quorum_mean_ms,
-        per_validator_tps, per_validator_latency, per_validator_p95,
-        cmd_line,
-    ]
+    return [label, committed_tps, commit_lat_mean_ms, commit_lat_p95_ms, cmd_line]
 
 
-HEADER = [
-    'duration', 'open_loop', 'rate_weights', 'routing_mode', 'warmup',
-    'cpus_per_validator', 'worker_bw', 'workers_bw_mbps', 'latency', 'primary_bw', 'baseline',
-    'committee_size', 'input_rate', 'tx_size_B',
-    'commit_lat_mean_ms', 'commit_lat_p95_ms',
-    'consensus_tps', 'consensus_bps',
-    'committed_tps', 'committed_bps',
-    'batch_seal_to_quorum_mean_ms',
-    'per_validator_tps', 'per_validator_latency', 'per_validator_p95',
-    'cmd',
-]
-
-EXCLUDE_HEADER = [
-    'open_loop',
-    'rate_weights',
-    'routing_mode',
-    'cpus_per_validator',
-    'latency',
-    'worker_bw',
-    'workers_bw_mbps',
-    'primary_bw',
-    'tx_size_B',
-    'duration',
-    'warmup',
-    'consensus_tps', 'consensus_bps',
-    'committee_size',
-    # 'tx_size_B',
-    # 'consensus_tps',
-    # 'consensus_bps',
-    'committed_bps',
-    # 'cmd',
-]
-
-
-def print_aligned(rows):
-    widths = [max(len(r[i]) for r in rows) for i in range(len(rows[0]))]
-    for row in rows:
-        print('  '.join(cell.ljust(widths[i]) for i, cell in enumerate(row)))
+HEADER = ['label', 'committed_tps', 'commit_lat_mean_ms', 'commit_lat_p95_ms', 'cmd']
 
 
 def main():
-    align = '--align' in sys.argv
-    args = [a for a in sys.argv[1:] if not a.startswith('--')]
-    if not args:
-        print(f'Usage: {sys.argv[0]} [--align] <merged_output.log>', file=sys.stderr)
+    if len(sys.argv) < 2:
+        print(f'Usage: {sys.argv[0]} <merged_output.log>', file=sys.stderr)
         sys.exit(1)
 
-    with open(args[0]) as f:
+    with open(sys.argv[1]) as f:
         content = f.read()
 
-    # Split on CMD: — first element before first CMD: is discarded if empty
     parts = content.split('CMD: ')
     blocks = [p for p in parts[1:] if p.strip()]
 
-    exclude = set(EXCLUDE_HEADER)
-    active_header = [c for c in HEADER if c not in exclude]
-    active_indices = [HEADER.index(c) for c in active_header]
-
-    rows = [active_header]
+    writer = csv.writer(sys.stdout)
+    writer.writerow(HEADER)
     for block in blocks:
-        row = parse_block(block)
-        rows.append([row[i] for i in active_indices])
-
-    if align:
-        print_aligned(rows)
-    else:
-        writer = csv.writer(sys.stdout)
-        for row in rows:
-            writer.writerow(row)
+        writer.writerow(parse_block(block))
 
 
 if __name__ == '__main__':

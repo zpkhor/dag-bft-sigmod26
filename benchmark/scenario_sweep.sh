@@ -23,54 +23,53 @@ RESULTS_DIR="$(pwd)/results/scenario_${MODE}_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$RESULTS_DIR"
 OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 
-# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES|BASELINE|ROUTING_MODE"
+# Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES|ROUTING_MODE"
 # label must end with _r<rate> (e.g. n4_rate_imb_r100000); rate is extracted from there.
-# ROUTING_MODE: empty for default routing, "round-robin" for round-robin baseline.
+# ROUTING_MODE: empty for default routing, "round-robin" for round-robin, "baseline" for baseline.
 # CONFIGS=(
-#     "n4_r90000|500,500,500,500|1,1,1,1|4|0|"
-#     "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|0|"
+#     "n4_r90000|500,500,500,500|1,1,1,1|4|"
+#     "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|"
 
 #     # n4 versions (for comparison with n7 configs above)
-#     "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|0|"
-#     "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|0|"
-#     # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|0|round-robin"
+#     "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|"
+#     "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|"
+#     # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|round-robin"
 
 #     # bw_f
-#     "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|0|"
-#     "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|0|"
-#     # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|0|round-robin"
+#     "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|"
+#     "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|"
+#     # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|round-robin"
 
 #     # bw_f1
-#     "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|0|"
-#     "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|0|"
-#     # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|0|round-robin"
+#     "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|"
+#     "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|"
+#     # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|round-robin"
 
 #     # rr (baseline has no certificate overhead)
-#     # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|0|round-robin"
+#     # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|round-robin"
 # )
 
-# BASELINE: 1
 CONFIGS=(
-    "n4_r90000|500,500,500,500|1,1,1,1|4|0|"
-    "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|0|"
+    # "n4_r90000|500,500,500,500|1,1,1,1|4|"
+    "n7_r90000|500,500,500,500,500,500,500|1,1,1,1,1,1,1|7|"
 
     # n4 versions (for comparison with n7 configs above)
-    "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|0|"
-    "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|0|"
-    # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|0|round-robin"
+    "n4_rate_imb_r90000|500,500,500,500|4.5,1,1,1|4|"
+    "n7_rate_imb_r90000|500,500,500,500,500,500,500|9,1,1,1,1,1,1|7|"
+    # "n4_rate_imb_rr_r90000|500,500,500,500|4.5,1,1,1|4|round-robin"
 
     # bw_f
-    "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|0|"
-    "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|0|"
-    # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|0|round-robin"
+    "n4_bw_f_r90000|500,500,500,150|1,1,1,1|4|"
+    "n7_bw_f_r90000|500,500,500,500,500,150,150|1,1,1,1,1,1,1|7|"
+    # "n4_bw_f_rr_r90000|500,500,500,150|1,1,1,1|4|round-robin"
 
     # bw_f1
-    "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|0|"
-    "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|0|"
-    # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|0|round-robin"
+    # "n4_bw_f1_r60000|500,500,150,150|1,1,1,1|4|"
+    # "n7_bw_f1_r60000|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7|"
+    # "n4_bw_f1_rr_r45000|500,500,150,150|1,1,1,1|4|round-robin"
 
     # rr (baseline has no certificate overhead)
-    # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|0|round-robin"
+    # "n4_rr_r95000|500,500,500,500|1,1,1,1|4|round-robin"
 
 )
 
@@ -149,7 +148,7 @@ echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for CONFIG in "${CONFIGS[@]}"; do
-    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL BASELINE ROUTING_MODE_VAL <<< "$CONFIG"
+    IFS='|' read -r LABEL BANDWIDTHS_MBPS RATE_WEIGHTS NODES_VAL ROUTING_MODE_VAL <<< "$CONFIG"
     [[ $LABEL =~ _r([0-9]+)$ ]] || { echo "ERROR: label '$LABEL' missing _r<rate> suffix" >&2; exit 1; }
     RATE="${BASH_REMATCH[1]}"
     ROUTING_MODE_ENV=""
@@ -160,18 +159,18 @@ for CONFIG in "${CONFIGS[@]}"; do
             mkdir -p "$RUN_DIR"
 
             echo ""
-            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS baseline=$BASELINE routing=${ROUTING_MODE_VAL:-default} rate=$RATE Run: $RETRY/$RETRIES ---"
+            echo "--- $LABEL | nodes=$NODES_VAL bw=$BANDWIDTHS_MBPS rate_w=$RATE_WEIGHTS routing=${ROUTING_MODE_VAL:-default} rate=$RATE Run: $RETRY/$RETRIES ---"
 
             if [[ "$MODE" == "docker" ]]; then
-                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab docker --cpus-per-validator=$CPUS_PER_VALIDATOR --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             elif [[ "$MODE" == "cloudlab" ]]; then
-                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS BASELINE=$BASELINE RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab cloudlab --manifest=$MANIFEST --latency=$LATENCY --primary-bw=$PRIMARY_BW"
+                FAB_CMD="${ROUTING_MODE_ENV:+$ROUTING_MODE_ENV }NODES=$NODES_VAL WORKER_BANDWIDTHS_MBPS=$BANDWIDTHS_MBPS RATE_WEIGHTS=$RATE_WEIGHTS RATE=$RATE DURATION=$DURATION WARMUP=$WARMUP IN_MEMORY_STORE=1 fab cloudlab --manifest=$MANIFEST --latency=$LATENCY --primary-bw=$PRIMARY_BW"
             else
                 echo "ERROR: Unknown MODE=$MODE (expected docker or cloudlab)" >&2
                 exit 1
             fi
 
-            echo "CMD: $FAB_CMD" | tee -a "$OUTPUT_LOG"
+            echo "CMD: LABEL=$LABEL $FAB_CMD" | tee -a "$OUTPUT_LOG"
             OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
             echo "$OUTPUT" | tee "$RUN_DIR/output.log" >> "$OUTPUT_LOG"
 

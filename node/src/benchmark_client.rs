@@ -53,6 +53,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--no-send-payment 'Exclude SendPayment transactions'")
         .args_from_usage("--zipf-exponent=[FLOAT] 'Zipf exponent for account selection (0.0=uniform, default 0.0)'")
         .args_from_usage("--executor-skew-weights=[WEIGHTS] 'Comma-separated skew weights per executor sub-range within each validator (default: equal)'")
+        .args_from_usage("--rampup-secs=[INT] 'Ramp-up duration in seconds (default 5)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -159,6 +160,12 @@ async fn main() -> Result<()> {
         })
         .unwrap_or_default();
 
+    let rampup_secs: u64 = matches
+        .value_of("rampup-secs")
+        .unwrap_or("5")
+        .parse::<u64>()
+        .context("--rampup-secs must be a non-negative integer")?;
+
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
     ).context("Invalid --own-validator public key")?;
@@ -259,6 +266,7 @@ async fn main() -> Result<()> {
         zipf_exponent,
         num_tx_types,
         executor_skew_weights,
+        rampup_secs,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -285,6 +293,7 @@ struct Client {
     zipf_exponent: f64,
     num_tx_types: u8,
     executor_skew_weights: Vec<f64>,
+    rampup_secs: u64,
 }
 
 impl Client {
@@ -400,6 +409,7 @@ impl Client {
             let num_tx_types = self.num_tx_types;
             let executor_skew_weights = self.executor_skew_weights.clone();
             let total_num_accounts = total_num_accounts;
+            let rampup_secs = self.rampup_secs;
             let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
             handles.push(tokio::spawn(async move {
@@ -417,6 +427,7 @@ impl Client {
                     num_tx_types,
                     executor_skew_weights,
                     total_num_accounts,
+                    rampup_secs,
                 ).await
             }));
         }
@@ -454,11 +465,11 @@ async fn send_shard(
     num_tx_types: u8,
     executor_skew_weights: Vec<f64>,
     total_num_accounts: u64,
+    rampup_secs: u64,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
-    const RAMPUP_SECS: u64 = 2;
-    const RAMPUP_TICKS: u64 = RAMPUP_SECS * PRECISION;
+    let rampup_ticks = rampup_secs * PRECISION;
 
     let own_senders = &validator_senders[&own_validator];
     let num_workers = own_senders.len();
@@ -497,10 +508,10 @@ async fn send_shard(
         interval.as_mut().tick().await;
         let now = Instant::now();
 
-        let next_total = if counter < RAMPUP_TICKS {
-            rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * RAMPUP_SECS)
+        let next_total = if rampup_ticks > 0 && counter < rampup_ticks {
+            rate * (counter + 1) * (counter + 1) / (PRECISION * PRECISION * 2 * rampup_secs)
         } else {
-            rate * RAMPUP_SECS / 2 + rate * (counter + 1 - RAMPUP_TICKS) / PRECISION
+            rate * rampup_secs / 2 + rate * (counter + 1 - rampup_ticks) / PRECISION
         };
         let burst = next_total - total_sent;
 
