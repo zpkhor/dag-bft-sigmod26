@@ -41,6 +41,7 @@ class CloudLabBench:
         no_send_payment=False,
         zipf_exponent=0.0,
         new_scheduler=False,
+        executor_bw_kbps=10_000_000,
     ):
         self.username = username
         self.latency_ms = latency_ms
@@ -49,6 +50,7 @@ class CloudLabBench:
         self.no_send_payment = no_send_payment
         self.zipf_exponent = zipf_exponent
         self.new_scheduler = new_scheduler
+        self.executor_bw_kbps = executor_bw_kbps
 
         try:
             self.bench_parameters = BenchParameters(bench_parameters_dict)
@@ -202,12 +204,15 @@ class CloudLabBench:
             self._ssh(v_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
 
         def _shape_executor(i):
-            # Executor machines: strip all TC, no shaping needed.
-            # Executors are logically co-located with their validator;
-            # only placed on separate machines for CPU.
+            # Executor machines: cap inter-executor traffic at LAN bandwidth, no netem.
+            exec_bw = self.executor_bw_kbps
             script = '\n'.join([
                 'set -e',
+                self._detect_iface(),
                 self._strip_all_tc(),
+                f'tc qdisc add dev $IFACE root handle 1: htb default 10',
+                f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {exec_bw}kbit',
+                f'tc class add dev $IFACE parent 1:1 classid 1:10 htb rate {exec_bw}kbit ceil {exec_bw}kbit',
             ])
             self._ssh(e_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
 
@@ -256,7 +261,7 @@ class CloudLabBench:
             f'TC QoS applied: primary={primary_bw}kbps, '
             f'worker_bws={[self.worker_bws_kbps[i] for i in range(nodes)]}kbps, '
             f'client={max(self.worker_bws_kbps)}kbps'
-            f'{", executors=" + str(len(e_ssh)) + " machines (bypassed, co-located)" if e_ssh else ""}'
+            f'{", executors=" + str(len(e_ssh)) + " machines (" + str(self.executor_bw_kbps) + "kbps LAN cap, no netem)" if e_ssh else ""}'
         )
 
     def _kill(self, ssh_hosts, delete_logs=False):
