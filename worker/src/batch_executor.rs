@@ -14,7 +14,7 @@ use tokio::sync::mpsc::{Receiver, Sender};
 const FEEDBACK_INTERVAL: u64 = 100;
 
 /// To cap executor throughput to worker throughput
-const BUSY_SPINS: u64 = 0;
+const BUSY_SPINS: u64 = 75000; // 3 executor tps capped on xl170
 
 /// Represents a client reply request with named fields.
 pub struct ClientReplyRequest {
