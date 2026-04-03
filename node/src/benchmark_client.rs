@@ -397,6 +397,7 @@ impl Client {
             let size = self.size;
             let client_id = self.client_id;
             let num_tx_types = self.num_tx_types;
+            let executor_skew_weights = self.executor_skew_weights.clone();
             let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
             handles.push(tokio::spawn(async move {
@@ -412,6 +413,7 @@ impl Client {
                     size,
                     client_id,
                     num_tx_types,
+                    executor_skew_weights,
                 ).await
             }));
         }
@@ -447,6 +449,7 @@ async fn send_shard(
     size: usize,
     client_id: u8,
     num_tx_types: u8,
+    executor_skew_weights: Vec<f64>,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
@@ -473,6 +476,19 @@ async fn send_shard(
     let num_validators = sorted_validators.len();
     let mut validator_rr: HashMap<u64, usize> = HashMap::new();
 
+    // Precompute executor sub-range boundaries and cumulative weights for weighted sampling.
+    // Sub-ranges divide [account_start, account_start + num_accounts) into equal slices.
+    // If executor_skew_weights is empty, falls back to uniform sampling across the full range.
+    let num_executor_shards = executor_skew_weights.len();
+    let executor_cumulative_weights: Vec<f64> = if num_executor_shards > 0 {
+        let total: f64 = executor_skew_weights.iter().sum();
+        let mut cum = 0.0f64;
+        executor_skew_weights.iter().map(|w| { cum += w / total; cum }).collect()
+    } else {
+        vec![]
+    };
+    let shard_size = if num_executor_shards > 0 { num_accounts / num_executor_shards as u64 } else { 0 };
+
     'main: loop {
         interval.as_mut().tick().await;
         let now = Instant::now();
@@ -485,7 +501,22 @@ async fn send_shard(
         let burst = next_total - total_sent;
 
         for x in 0..burst {
-            let src_account_id = account_start + rng.gen_range(0, num_accounts);
+            let src_account_id = if num_executor_shards > 0 {
+                // Weighted sub-range selection: pick executor shard, then uniform within it.
+                let p: f64 = rng.gen();
+                let shard_idx = executor_cumulative_weights.iter().position(|&cum| p < cum)
+                    .unwrap_or(num_executor_shards - 1);
+                let shard_start = account_start + shard_idx as u64 * shard_size;
+                // Last shard extends to end of range to absorb rounding remainder.
+                let shard_count = if shard_idx == num_executor_shards - 1 {
+                    num_accounts - shard_idx as u64 * shard_size
+                } else {
+                    shard_size
+                };
+                shard_start + rng.gen_range(0, shard_count)
+            } else {
+                account_start + rng.gen_range(0, num_accounts)
+            };
 
             // Determine SmallBank tx type (cycle through types)
             let sb_tx_type = (burst_count % num_tx_types as u64) as u8;
