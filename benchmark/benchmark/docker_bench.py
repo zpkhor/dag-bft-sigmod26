@@ -571,10 +571,14 @@ networks:
             executor_commands = {}  # (validator_idx, executor_id) -> cmd
             for i in range(good_nodes):
                 for e in range(self.num_executors):
+                    range_args = ' '.join(
+                        f'--validator-range {s}:{c}'
+                        for s, c in zip(acct_starts, acct_counts)
+                    )
                     e_cmd = (
                         f"./node {v} run --keys .node-{i}.json --committee .committee.json "
                         f"--store .db-{i} --parameters .parameters.json executor --id {e} "
-                        f"--account-start {acct_starts[i]} --account-count {acct_counts[i]}"
+                        f"{range_args}"
                         f" 2> /logs/executor-{i}-{e}.log"
                     )
                     executor_commands[(i, e)] = e_cmd

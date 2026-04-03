@@ -1,7 +1,7 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 use anyhow::{Context, Result};
 use bytes::Bytes;
-use clap::{crate_name, crate_version, App, AppSettings, ArgMatches, SubCommand};
+use clap::{crate_name, crate_version, App, AppSettings, Arg, ArgMatches, SubCommand};
 use config::Export as _;
 use config::Import as _;
 use config::{Committee, ExecutorId, KeyPair, Parameters, ShardingStrategy, WorkerId};
@@ -46,8 +46,13 @@ async fn main() -> Result<()> {
                     SubCommand::with_name("executor")
                         .about("Run a single executor")
                         .args_from_usage("--id=<INT> 'The executor id'")
-                        .args_from_usage("--account-start=<INT> 'Start of this validator\\'s account range'")
-                        .args_from_usage("--account-count=<INT> 'Number of accounts in this validator\\'s range'"),
+                        .arg(Arg::with_name("validator-range")
+                            .long("validator-range")
+                            .value_name("START:COUNT")
+                            .help("Validator account range (format: start:count). Repeat once per validator.")
+                            .required(true)
+                            .multiple(true)
+                            .takes_value(true)),
                 )
                 .setting(AppSettings::SubcommandRequiredElseHelp),
         )
@@ -151,22 +156,24 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 .unwrap()
                 .parse::<ExecutorId>()
                 .context("The executor id must be a positive integer")?;
-            let account_start = sub_matches
-                .value_of("account-start")
+            let validator_ranges: Vec<(u64, u64)> = sub_matches
+                .values_of("validator-range")
                 .unwrap()
-                .parse::<u64>()
-                .context("--account-start must be a non-negative integer")?;
-            let account_count = sub_matches
-                .value_of("account-count")
-                .unwrap()
-                .parse::<u64>()
-                .context("--account-count must be a positive integer")?;
+                .map(|s| {
+                    let parts: Vec<&str> = s.splitn(2, ':').collect();
+                    assert!(parts.len() == 2, "--validator-range must be 'start:count', got: {}", s);
+                    let start = parts[0].parse::<u64>()
+                        .expect("--validator-range start must be a non-negative integer");
+                    let count = parts[1].parse::<u64>()
+                        .expect("--validator-range count must be a positive integer");
+                    (start, count)
+                })
+                .collect();
             let sharding_strategy =
                 ShardingStrategy::from_str(&parameters.sharding_strategy);
             let initial_partition = config::create_initial_partition(
                 parameters.num_executors,
-                account_start,
-                account_count,
+                &validator_ranges,
                 sharding_strategy,
             );
             Executor::spawn(
