@@ -369,6 +369,7 @@ impl Client {
 
         let num_regions = self.sorted_validators.len();
         let total_weight: f64 = self.rate_weights.iter().sum();
+        let total_num_accounts: u64 = self.account_ranges.values().map(|&(_, count)| count).sum();
 
         // NOTE: This log entry is used to compute performance.
         info!("Start sending transactions");
@@ -398,6 +399,7 @@ impl Client {
             let client_id = self.client_id;
             let num_tx_types = self.num_tx_types;
             let executor_skew_weights = self.executor_skew_weights.clone();
+            let total_num_accounts = total_num_accounts;
             let stagger_ms = BURST_DURATION * region_id as u64 / num_regions as u64;
 
             handles.push(tokio::spawn(async move {
@@ -414,6 +416,7 @@ impl Client {
                     client_id,
                     num_tx_types,
                     executor_skew_weights,
+                    total_num_accounts,
                 ).await
             }));
         }
@@ -450,6 +453,7 @@ async fn send_shard(
     client_id: u8,
     num_tx_types: u8,
     executor_skew_weights: Vec<f64>,
+    total_num_accounts: u64,
 ) -> Result<()> {
     const PRECISION: u64 = 20;
     const BURST_DURATION: u64 = 1000 / PRECISION;
@@ -529,10 +533,10 @@ async fn send_shard(
                 _ => unreachable!(),
             };
 
-            // dest = src for single-account txs; random different account for SendPayment
+            // dest = src for single-account txs; uniform from global range for SendPayment
             let dest_account_id = if sb_tx_type == 4 {
                 loop {
-                    let d = account_start + rng.gen_range(0, num_accounts);
+                    let d = rng.gen_range(0, total_num_accounts);
                     if d != src_account_id {
                         break d;
                     }
