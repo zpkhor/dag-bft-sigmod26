@@ -22,6 +22,8 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
     warmup = int(os.environ.get('WARMUP', 0))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    e_skew_weights_raw = os.environ.get('E_SKEW_WEIGHTS')
+    e_skew_weights = [float(w) for w in e_skew_weights_raw.split(',')] if e_skew_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     worker_bws_raw = os.environ.get('WORKER_BANDWIDTHS_MBPS')
@@ -47,6 +49,7 @@ def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
         'tx_size': 512,
         'duration': duration,
         'rate_weights': rate_weights,
+        'e_skew_weights': e_skew_weights,
         'account_weights': account_weights,
         'warmup': warmup,
         'num_accounts': num_accounts,
@@ -224,6 +227,8 @@ def cloudlab(ctx, debug=False,
     warmup = int(os.environ.get('WARMUP', 5))
     rate_weights_raw = os.environ.get('RATE_WEIGHTS')
     rate_weights = [float(w) for w in rate_weights_raw.split(',')] if rate_weights_raw else None
+    e_skew_weights_raw = os.environ.get('E_SKEW_WEIGHTS')
+    e_skew_weights = [float(w) for w in e_skew_weights_raw.split(',')] if e_skew_weights_raw else None
     account_weights_raw = os.environ.get('ACCOUNT_WEIGHTS')
     account_weights = [int(w) for w in account_weights_raw.split(',')] if account_weights_raw else None
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
@@ -247,6 +252,7 @@ def cloudlab(ctx, debug=False,
         'tx_size': 512,
         'duration': duration,
         'rate_weights': rate_weights,
+        'e_skew_weights': e_skew_weights,
         'account_weights': account_weights,
         'warmup': warmup,
         'num_accounts': num_accounts,
