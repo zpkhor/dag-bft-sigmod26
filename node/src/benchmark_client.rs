@@ -52,6 +52,7 @@ async fn main() -> Result<()> {
         .args_from_usage("--client-id=[INT] 'Client identifier (default 0)'")
         .args_from_usage("--no-send-payment 'Exclude SendPayment transactions'")
         .args_from_usage("--zipf-exponent=[FLOAT] 'Zipf exponent for account selection (0.0=uniform, default 0.0)'")
+        .args_from_usage("--executor-skew-weights=[WEIGHTS] 'Comma-separated skew weights per executor sub-range within each validator (default: equal)'")
         .setting(AppSettings::ArgRequiredElseHelp)
         .get_matches();
 
@@ -149,6 +150,15 @@ async fn main() -> Result<()> {
         .parse::<f64>()
         .context("--zipf-exponent must be a float")?;
 
+    let executor_skew_weights: Vec<f64> = matches
+        .value_of("executor-skew-weights")
+        .map(|s| {
+            s.split(',')
+                .map(|w| w.parse::<f64>().expect("executor-skew-weights must be numbers"))
+                .collect()
+        })
+        .unwrap_or_default();
+
     let own_validator: PublicKey = PublicKey::decode_base64(
         matches.value_of("own-validator").unwrap()
     ).context("Invalid --own-validator public key")?;
@@ -190,6 +200,13 @@ async fn main() -> Result<()> {
         rate_weights
     };
 
+    if !executor_skew_weights.is_empty() {
+        assert!(
+            executor_skew_weights.iter().all(|&w| w > 0.0),
+            "executor-skew-weights must all be positive"
+        );
+    }
+
     // NOTE: This log entry is used to compute performance.
     info!("Transactions size: {} B", size);
 
@@ -221,8 +238,8 @@ async fn main() -> Result<()> {
     let num_tx_types: u8 = if no_send_payment { 4 } else { 5 };
 
     info!(
-        "client_id={}, no_send_payment={}, zipf_exponent={}, num_tx_types={}",
-        client_id, no_send_payment, zipf_exponent, num_tx_types
+        "client_id={}, no_send_payment={}, zipf_exponent={}, num_tx_types={}, executor_skew_weights={:?}",
+        client_id, no_send_payment, zipf_exponent, num_tx_types, executor_skew_weights
     );
 
     let client = Client {
@@ -241,6 +258,7 @@ async fn main() -> Result<()> {
         no_send_payment,
         zipf_exponent,
         num_tx_types,
+        executor_skew_weights,
     };
 
     // Wait for all nodes to be online and synchronized.
@@ -266,6 +284,7 @@ struct Client {
     no_send_payment: bool,
     zipf_exponent: f64,
     num_tx_types: u8,
+    executor_skew_weights: Vec<f64>,
 }
 
 impl Client {
