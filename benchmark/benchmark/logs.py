@@ -22,11 +22,19 @@ def to_posix(string):
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
-                 duration=None, warmup=0, verbose=False):
+                 duration=None, warmup=0, verbose=False, executor_logs=None):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
+
+        # Parse executor logs: executor_logs is a dict {(validator_id, executor_id): content}
+        # Result: self.executor_total_executed[(validator_id, executor_id)] = final cumulative count
+        self.executor_total_executed = {}
+        if executor_logs:
+            for (v, e), content in executor_logs.items():
+                matches = findall(r'cumulative total_executed (\d+)', content)
+                self.executor_total_executed[(v, e)] = int(matches[-1]) if matches else 0
 
         self.faults = faults
         self.bench_duration = float(duration) if duration is not None else None
@@ -502,6 +510,19 @@ class LogParser:
         }
         return result, percentages
 
+    def _executor_load_distribution(self):
+        # Aggregate by executor index (averaged across validators, since all process the same global set).
+        # Returns (counts_by_executor_idx, percentages_by_executor_idx) where counts are averaged.
+        if not self.executor_total_executed:
+            return None, None
+        by_executor = defaultdict(list)
+        for (v, e), count in self.executor_total_executed.items():
+            by_executor[e].append(count)
+        avg_counts = {e: sum(counts) // len(counts) for e, counts in sorted(by_executor.items())}
+        total = sum(avg_counts.values())
+        percentages = {e: (c / total * 100 if total else 0) for e, c in avg_counts.items()}
+        return avg_counts, percentages
+
     def _per_validator_committed_tps(self):
         if not self.commits:
             return {}
@@ -950,6 +971,11 @@ class LogParser:
         ]
         for v in sorted(tx_counts.keys()):
             lines.append(f' Validator {v}: {tx_counts[v]:,} tx ({percentages[v]:.1f}%)\n')
+        exec_counts, exec_pcts = self._executor_load_distribution()
+        if exec_counts is not None:
+            lines.append('\n + EXECUTOR LOAD DISTRIBUTION (avg across validators):\n')
+            for e in sorted(exec_counts.keys()):
+                lines.append(f' Executor {e}: {exec_counts[e]:,} tx ({exec_pcts[e]:.1f}%)\n')
         lines.append(
             '\n'
             ' + PER-VALIDATOR COMMIT METRICS:\n'
@@ -1088,6 +1114,13 @@ class LogParser:
             if m:
                 workers_by_validator[int(m.group(1))].append(content)
 
+        executor_logs = {}
+        for filename in sorted(glob(join(directory, 'executor-*.log'))):
+            m = search(r'executor-(\d+)-(\d+)', basename(filename))
+            if m:
+                with open(filename, 'r') as f:
+                    executor_logs[(int(m.group(1)), int(m.group(2)))] = f.read()
+
         return cls(
             clients, primaries, workers, faults=faults,
             workers_by_validator=dict(workers_by_validator),
@@ -1095,4 +1128,5 @@ class LogParser:
             duration=duration,
             warmup=warmup,
             verbose=verbose,
+            executor_logs=executor_logs if executor_logs else None,
         )
