@@ -640,6 +640,9 @@ class CloudLabBench:
             Print.info('Downloading logs...')
             if log_dir:
                 os.makedirs(log_dir, exist_ok=True)
+                for f in os.listdir(log_dir):
+                    if f.endswith('.log'):
+                        os.remove(os.path.join(log_dir, f))
             else:
                 cmd = CommandMaker.clean_logs()
                 subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
