@@ -257,6 +257,7 @@ def cloudlab(ctx, debug=False,
     no_send_payment = os.environ.get('NO_SEND_PAYMENT', '0') == '1'
     zipf_exponent = float(os.environ.get('ZIPF_EXPONENT', 0.0))
     new_scheduler = os.environ.get('NEW_SCHEDULER', '0') == '1'
+    use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', 'false').lower() in ('1', 'true', 'yes')
     worker_bws_kbps = [int(v) * 1000 for v in worker_bws_raw.split(',')] if worker_bws_raw else [int(worker_bw[:-4]) * 1000] * bench_params['nodes']
     node_params = {
         'header_size': 1_000,
@@ -266,6 +267,7 @@ def cloudlab(ctx, debug=False,
         'sync_retry_nodes': 3,
         'batch_size': 500_000,
         'max_batch_delay': 200,
+        'use_writeback_executor': use_writeback_executor,
     }
     try:
         ret = CloudLabBench(
