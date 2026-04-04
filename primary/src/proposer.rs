@@ -29,7 +29,7 @@ pub struct Proposer {
     /// Receives the parents to include in the next header (along with their round number).
     rx_core: Receiver<(Vec<Digest>, Round)>,
     /// Receives the batches' digests from our workers.
-    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>,
+    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u32, u16>, QuorumMetrics)>,
     /// Sends newly created headers to the `Core`.
     tx_core: Sender<Header>,
 
@@ -42,7 +42,7 @@ pub struct Proposer {
     /// Keeps track of the size (in bytes) of batches' digests that we received so far.
     payload_size: usize,
     /// Aggregated account tx counts across batches pending in the next header.
-    account_counts: BTreeMap<u64, u64>,
+    account_counts: BTreeMap<u32, u16>,
     /// Quorum metrics per batch digest waiting to be included in the next header.
     quorum_metrics: BTreeMap<Digest, QuorumMetrics>,
 }
@@ -56,7 +56,7 @@ impl Proposer {
         header_size: usize,
         max_header_delay: u64,
         rx_core: Receiver<(Vec<Digest>, Round)>,
-        rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>,
+        rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u32, u16>, QuorumMetrics)>,
         tx_core: Sender<Header>,
     ) {
         let genesis = Certificate::genesis(committee)

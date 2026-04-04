@@ -272,7 +272,6 @@ class CloudLabInstanceManager:
                     f'({sorted(banned)})'
                 )
                 assert len(manifest.validators) > 0, 'All validators are banned'
-                assert len(manifest.clients) > 0, 'All clients are banned'
         return cls(manifest)
 
     def num_validators(self):

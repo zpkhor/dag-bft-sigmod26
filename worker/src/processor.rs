@@ -47,10 +47,10 @@ impl Processor {
                 } else {
                     match bincode::deserialize::<crate::worker::WorkerMessage>(&batch) {
                         Ok(crate::worker::WorkerMessage::Batch(txs)) => {
-                            let mut counts = std::collections::BTreeMap::new();
+                            let mut counts: std::collections::BTreeMap<u32, u16> = std::collections::BTreeMap::new();
                             for tx in &txs {
                                 if tx.len() >= 18 {
-                                    let account_id = u64::from_be_bytes(tx[10..18].try_into().unwrap());
+                                    let account_id = u64::from_be_bytes(tx[10..18].try_into().unwrap()) as u32;
                                     *counts.entry(account_id).or_insert(0) += 1;
                                 }
                             }

@@ -137,7 +137,7 @@ run_one_config() {
         echo "CMD: LABEL=$LABEL $FAB_CMD"
         local OUTPUT
         OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
-        echo "$OUTPUT" > "$RUN_DIR/output.log"
+        { echo "CMD: LABEL=$LABEL $FAB_CMD"; echo "$OUTPUT"; } > "$RUN_DIR/output.log"
 
         if [[ "$MODE" == "docker" ]]; then
             cp -r logs/* "$RUN_DIR/" 2>/dev/null || true

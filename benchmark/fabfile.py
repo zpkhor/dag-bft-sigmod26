@@ -496,10 +496,7 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
         mgr = CloudLabInstanceManager.make(manifest, username, ban_file=None)
 
         # --- Stage 1: SSH reachability from this machine ---
-        all_entries = (
-            [(v, 'validator') for v in mgr.manifest.validators]
-            + [(c, 'client') for c in mgr.manifest.clients]
-        )
+        all_entries = [(v, 'validator') for v in mgr.manifest.validators]
         Print.info(f'Stage 1: SSH probe {len(all_entries)} nodes (timeout={timeout}s)...')
 
         def _ssh_probe(entry):
@@ -534,14 +531,13 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
                 banned.append(client_id)
             Print.info(detail)
 
-        # --- Stage 2: Ping LAN IPs from the client node ---
-        # Find a reachable client to use as the ping source
-        reachable_clients = [
-            c for c in mgr.manifest.clients
-            if ssh_results[c['client_id']][3]  # ssh_ok
+        # --- Stage 2: Ping LAN IPs from the first reachable validator ---
+        reachable_validators = [
+            v for v in mgr.manifest.validators
+            if ssh_results[v['client_id']][3]  # ssh_ok
         ]
-        assert len(reachable_clients) > 0, 'No reachable client node to run ping from'
-        ping_client = reachable_clients[0]
+        assert len(reachable_validators) > 0, 'No reachable validator node to run ping from'
+        ping_client = reachable_validators[0]
         ping_ssh_host = ping_client['ssh_host']
         Print.info(f'\nStage 2: Ping LAN IPs from {ping_client["client_id"]} ({ping_ssh_host})...')
 
@@ -551,32 +547,35 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
             if e['client_id'] not in banned and e['client_id'] != ping_client['client_id']
         ]
 
-        def _ping_from_client(entry):
-            client_id = entry['client_id']
-            ip = entry['ip']
-            ping_ok = False
-            try:
-                result = Connection(ping_ssh_host, user=username).run(
-                    f'ping -c 3 -W 2 {ip}', hide=True, timeout=timeout + 10,
-                )
-                ping_ok = result.return_code == 0
-            except Exception:
-                pass
-            return client_id, ip, ping_ok
+        ping_results = {}  # client_id -> avg_rtt_ms; absent = FAIL
+        ip_to_cid = {}
+        if ssh_ok_entries:
+            ip_to_cid = {e['ip']: e['client_id'] for e, _ in ssh_ok_entries}
+            ping_cmds = ' & '.join(
+                f'(ping -c 5 -q {ip} 2>/dev/null | awk \'/avg/{{print "{ip}", $4}}\')'
+                for ip in ip_to_cid
+            )
+            result = Connection(ping_ssh_host, user=username).run(
+                f'{ping_cmds} & wait', hide=True, timeout=30,
+            )
+            for line in result.stdout.splitlines():
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    ip, rtt_str = parts
+                    if ip in ip_to_cid:
+                        try:
+                            avg_ms = float(rtt_str.split('/')[1])
+                            ping_results[ip_to_cid[ip]] = avg_ms
+                        except (ValueError, IndexError):
+                            pass
 
-        ping_results = {}
-        with ThreadPoolExecutor(max_workers=min(len(ssh_ok_entries) + 1, 32)) as pool:
-            futures = {pool.submit(_ping_from_client, e): role for e, role in ssh_ok_entries}
-            for f in as_completed(futures):
-                client_id, ip, ping_ok = f.result()
-                ping_results[client_id] = ping_ok
-
-        for client_id in sorted(ping_results):
+        for client_id in sorted(ip_to_cid.values()):
             role, ssh_host, ip, _, _ = ssh_results[client_id]
-            ping_ok = ping_results[client_id]
-            status = 'OK' if ping_ok else 'PING_FAIL'
-            Print.info(f'  {status:12s} {role:10s} {client_id:12s} {ip}')
-            if not ping_ok:
+            if client_id in ping_results:
+                rtt = ping_results[client_id]
+                Print.info(f'  {"OK":12s} {role:10s} {client_id:12s} {ip}  rtt={rtt:.1f}ms')
+            else:
+                Print.info(f'  {"PING_FAIL":12s} {role:10s} {client_id:12s} {ip}')
                 banned.append(client_id)
 
         # --- Write ban file ---
@@ -635,9 +634,9 @@ def cloudlab_get_ssh(ctx, manifest='manifest.xml', username='zpkhor'):
 
 @task
 def cloudlab_nettest(ctx, manifest='manifest.xml', username='zpkhor'):
-    ''' Test bandwidth (iperf3) and pairwise latency on CloudLab machines '''
+    ''' Test bandwidth (iperf3) on CloudLab machines '''
     from benchmark.instance import CloudLabInstanceManager
-    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import ThreadPoolExecutor
     import json as _json
     import time
     try:
@@ -740,45 +739,6 @@ def cloudlab_nettest(ctx, manifest='manifest.xml', username='zpkhor'):
             _kill_iperf(all_ssh[target])
             time.sleep(0.5)
 
-        # === Latency test (pairwise RTT via ping) ===
-        Print.info('Testing pairwise latency (ping, 5 probes each)...')
-        rtt_matrix = [[None] * n for _ in range(n)]
-
-        def _ping(i, j):
-            if i == j:
-                return i, j, 0.0
-            result = ssh(all_ssh[i]).run(
-                f'ping -c 5 -q {all_ips[j]}',
-                hide=True, warn=True,
-            )
-            # Parse "rtt min/avg/max/mdev = ..."
-            for line in result.stdout.splitlines():
-                if 'avg' in line:
-                    # e.g. "rtt min/avg/max/mdev = 49.5/50.1/50.8/0.4 ms"
-                    stats = line.split('=')[1].strip().split('/')
-                    avg_ms = float(stats[1])
-                    return i, j, avg_ms
-            assert False, f'ping {labels[i]} -> {labels[j]} failed: {result.stdout}'
-
-        with ThreadPoolExecutor(max_workers=n * n) as pool:
-            futures = []
-            for i in range(n):
-                for j in range(n):
-                    futures.append(pool.submit(_ping, i, j))
-            for f in as_completed(futures):
-                i, j, rtt = f.result()
-                rtt_matrix[i][j] = rtt
-
-        # Print RTT matrix
-        Print.info('')
-        Print.info('RTT matrix (ms):')
-        header = '{:<12s}'.format('') + ''.join('{:>12s}'.format(l) for l in labels)
-        Print.info(header)
-        for i in range(n):
-            row = '{:<12s}'.format(labels[i])
-            row += ''.join('{:>12.1f}'.format(rtt_matrix[i][j]) for j in range(n))
-            Print.info(row)
-
         Print.heading('Network test complete.')
     except Exception as e:
         # Clean up iperf3
@@ -788,3 +748,68 @@ def cloudlab_nettest(ctx, manifest='manifest.xml', username='zpkhor'):
             except Exception:
                 pass
         Print.error(BenchError('Network test failed', e))
+
+
+@task
+def cloudlab_pingtest(ctx, manifest='manifest.xml', username='zpkhor'):
+    ''' Test pairwise latency (ping RTT) on CloudLab machines '''
+    from benchmark.instance import CloudLabInstanceManager
+    from concurrent.futures import ThreadPoolExecutor
+    try:
+        mgr = CloudLabInstanceManager.make(manifest, username)
+        v_ssh = mgr.validator_ssh_hosts()
+        v_ips = mgr.validator_ips()
+        c_ssh = mgr.client_ssh_hosts()
+        all_ssh = v_ssh + c_ssh
+        all_ips = v_ips + mgr.client_ips()
+        n = len(all_ssh)
+        labels = [f'node-{i}' for i in range(len(v_ssh))] + [f'client-{i}' for i in range(len(c_ssh))]
+
+        def ssh(host):
+            return Connection(host, user=username)
+
+        # One SSH session per source node; all target pings run as background jobs
+        # to avoid opening n simultaneous SSH connections to the same host.
+        Print.info('Testing pairwise latency (ping, 5 probes each)...')
+        rtt_matrix = [[None] * n for _ in range(n)]
+
+        def _ping_row(i):
+            targets = [(j, all_ips[j]) for j in range(n) if j != i]
+            ping_cmds = ' & '.join(
+                f'(ping -c 5 -q {ip} 2>/dev/null | awk -v j={j} \'/avg/{{split($4,a,"/"); print j,a[2]}}\')'
+                for j, ip in targets
+            )
+            result = ssh(all_ssh[i]).run(f'{ping_cmds} & wait', hide=True, warn=True)
+            row = {i: 0.0}
+            for line in result.stdout.splitlines():
+                parts = line.strip().split()
+                if len(parts) == 2:
+                    j, avg_ms = int(parts[0]), float(parts[1])
+                    row[j] = avg_ms
+            missing = [j for j in range(n) if j not in row]
+            if missing:
+                Print.warn(f'ping row {i}: no reply from j={missing} (100% loss?)')
+            return i, row
+
+        with ThreadPoolExecutor(max_workers=n) as pool:
+            for i, row in pool.map(_ping_row, range(n)):
+                for j, rtt in row.items():
+                    rtt_matrix[i][j] = rtt
+
+        Print.info('')
+        Print.info('RTT matrix (ms):')
+        header = '{:<12s}'.format('') + ''.join('{:>12s}'.format(l) for l in labels)
+        Print.info(header)
+        for i in range(n):
+            row = '{:<12s}'.format(labels[i])
+            row += ''.join(
+                '{:>12s}'.format('-') if i == j
+                else '{:>12s}'.format('FAIL') if rtt_matrix[i][j] is None
+                else '{:>12.1f}'.format(rtt_matrix[i][j])
+                for j in range(n)
+            )
+            Print.info(row)
+
+        Print.heading('Ping test complete.')
+    except Exception as e:
+        Print.error(BenchError('Ping test failed', e))

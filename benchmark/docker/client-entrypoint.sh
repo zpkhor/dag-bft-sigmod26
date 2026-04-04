@@ -67,6 +67,7 @@ cleanup() {
 }
 trap cleanup SIGTERM SIGINT
 
+ulimit -n 65536
 eval "${CLIENT_CMD}" &
 PIDS+=($!)
 

@@ -160,7 +160,7 @@ impl Worker {
             // Writeback path: partition transactions per-executor in the router
             let initial_partition = config::create_initial_partition(
                 self.parameters.num_executors,
-                self.parameters.num_accounts,
+                &[(0, self.parameters.num_accounts)],
                 config::ShardingStrategy::from_str(&self.parameters.sharding_strategy),
             );
             let states_partition_cache = Arc::new(RwLock::new(Some(initial_partition)));

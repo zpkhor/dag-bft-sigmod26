@@ -187,11 +187,11 @@ impl Core {
         // Verify that the header's account_counts matches the sum of per-batch counts we computed.
         // Skipped in baseline mode: account_counts are not tracked.
         if header.author != self.name && !self.baseline_mode {
-            let mut expected: BTreeMap<u64, u64> = BTreeMap::new();
+            let mut expected: BTreeMap<u32, u16> = BTreeMap::new();
             for (digest, worker_id) in &header.payload {
                 let key = [digest.as_ref(), &worker_id.to_le_bytes()].concat();
                 if let Some(bytes) = self.store.read(key).await? {
-                    if let Ok(counts) = bincode::deserialize::<BTreeMap<u64, u64>>(&bytes) {
+                    if let Ok(counts) = bincode::deserialize::<BTreeMap<u32, u16>>(&bytes) {
                         for (acc, cnt) in counts {
                             *expected.entry(acc).or_insert(0) += cnt;
                         }

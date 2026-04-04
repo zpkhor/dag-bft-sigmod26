@@ -22,7 +22,7 @@ pub struct Header {
     pub round: Round,
     pub payload: BTreeMap<Digest, WorkerId>,
     pub parents: BTreeSet<Digest>,
-    pub account_counts: BTreeMap<u64, u64>,
+    pub account_counts: BTreeMap<u32, u16>,
     pub quorum_metrics: BTreeMap<Digest, QuorumMetrics>,
     pub created_at: u64,
     pub id: Digest,
@@ -35,7 +35,7 @@ impl Header {
         round: Round,
         payload: BTreeMap<Digest, WorkerId>,
         parents: BTreeSet<Digest>,
-        account_counts: BTreeMap<u64, u64>,
+        account_counts: BTreeMap<u32, u16>,
         quorum_metrics: BTreeMap<Digest, QuorumMetrics>,
         signature_service: &mut SignatureService,
     ) -> Self {
