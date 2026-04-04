@@ -1,5 +1,6 @@
 # CloudLab benchmark orchestrator.
 # Deploys Narwhal on CloudLab physical machines using SSH + tmux.
+import io
 import json
 import os
 import socket
@@ -243,7 +244,10 @@ class CloudLabBench:
                 f'tc class add dev $IFACE parent 1:1 classid 1:9999 htb rate 1mbit ceil {client_bw}kbit',
                 *class_lines,
             ])
-            self._ssh(c_ssh_host).run(f'sudo bash -c \'{script}\'', hide=True)
+            c = self._ssh(c_ssh_host)
+            remote_path = '/tmp/tc_client_shape.sh'
+            c.put(io.StringIO(script), remote_path)
+            c.run(f'sudo bash {remote_path}', hide=True)
 
         with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
             futures = [pool.submit(_shape_validator, i) for i in range(nodes)]
