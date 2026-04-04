@@ -142,6 +142,7 @@ impl Worker {
         );
 
         if self.parameters.use_writeback_executor {
+            info!("Worker {} using WRITEBACK executor path", self.id);
             // Writeback path: partition transactions per-executor in the router
             let initial_partition = config::create_initial_partition(
                 self.parameters.num_executors,
