@@ -148,7 +148,7 @@ class CloudLabBench:
             'done'
         )
 
-    def _apply_tc_shaping(self, v_ssh, e_ssh, c_ssh_host, nodes, committee):
+    def _apply_tc_shaping(self, v_ssh, e_ssh, nodes, committee):
         """Egress-only HTB + netem on validators/executors, SO_MARK-based client shaping."""
         Print.info('Applying TC QoS shaping...')
 
@@ -163,6 +163,19 @@ class CloudLabBench:
 
         # Executor IPs for traffic exemption on validator machines
         e_ip_set = set(self.manager.validator_ips()[nodes:2 * nodes]) if e_ssh else set()
+
+        # Per-validator transactions ports (for loopback TC shaping)
+        v_ips = self.manager.validator_ips()[:nodes]
+        v_tx_ports = {}  # i -> [port, ...]
+        for i, v_ip in enumerate(v_ips):
+            ports = []
+            for auth in committee.json['authorities'].values():
+                for wid in sorted(auth['workers'].keys()):
+                    addr = auth['workers'][wid]['transactions']
+                    host, port = addr.rsplit(':', 1)
+                    if host == v_ip:
+                        ports.append(port)
+            v_tx_ports[i] = ports
 
         def _shape_validator(i):
             worker_bw = self.worker_bws_kbps[i]
@@ -203,7 +216,26 @@ class CloudLabBench:
                 *executor_filters,
                 *port_filters,
             ])
-            self._ssh(v_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
+            # Loopback TC: shape local client → worker transactions traffic
+            # so colocated client consumes bandwidth like a remote client would
+            lo_port_filters = []
+            for p in v_tx_ports.get(i, []):
+                lo_port_filters.append(
+                    f'tc filter add dev lo parent 1:0 protocol ip prio 1 '
+                    f'u32 match ip dport {p} 0xffff flowid 1:10'
+                )
+            lo_script = '\n'.join([
+                'tc qdisc del dev lo root 2>/dev/null || true',
+                f'tc qdisc add dev lo root handle 1: htb default 99',
+                f'tc class add dev lo parent 1: classid 1:1 htb rate 10gbit',
+                f'tc class add dev lo parent 1:1 classid 1:10 htb rate {worker_bw}kbit ceil {worker_bw}kbit',
+                f'tc class add dev lo parent 1:1 classid 1:99 htb rate 10gbit',
+                f'tc qdisc add dev lo parent 1:10 handle 10: netem delay {half_lat}ms limit 10000',
+                *lo_port_filters,
+            ])
+
+            full_script = script + '\n' + lo_script
+            self._ssh(v_ssh[i]).run(f'sudo bash -c \'{full_script}\'', hide=True)
 
         def _shape_executor(i):
             # Executor machines: cap inter-executor traffic at LAN bandwidth, no netem.
@@ -218,42 +250,10 @@ class CloudLabBench:
             ])
             self._ssh(e_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
 
-        def _shape_client():
-            # SO_MARK-based per-flow shaping: remote flows get extra one-way latency
-            client_bw = max(self.worker_bws_kbps)
-            remote_extra_lat = self.latency_ms // 2
-            n = nodes
-            class_lines = []
-            for region_id in range(n):
-                for v_idx in range(n):
-                    if region_id == v_idx:
-                        continue
-                    mark = region_id * n + v_idx + 1
-                    classid = mark + 10
-                    class_lines += [
-                        f'tc class add dev $IFACE parent 1:1 classid 1:{classid} htb rate 1mbit ceil {client_bw}kbit',
-                        f'tc filter add dev $IFACE parent 1:0 protocol ip prio 1 handle {mark} fw flowid 1:{classid}',
-                        f'tc qdisc add dev $IFACE parent 1:{classid} handle {classid}: netem delay {remote_extra_lat}ms limit 10000',
-                    ]
-            script = '\n'.join([
-                'set -e',
-                self._detect_iface(),
-                self._strip_all_tc(),
-                f'tc qdisc add dev $IFACE root handle 1: htb default 9999',
-                f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {client_bw}kbit',
-                f'tc class add dev $IFACE parent 1:1 classid 1:9999 htb rate 1mbit ceil {client_bw}kbit',
-                *class_lines,
-            ])
-            c = self._ssh(c_ssh_host)
-            remote_path = '/tmp/tc_client_shape.sh'
-            c.put(io.StringIO(script), remote_path)
-            c.run(f'sudo bash {remote_path}', hide=True)
-
-        with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
+        with ThreadPoolExecutor(max_workers=nodes + len(e_ssh)) as pool:
             futures = [pool.submit(_shape_validator, i) for i in range(nodes)]
             for i in range(len(e_ssh)):
                 futures.append(pool.submit(_shape_executor, i))
-            futures.append(pool.submit(_shape_client))
             failed = []
             for future in as_completed(futures):
                 try:
@@ -288,11 +288,8 @@ class CloudLabBench:
 
         # Slice to requested node count
         v_ssh = self.manager.validator_ssh_hosts()[:nodes]
-        c_ssh = self.manager.client_ssh_hosts()
-        assert len(c_ssh) >= 1, 'Need at least 1 client node in manifest'
-        c_ssh_host = c_ssh[0]
         v_ips = self.manager.validator_ips()[:nodes]
-        c_ip = self.manager.client_ips()[0]
+        c_ip = v_ips[0]  # clients are collocated with validators; placeholder (overridden below)
 
         # Executor machines: next `nodes` machines after validators
         if self.num_executors > 0:
@@ -305,7 +302,7 @@ class CloudLabBench:
             e_ssh = []
             e_ips = []
 
-        all_ssh = v_ssh + e_ssh + [c_ssh_host]
+        all_ssh = v_ssh + e_ssh
         Print.info(f"All SSH hosts: {all_ssh}")
 
         try:
@@ -483,20 +480,10 @@ class CloudLabBench:
                 conn.put(_cfg(PathMaker.parameters_file()), '.')
                 conn.put(_cfg(PathMaker.key_file(i)), '.')
 
-            def _upload_client():
-                conn = self._ssh(c_ssh_host)
-                conn.run(
-                    f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs',
-                    hide=True,
-                )
-                conn.put(_cfg(PathMaker.committee_file()), '.')
-                conn.put(_cfg(PathMaker.parameters_file()), '.')
-
-            with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
+            with ThreadPoolExecutor(max_workers=nodes + len(e_ssh)) as pool:
                 futures = [pool.submit(_upload_validator, i) for i in range(nodes)]
                 for i in range(len(e_ssh)):
                     futures.append(pool.submit(_upload_executor, i))
-                futures.append(pool.submit(_upload_client))
                 for f in as_completed(futures):
                     f.result()
 
@@ -515,6 +502,16 @@ class CloudLabBench:
                 e_skew_weights_str = ','.join(str(w) for w in self.e_skew_weights)
                 e_skew_flag = f' --executor-skew-weights {e_skew_weights_str}'
 
+            vi_rates = []
+            base_rate_sum = 0
+            for vi in range(len(names)):
+                if vi == len(names) - 1:
+                    vi_rates.append(rate - base_rate_sum)
+                else:
+                    r = int(rate * weights[vi] / total_weight)
+                    vi_rates.append(r)
+                    base_rate_sum += r
+
             client_commands = []
             for vi, name in enumerate(names):
                 auth = committee.json['authorities'][name]
@@ -525,7 +522,7 @@ class CloudLabBench:
                 )
                 start, count = account_ranges[name]
                 ar = f'--account-ranges {name}:{start}:{count}'
-                vi_rate = int(rate * weights[vi] / total_weight)
+                vi_rate = vi_rates[vi]
                 local_addrs = ' '.join(addr for _, addr in workers_addresses[vi])
                 reply = f' --reply-addr {auth["client_reply"]}'
                 exec_reply = ''
@@ -544,7 +541,7 @@ class CloudLabBench:
 
             # Apply QoS TC shaping BEFORE starting processes so TCP connections
             # are established with the correct RTT from the start
-            self._apply_tc_shaping(v_ssh, e_ssh, c_ssh_host, nodes, committee)
+            self._apply_tc_shaping(v_ssh, e_ssh, nodes, committee)
 
             # Start primaries
             Print.info('Starting primaries...')
