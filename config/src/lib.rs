@@ -128,17 +128,10 @@ pub struct Parameters {
     /// Use writeback executor (old distributed tx executor) instead of data fusion executor
     #[serde(default)]
     pub use_writeback_executor: bool,
-    /// WAN bandwidth limit in bytes/sec per connection (0 = unlimited).
-    #[serde(default = "default_wan_bandwidth")]
-    pub wan_bandwidth: u64,
 }
 
 fn default_sharding_strategy() -> String {
     "range".to_string()
-}
-
-fn default_wan_bandwidth() -> u64 {
-    300_000_000 // 300 MB/s default WAN bandwidth limit
 }
 
 impl Default for Parameters {
@@ -160,7 +153,6 @@ impl Default for Parameters {
             use_new_scheduler: false,
             no_send_payment_tx: false,
             use_writeback_executor: false,
-            wan_bandwidth: default_wan_bandwidth(),
         }
     }
 }
