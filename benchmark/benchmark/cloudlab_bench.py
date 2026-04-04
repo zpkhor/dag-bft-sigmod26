@@ -532,7 +532,7 @@ class CloudLabBench:
                 exec_reply_flag = f' --execution-reply-addr {exec_reply_addr}'
 
             client_command = (
-                f'./benchmark_client --size {self.tx_size} '
+                f'ulimit -n 65536 && ./benchmark_client --size {self.tx_size} '
                 f'--rate {rate} --nodes {all_nodes_arg} '
                 f'{ar_args} --rate-weights {rate_weights_str} '
                 f'--reply-addr {reply_addr} --own-validator {names[0]} '
