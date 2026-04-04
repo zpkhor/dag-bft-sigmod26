@@ -1,0 +1,150 @@
+from collections import defaultdict
+from datetime import datetime
+from glob import glob
+from os.path import join
+from re import findall, search
+from statistics import mean, quantiles
+
+from benchmark.utils import Print
+
+
+class ReplayParseError(Exception):
+    pass
+
+
+def _to_posix(string):
+    x = datetime.fromisoformat(string.replace('Z', '+00:00'))
+    return datetime.timestamp(x)
+
+
+class ReplayLogParser:
+    """Parses replay mode logs to compute TPS and latency metrics.
+
+    Log lines used:
+      Primary:  "[ts] Replay Execute seq=N worker=W num_tx=T"
+      Executor: "[ts] Executed batch seq=N txs=T total_executed=E"
+    """
+
+    def __init__(self, primary_log, executor_logs, tx_size):
+        self.tx_size = tx_size
+
+        # Parse primary: seq -> (posix_time, num_tx)
+        self.dispatched = {}
+        for t, seq, worker, num_tx in findall(
+            r'\[(.*?Z) .*Replay Execute seq=(\d+) worker=(\d+) num_tx=(\d+)',
+            primary_log
+        ):
+            self.dispatched[int(seq)] = (_to_posix(t), int(num_tx))
+
+        # Parse executors: seq -> posix_time (earliest across executors)
+        self.executed = {}
+        self.total_executed_txs = 0
+        for log in executor_logs:
+            for t, seq, txs, total in findall(
+                r'\[(.*?Z) .*Executed batch seq=(\d+) txs=(\d+) total_executed=(\d+)',
+                log
+            ):
+                s = int(seq)
+                ts = _to_posix(t)
+                if s not in self.executed or ts < self.executed[s]:
+                    self.executed[s] = ts
+                self.total_executed_txs = max(self.total_executed_txs, int(total))
+
+        if not self.dispatched:
+            raise ReplayParseError('No "Replay Execute" entries found in primary log')
+
+    def _latencies_ms(self):
+        """Per-batch latency: Execute dispatch -> executor completion (ms)."""
+        latencies = []
+        for seq, (dispatch_time, _) in self.dispatched.items():
+            if seq in self.executed:
+                lat_ms = (self.executed[seq] - dispatch_time) * 1000
+                if lat_ms >= 0:
+                    latencies.append(lat_ms)
+        return latencies
+
+    def _percentiles(self, data):
+        if not data:
+            return {'mean': 0, 'p50': 0, 'p90': 0, 'p95': 0}
+        result = {'mean': mean(data)}
+        if len(data) >= 20:
+            q = quantiles(data, n=100)
+            result['p50'] = q[49]
+            result['p90'] = q[89]
+            result['p95'] = q[94]
+        else:
+            s = sorted(data)
+            result['p50'] = s[len(s) // 2]
+            result['p90'] = s[int(len(s) * 0.9)]
+            result['p95'] = s[int(len(s) * 0.95)]
+        return result
+
+    def _tps(self):
+        """Throughput: total executed txs / replay wall-clock duration."""
+        if len(self.executed) < 2:
+            return 0, 0
+        start = min(self.dispatched[s][0] for s in self.dispatched)
+        end = max(self.executed.values())
+        duration = end - start
+        if duration <= 0:
+            return 0, 0
+        total_tx = sum(num_tx for _, num_tx in self.dispatched.values()
+                       if _ >= start)
+        # Only count txs that were actually executed
+        executed_tx = sum(
+            self.dispatched[s][1] for s in self.executed
+            if s in self.dispatched
+        )
+        tps = executed_tx / duration
+        return tps, duration
+
+    def result(self):
+        tps, duration = self._tps()
+        latencies = self._latencies_ms()
+        lat = self._percentiles(latencies)
+
+        total_dispatched = len(self.dispatched)
+        total_executed = len(self.executed)
+        total_tx_dispatched = sum(n for _, n in self.dispatched.values())
+
+        s = (
+            '\n'
+            '-----------------------------------------\n'
+            ' REPLAY SUMMARY:\n'
+            '-----------------------------------------\n'
+            f' Batches dispatched: {total_dispatched:,}\n'
+            f' Batches executed:   {total_executed:,}\n'
+            f' Transactions dispatched: {total_tx_dispatched:,}\n'
+            f' Replay duration: {duration:.2f} s\n'
+            '\n'
+            f' TPS: {round(tps):,} tx/s\n'
+            f' BPS: {round(tps * self.tx_size):,} B/s\n'
+            '\n'
+            f' Execution latency (dispatch -> executed):\n'
+            f'   Mean: {round(lat["mean"]):,} ms\n'
+            f'   p50:  {round(lat["p50"]):,} ms\n'
+            f'   p90:  {round(lat["p90"]):,} ms\n'
+            f'   p95:  {round(lat["p95"]):,} ms\n'
+            f'   (n={len(latencies):,} batches)\n'
+            '-----------------------------------------\n'
+        )
+        return s
+
+    @classmethod
+    def process(cls, directory, tx_size=512):
+        primary_log = ''
+        for filename in sorted(glob(join(directory, 'primary-*.log'))):
+            with open(filename, 'r') as f:
+                primary_log += f.read()
+
+        executor_logs = []
+        for filename in sorted(glob(join(directory, 'executor-*.log'))):
+            with open(filename, 'r') as f:
+                executor_logs.append(f.read())
+
+        if not primary_log:
+            raise ReplayParseError(f'No primary log found in {directory}')
+        if not executor_logs:
+            raise ReplayParseError(f'No executor logs found in {directory}')
+
+        return cls(primary_log, executor_logs, tx_size)

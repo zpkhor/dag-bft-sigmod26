@@ -801,6 +801,11 @@ impl DistributedTxExecutor {
         self.process_incoming_writebacks().await;
         self.process_incoming_transfers().await;
 
+        info!(
+            "Executed batch seq={} txs={} total_executed={}",
+            self.next_sequence, transactions.len(), self.lock_stats.total_transactions,
+        );
+
         self.update_queue_metrics();
         if self.next_sequence % 200 == 0 && self.lock_stats.total_transactions > 0 {
             self.log_account_store_size();

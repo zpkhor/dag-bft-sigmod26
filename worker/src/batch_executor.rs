@@ -766,8 +766,8 @@ impl BatchExecutor {
 
         // Log batch execution
         info!(
-            "Executed batch {:?}, cumulative total_executed {}",
-            digest, self.executed_tx_count,
+            "Executed batch seq={} txs={} total_executed={}",
+            self.next_sequence, transactions.len(), self.executed_tx_count,
         );
 
         // Process incoming state transfers (migration arrivals)

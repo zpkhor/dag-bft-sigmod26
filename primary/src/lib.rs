@@ -11,6 +11,7 @@ mod messages;
 mod payload_receiver;
 mod primary;
 mod proposer;
+mod replay_sequencer;
 mod synchronizer;
 
 #[cfg(test)]

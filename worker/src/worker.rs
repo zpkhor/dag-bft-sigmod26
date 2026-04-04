@@ -70,6 +70,8 @@ impl Worker {
         parameters: Parameters,
         store: Store,
     ) {
+        let replay_mode = !parameters.replay_csv.is_empty();
+
         // Define a worker instance.
         let worker = Self {
             name,
@@ -81,9 +83,21 @@ impl Worker {
 
         // Spawn all worker tasks.
         let (tx_primary, rx_primary) = channel(CHANNEL_CAPACITY);
+
+        // Always handle primary messages (Router must receive Execute in replay mode too).
         worker.handle_primary_messages();
-        worker.handle_clients_transactions(tx_primary.clone());
-        worker.handle_workers_messages(tx_primary);
+
+        if replay_mode {
+            crate::replay_batch_generator::ReplayBatchGenerator::spawn(
+                worker.id,
+                worker.store.clone(),
+                worker.parameters.clone(),
+                tx_primary.clone(),
+            );
+        } else {
+            worker.handle_clients_transactions(tx_primary.clone());
+            worker.handle_workers_messages(tx_primary);
+        }
 
         // The `PrimaryConnector` allows the worker to send messages to its primary.
         PrimaryConnector::spawn(

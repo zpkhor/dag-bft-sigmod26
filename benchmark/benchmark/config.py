@@ -218,13 +218,16 @@ class Committee:
 
 
 class LocalCommittee(Committee):
-    def __init__(self, names, port, workers):
+    def __init__(self, names, port, workers, num_executors=0):
         assert isinstance(names, list)
         assert all(isinstance(x, str) for x in names)
         assert isinstance(port, int)
         assert isinstance(workers, int) and workers > 0
         addresses = OrderedDict((x, ['127.0.0.1']*(1+workers)) for x in names)
-        super().__init__(addresses, port)
+        executor_hosts = None
+        if num_executors > 0:
+            executor_hosts = {name: ['127.0.0.1'] * num_executors for name in names}
+        super().__init__(addresses, port, num_executors=num_executors, executor_hosts=executor_hosts)
 
 
 class DockerCommittee(Committee):
@@ -404,6 +407,11 @@ class NodeParameters:
         self.json['no_send_payment_tx'] = no_send_payment_tx
         self.json['use_new_scheduler'] = use_new_scheduler
 
+    def set_replay_params(self, replay_csv, replay_tx_size, num_workers):
+        self.json['replay_csv'] = replay_csv
+        self.json['replay_tx_size'] = replay_tx_size
+        self.json['num_workers'] = num_workers
+
 
 class BenchParameters:
     def __init__(self, json):
@@ -412,7 +420,7 @@ class BenchParameters:
 
             nodes = json['nodes']
             nodes = nodes if isinstance(nodes, list) else [nodes]
-            if not nodes or any(x <= 1 for x in nodes):
+            if not nodes or any(x < 1 for x in nodes):
                 raise ConfigError('Missing or invalid number of nodes')
             self.nodes = [int(x) for x in nodes]
 

@@ -216,6 +216,18 @@ def logs(ctx):
 
 
 @task
+def replay_logs(ctx):
+    ''' Print replay benchmark results from existing logs '''
+    from benchmark.replay_logs import ReplayLogParser, ReplayParseError
+    tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
+    try:
+        result = ReplayLogParser.process('./logs', tx_size=tx_size)
+        print(result.result())
+    except ReplayParseError as e:
+        Print.error(BenchError('Failed to parse replay logs', e))
+
+
+@task
 def cloudlab(ctx, debug=False,
              manifest='manifest.xml', username='zpkhor', latency='100ms', worker_bw='75mbit',
              primary_bw='25mbit'):
@@ -288,6 +300,172 @@ def cloudlab(ctx, debug=False,
         print(ret.result())
     except BenchError as e:
         Print.error(e)
+
+
+@task
+def replay(ctx, debug=False):
+    ''' Run replay benchmark: single validator replaying batches from CSV '''
+    import subprocess
+    from time import sleep
+    from benchmark.config import Key, LocalCommittee, NodeParameters, BenchParameters
+    from benchmark.commands import CommandMaker
+    from benchmark.utils import PathMaker
+
+    replay_csv = os.path.abspath(os.environ.get('REPLAY_CSV', 'benchmark/record_rate25k.csv'))
+    replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
+    num_workers = int(os.environ.get('WORKERS', 1))
+    num_executors = int(os.environ.get('NUM_EXECUTORS', 1))
+    num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
+    duration = int(os.environ.get('DURATION', 120))
+    in_memory_store = os.environ.get('IN_MEMORY_STORE', '1') == '1'
+    use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', 'false').lower() in ('1', 'true', 'yes')
+    port = int(os.environ.get('PORT', 15000))
+
+    assert os.path.exists(replay_csv), f"Replay CSV not found: {replay_csv}"
+    processes = []
+
+    bench_params = {
+        'faults': 0,
+        'nodes': 1,
+        'workers': num_workers,
+        'rate': 1,  # unused in replay mode
+        'tx_size': replay_tx_size,
+        'duration': duration,
+        'num_accounts': num_accounts,
+    }
+    node_params = {
+        'header_size': 1_000,
+        'max_header_delay': 200,
+        'gc_depth': 50,
+        'sync_retry_delay': 10_000,
+        'sync_retry_nodes': 3,
+        'batch_size': 500_000,
+        'max_batch_delay': 200,
+        'use_writeback_executor': use_writeback_executor,
+    }
+
+    try:
+        Print.info('Setting up replay benchmark...')
+        BenchParameters(bench_params)  # validate
+        node_parameters = NodeParameters(node_params)
+        node_parameters.set_replay_params(replay_csv, replay_tx_size, num_workers)
+        node_parameters.set_executor_params(
+            num_executors=num_executors,
+            num_accounts=num_accounts,
+            min_balance=10_000,
+            max_balance=100_000,
+            sharding_strategy='range',
+            no_send_payment_tx=False,
+            use_new_scheduler=False,
+        )
+
+        # Kill leftover processes from previous runs
+        subprocess.run('pkill -f "./node.*run"', shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        sleep(1)
+
+        # Clean up
+        cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
+        subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+
+        # Compile
+        Print.info('Compiling...')
+        cmd = CommandMaker.compile().split()
+        subprocess.run(cmd, check=True, cwd=PathMaker.node_crate_path())
+
+        # Create alias for binaries
+        cmd = CommandMaker.alias_binaries(PathMaker.binary_path())
+        subprocess.run([cmd], shell=True)
+
+        # Generate key
+        key_file = PathMaker.key_file(0)
+        cmd = CommandMaker.generate_key(key_file).split()
+        subprocess.run(cmd, check=True)
+        key = Key.from_file(key_file)
+
+        # Committee (single validator, all local)
+        committee = LocalCommittee([key.name], port, num_workers, num_executors)
+        committee.set_account_ranges({key.name: (0, num_accounts)})
+        committee.print(PathMaker.committee_file())
+        node_parameters.print(PathMaker.parameters_file())
+
+        # Create db directories
+        subprocess.run('mkdir -p .db-0', shell=True)
+        for w in range(num_workers):
+            subprocess.run(f'mkdir -p .db-0-{w}', shell=True)
+
+        v = '-vvv' if debug else '-vv'
+        ims = 'IN_MEMORY_STORE=1 ' if in_memory_store else ''
+
+        # Start executors first (workers connect to them)
+        for e in range(num_executors):
+            cmd = f'{ims}./node {v} run --keys {key_file} --committee {PathMaker.committee_file()} --store .db-0 --parameters {PathMaker.parameters_file()} executor --id {e} 2> {PathMaker.executor_log_file(0, e)}'
+            Print.info(f'Starting executor {e}: {cmd}')
+            p = subprocess.Popen(cmd, shell=True)
+            processes.append(p)
+
+        sleep(1)
+
+        # Start primary before workers (workers send ReplayBatchReady to primary,
+        # SimpleSender drops messages on connection failure without retry)
+        cmd = f'{ims}./node {v} run --keys {key_file} --committee {PathMaker.committee_file()} --store .db-0 --parameters {PathMaker.parameters_file()} primary 2> {PathMaker.primary_log_file(0)}'
+        Print.info(f'Starting primary: {cmd}')
+        p = subprocess.Popen(cmd, shell=True)
+        processes.append(p)
+
+        # Wait for primary's worker_to_primary port before starting workers
+        import socket
+        w2p_port = int(committee.json['authorities'][key.name]['primary']['worker_to_primary'].split(':')[1])
+        Print.info(f'Waiting for primary port {w2p_port}...')
+        for _ in range(60):
+            try:
+                with socket.create_connection(('127.0.0.1', w2p_port), timeout=0.3):
+                    break
+            except OSError:
+                sleep(0.5)
+        else:
+            assert False, f'Primary port {w2p_port} not ready after 30s'
+        Print.info('Primary ready.')
+
+        # Start workers (they generate batches and notify primary)
+        for w in range(num_workers):
+            cmd = f'{ims}./node {v} run --keys {key_file} --committee {PathMaker.committee_file()} --store .db-0-{w} --parameters {PathMaker.parameters_file()} worker --id {w} 2> {PathMaker.worker_log_file(0, w)}'
+            Print.info(f'Starting worker {w}: {cmd}')
+            p = subprocess.Popen(cmd, shell=True)
+            processes.append(p)
+
+        Print.info(f'Running replay ({duration} sec)...')
+        sleep(duration)
+
+        Print.info('Stopping processes...')
+        for p in processes:
+            p.terminate()
+        for p in processes:
+            p.wait(timeout=5)
+
+        # Parse and print results
+        Print.info('Parsing logs...')
+        from benchmark.replay_logs import ReplayLogParser, ReplayParseError
+        try:
+            result = ReplayLogParser.process(PathMaker.logs_path(), tx_size=replay_tx_size)
+            print(result.result())
+        except ReplayParseError as e:
+            Print.warn(f'Failed to parse replay logs: {e}')
+
+        Print.heading(f'Logs in {os.path.abspath(PathMaker.logs_path())}/')
+
+    except subprocess.SubprocessError as e:
+        Print.error(BenchError('Failed to run replay benchmark', e))
+    except Exception as e:
+        # Kill any remaining processes
+        for p in processes:
+            try:
+                p.terminate()
+            except Exception:
+                pass
+        if isinstance(e, BenchError):
+            Print.error(e)
+        else:
+            Print.error(BenchError('Replay benchmark failed', e))
 
 
 @task

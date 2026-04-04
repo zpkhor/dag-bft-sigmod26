@@ -7,6 +7,7 @@ mod helper;
 mod primary_connector;
 mod processor;
 mod quorum_waiter;
+pub mod replay_batch_generator;
 pub mod router;
 pub mod state_helper;
 pub mod writeback_batch_executor;

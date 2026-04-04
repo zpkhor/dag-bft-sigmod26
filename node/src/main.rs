@@ -109,6 +109,8 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
     match matches.subcommand() {
         // Spawn the primary and consensus core.
         ("primary", _) => {
+            let replay_mode = !parameters.replay_csv.is_empty();
+
             let (tx_new_certificates, rx_new_certificates) = channel(CHANNEL_CAPACITY);
             let (tx_feedback, rx_feedback) = channel(CHANNEL_CAPACITY);
             Primary::spawn(
@@ -119,17 +121,24 @@ async fn run(matches: &ArgMatches<'_>) -> Result<()> {
                 tx_new_certificates,
                 rx_feedback,
             );
-            let analyze_committee = committee.clone();
-            Consensus::spawn(
-                name,
-                committee,
-                parameters.gc_depth,
-                rx_new_certificates,
-                tx_feedback,
-                tx_output,
-                parameters.baseline_mode,
-            );
-            analyze(rx_output, analyze_committee, name).await;
+
+            if replay_mode {
+                // Replay mode: no consensus, ReplaySequencer runs inside Primary.
+                // Keep process alive.
+                std::future::pending::<()>().await;
+            } else {
+                let analyze_committee = committee.clone();
+                Consensus::spawn(
+                    name,
+                    committee,
+                    parameters.gc_depth,
+                    rx_new_certificates,
+                    tx_feedback,
+                    tx_output,
+                    parameters.baseline_mode,
+                );
+                analyze(rx_output, analyze_committee, name).await;
+            }
         }
 
         // Spawn a single worker.

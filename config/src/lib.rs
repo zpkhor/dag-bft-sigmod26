@@ -10,6 +10,8 @@ use std::hash::{Hash, Hasher};
 use std::io::BufWriter;
 use std::io::Write as _;
 use std::net::SocketAddr;
+pub mod replay;
+
 use thiserror::Error;
 
 #[derive(Error, Debug)]
@@ -131,6 +133,15 @@ pub struct Parameters {
     /// WAN bandwidth limit in bytes/sec per connection (0 = unlimited).
     #[serde(default = "default_wan_bandwidth")]
     pub wan_bandwidth: u64,
+    /// Path to replay CSV file. Non-empty enables replay mode.
+    #[serde(default)]
+    pub replay_csv: String,
+    /// Transaction size for replay batch generation.
+    #[serde(default = "default_replay_tx_size")]
+    pub replay_tx_size: usize,
+    /// Number of workers per validator (for replay batch assignment).
+    #[serde(default = "default_num_workers")]
+    pub num_workers: u32,
 }
 
 fn default_sharding_strategy() -> String {
@@ -139,6 +150,14 @@ fn default_sharding_strategy() -> String {
 
 fn default_wan_bandwidth() -> u64 {
     300_000_000 // 300 MB/s default WAN bandwidth limit
+}
+
+fn default_replay_tx_size() -> usize {
+    512
+}
+
+fn default_num_workers() -> u32 {
+    1
 }
 
 impl Default for Parameters {
@@ -161,6 +180,9 @@ impl Default for Parameters {
             no_send_payment_tx: false,
             use_writeback_executor: false,
             wan_bandwidth: default_wan_bandwidth(),
+            replay_csv: String::new(),
+            replay_tx_size: default_replay_tx_size(),
+            num_workers: default_num_workers(),
         }
     }
 }
@@ -181,6 +203,9 @@ impl Parameters {
             info!("SmallBank: Balance range [{}, {}]", self.min_balance, self.max_balance);
             info!("SmallBank: Sharding strategy: {}", self.sharding_strategy);
             info!("SmallBank: no_send_payment_tx={}", self.no_send_payment_tx);
+        }
+        if !self.replay_csv.is_empty() {
+            info!("Replay mode: CSV={}, tx_size={}, num_workers={}", self.replay_csv, self.replay_tx_size, self.num_workers);
         }
     }
 }

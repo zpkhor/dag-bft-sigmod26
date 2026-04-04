@@ -8,6 +8,7 @@ use crate::helper::Helper;
 use crate::messages::{Certificate, Header, QuorumMetrics, Vote};
 use crate::payload_receiver::PayloadReceiver;
 use crate::proposer::Proposer;
+use crate::replay_sequencer::ReplaySequencer;
 use crate::synchronizer::Synchronizer;
 use async_trait::async_trait;
 use bytes::Bytes;
@@ -67,6 +68,8 @@ pub enum WorkerPrimaryMessage {
     OurBatch(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics),
     /// The worker indicates it received a batch's digest from another authority.
     OthersBatch(Digest, WorkerId, BTreeMap<u64, u64>),
+    /// Replay mode: worker notifies that a batch is generated and stored (batch_index, digest, worker_id).
+    ReplayBatchReady(u64, Digest, WorkerId),
 }
 
 pub struct Primary;
@@ -80,6 +83,47 @@ impl Primary {
         tx_new_certificates: Sender<Certificate>,
         rx_feedback: Receiver<Certificate>,
     ) {
+        // Write the parameters to the logs.
+        parameters.log();
+
+        let name = keypair.name;
+        let replay_mode = !parameters.replay_csv.is_empty();
+
+        if replay_mode {
+            // Replay mode: only spawn worker message listener and ReplaySequencer.
+            let (tx_replay_ready, rx_replay_ready) = channel(CHANNEL_CAPACITY);
+
+            let mut address = committee
+                .primary(&name)
+                .expect("Our public key or worker id is not in the committee")
+                .worker_to_primary;
+            address.set_ip("0.0.0.0".parse().unwrap());
+            NetworkReceiver::spawn(
+                address,
+                /* handler */
+                WorkerReceiverHandler {
+                    tx_our_digests: None,
+                    tx_others_digests: None,
+                    tx_replay_ready: Some(tx_replay_ready),
+                },
+            );
+            info!(
+                "Primary {} listening to workers messages on {} (replay mode)",
+                name, address
+            );
+
+            ReplaySequencer::spawn(name, committee.clone(), parameters.clone(), rx_replay_ready);
+
+            info!(
+                "Primary {} successfully booted in REPLAY mode",
+                name,
+            );
+            return;
+        }
+
+        // Normal mode: full consensus pipeline.
+        let secret = keypair.secret;
+
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
         let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>, _) = channel(CHANNEL_CAPACITY);
         let (tx_parents, rx_parents) = channel(CHANNEL_CAPACITY);
@@ -90,13 +134,6 @@ impl Primary {
         let (tx_certificates_loopback, rx_certificates_loopback) = channel(CHANNEL_CAPACITY);
         let (tx_primary_messages, rx_primary_messages) = channel(CHANNEL_CAPACITY);
         let (tx_cert_requests, rx_cert_requests) = channel(CHANNEL_CAPACITY);
-
-        // Write the parameters to the logs.
-        parameters.log();
-
-        // Parse the public and secret key of this authority.
-        let name = keypair.name;
-        let secret = keypair.secret;
 
         // Atomic variable use to synchronizer all tasks with the latest consensus round. This is only
         // used for cleanup. The only tasks that write into this variable is `GarbageCollector`.
@@ -131,8 +168,9 @@ impl Primary {
             address,
             /* handler */
             WorkerReceiverHandler {
-                tx_our_digests,
-                tx_others_digests,
+                tx_our_digests: Some(tx_our_digests),
+                tx_others_digests: Some(tx_others_digests),
+                tx_replay_ready: None,
             },
         );
         info!(
@@ -261,8 +299,9 @@ impl MessageHandler for PrimaryReceiverHandler {
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 struct WorkerReceiverHandler {
-    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>,
-    tx_others_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
+    tx_our_digests: Option<Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>>,
+    tx_others_digests: Option<Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>>,
+    tx_replay_ready: Option<Sender<(u64, Digest, WorkerId)>>,
 }
 
 #[async_trait]
@@ -274,16 +313,27 @@ impl MessageHandler for WorkerReceiverHandler {
     ) -> Result<(), Box<dyn Error>> {
         // Deserialize and parse the message.
         match bincode::deserialize(&serialized).map_err(DagError::SerializationError)? {
-            WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, quorum_metrics) => self
-                .tx_our_digests
-                .send((digest, worker_id, account_counts, quorum_metrics))
-                .await
-                .expect("Failed to send workers' digests"),
-            WorkerPrimaryMessage::OthersBatch(digest, worker_id, account_counts) => self
-                .tx_others_digests
-                .send((digest, worker_id, account_counts))
-                .await
-                .expect("Failed to send workers' digests"),
+            WorkerPrimaryMessage::OurBatch(digest, worker_id, account_counts, quorum_metrics) => {
+                if let Some(ref tx) = self.tx_our_digests {
+                    tx.send((digest, worker_id, account_counts, quorum_metrics))
+                        .await
+                        .expect("Failed to send workers' digests");
+                }
+            }
+            WorkerPrimaryMessage::OthersBatch(digest, worker_id, account_counts) => {
+                if let Some(ref tx) = self.tx_others_digests {
+                    tx.send((digest, worker_id, account_counts))
+                        .await
+                        .expect("Failed to send workers' digests");
+                }
+            }
+            WorkerPrimaryMessage::ReplayBatchReady(batch_index, digest, worker_id) => {
+                if let Some(ref tx) = self.tx_replay_ready {
+                    tx.send((batch_index, digest, worker_id))
+                        .await
+                        .expect("Failed to send replay batch ready");
+                }
+            }
         }
         Ok(())
     }
