@@ -15,6 +15,7 @@ from benchmark.commands import CommandMaker
 from benchmark.config import (
     Key,
     CloudLabCommittee,
+    CloudLabReplayCommittee,
     NodeParameters,
     BenchParameters,
     ConfigError,
@@ -706,6 +707,427 @@ class CloudLabBench:
         except (subprocess.SubprocessError, ParseError) as e:
             self._kill(all_ssh, delete_logs=False)
             raise BenchError('Failed to run benchmark', e)
+
+
+class CloudLabReplayBench:
+    """Deploys the replay benchmark on CloudLab physical nodes.
+
+    Node layout (all from the manifest's node-X list):
+        node[0]           -> primary (runs ReplaySequencer, no workers)
+        node[1..W]        -> one worker per node
+        node[W+1..W+E]    -> one executor per node
+
+    TC shaping: LAN bandwidth cap on worker->executor and executor->executor
+    egress. No netem latency shaping.
+    """
+    BASE_PORT = 5000
+
+    def __init__(
+        self,
+        manifest_file,
+        username,
+        replay_csv,
+        replay_tx_size,
+        num_workers,
+        num_executors,
+        num_accounts,
+        duration,
+        in_memory_store,
+        use_writeback_executor,
+        node_parameters_dict,
+        executor_bw_kbps,
+    ):
+        assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
+        assert num_workers >= 1
+        assert num_executors >= 1
+
+        self.username = username
+        self.replay_csv = replay_csv
+        self.replay_tx_size = replay_tx_size
+        self.num_workers = num_workers
+        self.num_executors = num_executors
+        self.num_accounts = num_accounts
+        self.duration = duration
+        self.in_memory_store = in_memory_store
+        self.use_writeback_executor = use_writeback_executor
+        self.executor_bw_kbps = executor_bw_kbps
+
+        try:
+            self.node_parameters = NodeParameters(node_parameters_dict)
+        except ConfigError as e:
+            raise BenchError('Invalid node parameters', e)
+
+        self.manager = CloudLabInstanceManager.make(manifest_file, username)
+        required = 1 + num_workers + num_executors
+        assert required <= self.manager.num_validators(), (
+            f'Need {required} node-X machines (1 primary + {num_workers} workers + '
+            f'{num_executors} executors) but manifest has {self.manager.num_validators()}'
+        )
+
+    # --- SSH helpers (mirrors CloudLabBench) ---
+
+    def _ssh(self, host, retries=3, delay=2):
+        for attempt in range(retries):
+            try:
+                conn = Connection(host, user=self.username)
+                conn.open()
+                return conn
+            except socket.gaierror as e:
+                if attempt == retries - 1:
+                    raise
+                Print.warn(f'DNS resolution failed for {host}: {e}, retrying in {delay}s...')
+                sleep(delay)
+
+    def _background_run(self, ssh_host, command, log_file):
+        name = splitext(basename(log_file))[0]
+        cmd = f'tmux new -d -s "{name}" "{command} |& tee {log_file}"'
+        self._ssh(ssh_host).run(cmd, hide=True)
+
+    def _parallel_ssh(self, hosts, fn):
+        failed = []
+        with ThreadPoolExecutor(max_workers=len(hosts)) as pool:
+            futures = {pool.submit(fn, h): h for h in hosts}
+            for future in as_completed(futures):
+                host = futures[future]
+                try:
+                    future.result()
+                except Exception as e:
+                    failed.append((host, e))
+        assert not failed, f'Parallel SSH failed on: {failed}'
+
+    def _kill(self, ssh_hosts, delete_logs=False):
+        delete_cmd = CommandMaker.clean_logs() if delete_logs else 'true'
+        cmd = f'{delete_cmd} && ({CommandMaker.kill()} || true)'
+        def _kill_one(host):
+            try:
+                self._ssh(host).run(cmd, hide=True)
+            except Exception:
+                pass
+        self._parallel_ssh(ssh_hosts, _kill_one)
+
+    def _reset_tcp_buffers(self, ssh_hosts):
+        sysctl_cmd = (
+            'sysctl -w '
+            'net.core.rmem_max=8388608 '
+            'net.core.wmem_max=8388608 '
+            'net.ipv4.tcp_rmem="4096 131072 6291456" '
+            'net.ipv4.tcp_wmem="4096 16384 4194304" '
+            'net.core.netdev_max_backlog=2048'
+        )
+        def _tune(host):
+            self._ssh(host).run(f'sudo {sysctl_cmd}', hide=True)
+        self._parallel_ssh(ssh_hosts, _tune)
+
+    @staticmethod
+    def _detect_iface():
+        return (
+            'IFACE=$(ip -o addr show | grep " 10\\\\." | awk "{print \\$2}" | head -1)\n'
+            '[ -z "$IFACE" ] && echo "FATAL: no 10.x interface" && exit 1'
+        )
+
+    @staticmethod
+    def _strip_all_tc():
+        return (
+            'for dev in $(ls /sys/class/net/ | grep -v lo); do '
+            'tc qdisc del dev $dev root 2>/dev/null || true; '
+            'done'
+        )
+
+    def _apply_tc_shaping(self, worker_ssh, executor_ssh, executor_ips):
+        """Rate-cap worker->executor and executor->executor egress at executor_bw_kbps.
+        No netem latency — pure bandwidth shaping only.
+        """
+        if not executor_ips:
+            return
+        Print.info(f'Applying TC shaping: executor_bw={self.executor_bw_kbps}kbps...')
+        bw = self.executor_bw_kbps
+        # Use 100 Gbit as root rate so the default class is effectively uncapped.
+        root_rate = 100_000_000
+
+        def _build_script(target_ips):
+            ip_filters = [
+                f'tc filter add dev $IFACE parent 1:0 protocol ip prio 1 '
+                f'u32 match ip dst {ip}/32 flowid 1:10'
+                for ip in target_ips
+            ]
+            return '\n'.join([
+                'set -e',
+                self._detect_iface(),
+                self._strip_all_tc(),
+                f'tc qdisc add dev $IFACE root handle 1: htb default 99',
+                f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {root_rate}kbit',
+                f'tc class add dev $IFACE parent 1:1 classid 1:10 htb rate {bw}kbit ceil {bw}kbit',
+                f'tc class add dev $IFACE parent 1:1 classid 1:99 htb rate {root_rate}kbit',
+                *ip_filters,
+            ])
+
+        def _shape_worker(host):
+            # Shape egress from this worker to all executor nodes.
+            script = _build_script(executor_ips)
+            self._ssh(host).run(f'sudo bash -c \'{script}\'', hide=True)
+
+        def _shape_executor(i):
+            # Shape egress from this executor to all OTHER executor nodes.
+            others = [ip for j, ip in enumerate(executor_ips) if j != i]
+            if not others:
+                return
+            script = _build_script(others)
+            self._ssh(executor_ssh[i]).run(f'sudo bash -c \'{script}\'', hide=True)
+
+        with ThreadPoolExecutor(max_workers=len(worker_ssh) + len(executor_ssh)) as pool:
+            futures = [pool.submit(_shape_worker, h) for h in worker_ssh]
+            futures += [pool.submit(_shape_executor, i) for i in range(len(executor_ssh))]
+            failed = []
+            for f in as_completed(futures):
+                try:
+                    f.result()
+                except Exception as e:
+                    failed.append(e)
+            assert not failed, f'TC shaping failed: {failed}'
+
+        Print.info('TC shaping applied.')
+
+    def run(self, debug=False):
+        assert isinstance(debug, bool)
+        Print.heading('Starting CloudLab replay benchmark')
+
+        # --- Node allocation ---
+        all_ssh = self.manager.validator_ssh_hosts()
+        all_ips = self.manager.validator_ips()
+
+        primary_ssh = all_ssh[0]
+        worker_ssh  = all_ssh[1 : 1 + self.num_workers]
+        executor_ssh = all_ssh[1 + self.num_workers : 1 + self.num_workers + self.num_executors]
+        executor_ips = all_ips[1 + self.num_workers : 1 + self.num_workers + self.num_executors]
+        worker_ips   = all_ips[1 : 1 + self.num_workers]
+        primary_ip   = all_ips[0]
+
+        all_hosts = [primary_ssh] + worker_ssh + executor_ssh
+        Print.info(f'primary={primary_ssh}, workers={worker_ssh}, executors={executor_ssh}')
+
+        try:
+            # --- Kill previous + reset TCP ---
+            Print.info('Killing previous processes...')
+            self._kill(all_hosts, delete_logs=True)
+            self._reset_tcp_buffers(all_hosts)
+
+            # --- Local cleanup + compile ---
+            subprocess.run(
+                [f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'],
+                shell=True, stderr=subprocess.DEVNULL,
+            )
+            Print.info('Compiling...')
+            subprocess.run(
+                CommandMaker.compile().split(), check=True,
+                cwd=PathMaker.node_crate_path(),
+            )
+            subprocess.run([CommandMaker.alias_binaries(PathMaker.binary_path())], shell=True)
+
+            # --- Rsync binary to all nodes ---
+            Print.info(f'Distributing binary to {len(all_hosts)} nodes...')
+            binary_path = PathMaker.binary_path()
+
+            def _distribute(host):
+                subprocess.run(
+                    f'rsync -azL {binary_path}/node {self.username}@{host}:~/',
+                    shell=True, check=True,
+                )
+            self._parallel_ssh(all_hosts, _distribute)
+
+            # --- Generate key + build committee ---
+            Print.info('Generating configuration...')
+            key_file = PathMaker.key_file(0)
+            subprocess.run(CommandMaker.generate_key(key_file).split(), check=True)
+            key = Key.from_file(key_file)
+            names = [key.name]
+
+            committee = CloudLabReplayCommittee(
+                names, self.BASE_PORT, self.num_workers,
+                primary_ip, worker_ips, executor_ips,
+            )
+            committee.set_account_ranges({key.name: (0, self.num_accounts)})
+            committee.print(PathMaker.committee_file())
+
+            # --- Node parameters ---
+            remote_csv = os.path.basename(self.replay_csv)
+            self.node_parameters.set_replay_params(
+                remote_csv, self.replay_tx_size, self.num_workers,
+            )
+            self.node_parameters.set_executor_params(
+                num_executors=self.num_executors,
+                num_accounts=self.num_accounts,
+                min_balance=10_000,
+                max_balance=100_000,
+                sharding_strategy='range',
+                no_send_payment_tx=False,
+                use_new_scheduler=False,
+            )
+            self.node_parameters.print(PathMaker.parameters_file())
+
+            # --- Upload configs to every node ---
+            Print.info('Uploading configs...')
+
+            def _upload_primary():
+                conn = self._ssh(primary_ssh)
+                conn.run(
+                    f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs .db-0',
+                    hide=True,
+                )
+                for f in [PathMaker.committee_file(), PathMaker.parameters_file(), key_file]:
+                    conn.put(f, '.')
+
+            def _upload_worker(w):
+                conn = self._ssh(worker_ssh[w])
+                conn.run(
+                    f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs .db-0-{w}',
+                    hide=True,
+                )
+                for f in [PathMaker.committee_file(), PathMaker.parameters_file(), key_file]:
+                    conn.put(f, '.')
+
+            def _upload_executor(e):
+                conn = self._ssh(executor_ssh[e])
+                conn.run(
+                    f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs .db-exec-0-{e}',
+                    hide=True,
+                )
+                for f in [PathMaker.committee_file(), PathMaker.parameters_file(), key_file]:
+                    conn.put(f, '.')
+
+            total = 1 + self.num_workers + self.num_executors
+            with ThreadPoolExecutor(max_workers=total) as pool:
+                futures = [pool.submit(_upload_primary)]
+                futures += [pool.submit(_upload_worker, w) for w in range(self.num_workers)]
+                futures += [pool.submit(_upload_executor, e) for e in range(self.num_executors)]
+                for f in as_completed(futures):
+                    f.result()
+
+            # --- Upload replay CSV to primary + all workers ---
+            Print.info('Uploading replay CSV...')
+            csv_hosts = [primary_ssh] + worker_ssh
+
+            def _upload_csv(host):
+                self._ssh(host).put(self.replay_csv, '.')
+            self._parallel_ssh(csv_hosts, _upload_csv)
+
+            # --- TC shaping: bandwidth cap on worker->executor and executor->executor ---
+            self._apply_tc_shaping(worker_ssh, executor_ssh, executor_ips)
+
+            # --- Start executors ---
+            Print.info('Starting executors...')
+            validator_ranges = [(0, self.num_accounts)]
+            for e in range(self.num_executors):
+                cmd = CommandMaker.run_executor(
+                    PathMaker.key_file(0),
+                    PathMaker.committee_file(),
+                    f'.db-exec-0-{e}',
+                    PathMaker.parameters_file(),
+                    e,
+                    validator_ranges,
+                    debug=debug,
+                )
+                if self.in_memory_store:
+                    cmd = f'IN_MEMORY_STORE=1 {cmd}'
+                self._background_run(executor_ssh[e], cmd, PathMaker.executor_log_file(0, e))
+
+            sleep(1)
+
+            # --- Start primary ---
+            Print.info('Starting primary...')
+            primary_cmd = CommandMaker.run_primary(
+                PathMaker.key_file(0),
+                PathMaker.committee_file(),
+                PathMaker.db_path(0),
+                PathMaker.parameters_file(),
+                debug=debug,
+                in_memory_store=self.in_memory_store,
+            )
+            self._background_run(primary_ssh, primary_cmd, PathMaker.primary_log_file(0))
+
+            # --- Wait for primary's worker_to_primary port ---
+            w2p_addr = committee.json['authorities'][key.name]['primary']['worker_to_primary']
+            w2p_host, w2p_port = w2p_addr.rsplit(':', 1)
+            Print.info(f'Waiting for primary port {w2p_host}:{w2p_port}...')
+            deadline = _now() + 120
+            while True:
+                result = self._ssh(primary_ssh).run(
+                    f'bash -c "echo >/dev/tcp/{w2p_host}/{w2p_port}"',
+                    hide=True, warn=True,
+                )
+                if not result.failed:
+                    break
+                assert _now() <= deadline, 'Primary did not become ready within 120s'
+                sleep(0.5)
+            Print.info('Primary ready.')
+
+            # --- Start workers ---
+            Print.info('Starting workers...')
+            for w in range(self.num_workers):
+                cmd = CommandMaker.run_worker(
+                    PathMaker.key_file(0),
+                    PathMaker.committee_file(),
+                    PathMaker.db_path(0, w),
+                    PathMaker.parameters_file(),
+                    w,
+                    debug=debug,
+                    in_memory_store=self.in_memory_store,
+                )
+                self._background_run(worker_ssh[w], cmd, PathMaker.worker_log_file(0, w))
+
+            # --- Run ---
+            Print.info(f'Running replay ({self.duration} sec)...')
+            sleep(self.duration)
+
+            # --- Kill ---
+            Print.info('Stopping processes...')
+            self._kill(all_hosts, delete_logs=False)
+            sleep(1)
+
+            # --- Download logs ---
+            Print.info('Downloading logs...')
+            subprocess.run([CommandMaker.clean_logs()], shell=True, stderr=subprocess.DEVNULL)
+            subprocess.run(['mkdir', '-p', PathMaker.logs_path()])
+
+            def _dl_primary():
+                self._ssh(primary_ssh).get(
+                    PathMaker.primary_log_file(0),
+                    local=PathMaker.primary_log_file(0),
+                )
+
+            def _dl_worker(w):
+                self._ssh(worker_ssh[w]).get(
+                    PathMaker.worker_log_file(0, w),
+                    local=PathMaker.worker_log_file(0, w),
+                )
+
+            def _dl_executor(e):
+                self._ssh(executor_ssh[e]).get(
+                    PathMaker.executor_log_file(0, e),
+                    local=PathMaker.executor_log_file(0, e),
+                )
+
+            with ThreadPoolExecutor(max_workers=total) as pool:
+                futures = [pool.submit(_dl_primary)]
+                futures += [pool.submit(_dl_worker, w) for w in range(self.num_workers)]
+                futures += [pool.submit(_dl_executor, e) for e in range(self.num_executors)]
+                for f in as_completed(futures):
+                    f.result()
+
+            # --- Parse logs ---
+            Print.info('Parsing logs...')
+            from benchmark.replay_logs import ReplayLogParser, ReplayParseError
+            try:
+                result = ReplayLogParser.process(
+                    PathMaker.logs_path(), tx_size=self.replay_tx_size,
+                )
+                return result.result()
+            except ReplayParseError as e:
+                Print.warn(f'Failed to parse replay logs: {e}')
+                return ''
+
+        except (subprocess.SubprocessError, Exception) as e:
+            self._kill(all_hosts, delete_logs=False)
+            raise BenchError('Failed to run CloudLab replay benchmark', e)
 
 
 class CloudLabInstaller:
