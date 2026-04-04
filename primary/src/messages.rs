@@ -14,7 +14,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[derive(Clone, Serialize, Deserialize, Default, Debug)]
 pub struct QuorumMetrics {
     pub queue_delay_ms: u64,
-    pub quorum_latency_ms: u64,
 }
 
 #[derive(Clone, Serialize, Deserialize, Default)]
@@ -93,7 +92,6 @@ impl Hash for Header {
             hasher.update(y.to_le_bytes());
             if let Some(m) = self.quorum_metrics.get(x) {
                 hasher.update(m.queue_delay_ms.to_le_bytes());
-                hasher.update(m.quorum_latency_ms.to_le_bytes());
             }
         }
         for x in &self.parents {

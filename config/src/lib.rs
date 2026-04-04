@@ -399,20 +399,25 @@ impl Default for KeyPair {
 pub type Partition = HashMap<u64, ExecutorId>;
 
 /// Creates an initial Partition based on sharding strategy.
+/// validator_ranges is (account_start, account_count) for every validator.
+/// For each validator's range, executor i owns the i-th equal slice of that range.
+/// The partition covers all accounts globally so executors can handle batches from any validator.
 pub fn create_initial_partition(
     num_executors: u32,
-    num_accounts: u64,
+    validator_ranges: &[(u64, u64)],
     strategy: ShardingStrategy,
 ) -> Partition {
     let mut partition: Partition = HashMap::new();
-    for account_id in 0..num_accounts {
-        let executor_id = compute_worker_for_account(
-            account_id,
-            num_executors,
-            num_accounts,
-            strategy,
-        );
-        partition.insert(account_id, executor_id);
+    for &(account_start, account_count) in validator_ranges {
+        for account_id in account_start..account_start + account_count {
+            let executor_id = compute_worker_for_account(
+                account_id - account_start,
+                num_executors,
+                account_count,
+                strategy,
+            );
+            partition.insert(account_id, executor_id);
+        }
     }
     partition
 }
