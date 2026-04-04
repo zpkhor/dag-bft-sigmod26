@@ -63,14 +63,16 @@ class CommandMaker:
         return f'./benchmark_client {" ".join(addresses)} --size {size} --rate {rate} {nodes} {account_args} {client_id_arg}'
 
     @staticmethod
-    def run_executor(keys, committee, store, parameters, executor_id, debug=False):
+    def run_executor(keys, committee, store, parameters, executor_id, validator_ranges, debug=False):
         assert isinstance(keys, str)
         assert isinstance(committee, str)
         assert isinstance(parameters, str)
         assert isinstance(debug, bool)
         v = '-vvv' if debug else '-vv'
+        range_args = ' '.join(f'--validator-range {start}:{count}' for start, count in validator_ranges)
         return (f'./node {v} run --keys {keys} --committee {committee} '
-                f'--store {store} --parameters {parameters} executor --id {executor_id}')
+                f'--store {store} --parameters {parameters} executor --id {executor_id} '
+                f'{range_args}')
 
     @staticmethod
     def remote_cleanup():
