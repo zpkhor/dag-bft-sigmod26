@@ -373,6 +373,51 @@ class CloudLabCommittee(Committee):
         return addrs
 
 
+class CloudLabReplayCommittee(Committee):
+    """Committee for CloudLab replay deployments.
+
+    Primary, each worker, and each executor are on separate machines.
+    All addresses use real LAN IPs — no 127.0.0.1 overrides needed.
+
+    Address assignment (all real LAN IPs):
+        primary_to_primary:   primary IP
+        worker_to_primary:    primary IP  (worker connects TO primary)
+        executor_to_primary:  primary IP
+        primary_to_worker:    worker IP   (primary connects TO worker)
+        transactions:         worker IP
+        worker_to_worker:     worker IP
+        worker_to_executor:   executor IP
+        executor_to_executor: executor IP
+        client_reply:         worker-0 IP (unused in replay, placeholder)
+    """
+    def __init__(self, names, port, num_workers, primary_ip, worker_ips, executor_ips):
+        assert isinstance(names, list) and len(names) >= 1
+        assert all(isinstance(x, str) for x in names)
+        assert isinstance(port, int)
+        assert isinstance(num_workers, int) and num_workers >= 1
+        assert isinstance(primary_ip, str)
+        assert isinstance(worker_ips, list) and len(worker_ips) == num_workers
+        assert all(isinstance(x, str) for x in worker_ips)
+        assert isinstance(executor_ips, list)
+        assert all(isinstance(x, str) for x in executor_ips)
+
+        num_executors = len(executor_ips)
+        executor_hosts = (
+            {name: list(executor_ips) for name in names}
+            if num_executors > 0 else None
+        )
+        # Base Committee assigns:
+        #   hosts[0] (primary_ip) -> worker_to_primary, executor_to_primary
+        #   hosts[1..] (worker_ips) -> primary_to_worker, transactions, worker_to_worker
+        # All correct as-is for separate machines.
+        addresses = OrderedDict(
+            (name, [primary_ip] + list(worker_ips))
+            for name in names
+        )
+        super().__init__(addresses, port, num_executors=num_executors,
+                         executor_hosts=executor_hosts)
+
+
 class NodeParameters:
     def __init__(self, json):
         inputs = []
