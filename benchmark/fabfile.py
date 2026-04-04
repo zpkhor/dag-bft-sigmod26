@@ -8,7 +8,7 @@ from benchmark.utils import Print
 from benchmark.plot import Ploter, PlotError
 from benchmark.instance import InstanceManager
 from benchmark.remote import Bench, BenchError
-from benchmark.cloudlab_bench import CloudLabBench, CloudLabInstaller
+from benchmark.cloudlab_bench import CloudLabBench, CloudLabInstaller, CloudLabReplayBench
 
 @task
 def docker(ctx, debug=False, worker_bw='75mbit', latency='0ms', jitter='0ms',
@@ -472,6 +472,64 @@ def replay(ctx, debug=False):
             Print.error(e)
         else:
             Print.error(BenchError('Replay benchmark failed', e))
+
+
+@task
+def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'):
+    ''' Run replay benchmark on CloudLab: primary + each worker + each executor on its own node.
+        TC shaping: LAN bandwidth cap on worker->executor and executor->executor traffic.
+
+        Env vars:
+          REPLAY_CSV         path to recorded batch CSV (default: benchmark/record_rate25k.csv)
+          REPLAY_TX_SIZE     transaction size in bytes (default: 512)
+          NUM_WORKERS        number of worker nodes (default: 1)
+          NUM_EXECUTORS      number of executor nodes (default: 1)
+          NUM_ACCOUNTS       total SmallBank accounts (default: 1_000_000)
+          DURATION           benchmark duration in seconds (default: 120)
+          EXECUTOR_BW_MBPS   LAN bandwidth cap for executor traffic in Mbit/s (default: 10000)
+          IN_MEMORY_STORE    use in-memory store, 1=yes (default: 1)
+          WRITEBACK_EXECUTOR use writeback executor path, 1=yes (default: 0)
+    '''
+    replay_csv = os.path.abspath(os.environ.get('REPLAY_CSV', 'benchmark/record_rate25k.csv'))
+    replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
+    num_workers = int(os.environ.get('NUM_WORKERS', 1))
+    num_executors = int(os.environ.get('NUM_EXECUTORS', 1))
+    num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
+    duration = int(os.environ.get('DURATION', 120))
+    executor_bw_kbps = int(os.environ.get('EXECUTOR_BW_MBPS', 10_000)) * 1000
+    in_memory_store = os.environ.get('IN_MEMORY_STORE', '1') == '1'
+    use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', '0') == '1'
+
+    assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
+
+    node_params = {
+        'header_size': 1_000,
+        'max_header_delay': 200,
+        'gc_depth': 50,
+        'sync_retry_delay': 10_000,
+        'sync_retry_nodes': 3,
+        'batch_size': 500_000,
+        'max_batch_delay': 200,
+        'use_writeback_executor': use_writeback_executor,
+    }
+    try:
+        ret = CloudLabReplayBench(
+            manifest_file=manifest,
+            username=username,
+            replay_csv=replay_csv,
+            replay_tx_size=replay_tx_size,
+            num_workers=num_workers,
+            num_executors=num_executors,
+            num_accounts=num_accounts,
+            duration=duration,
+            in_memory_store=in_memory_store,
+            use_writeback_executor=use_writeback_executor,
+            node_parameters_dict=node_params,
+            executor_bw_kbps=executor_bw_kbps,
+        ).run(debug)
+        print(ret)
+    except BenchError as e:
+        Print.error(e)
 
 
 @task
