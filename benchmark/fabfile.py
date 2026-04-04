@@ -314,10 +314,7 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
         mgr = CloudLabInstanceManager.make(manifest, username, ban_file=None)
 
         # --- Stage 1: SSH reachability from this machine ---
-        all_entries = (
-            [(v, 'validator') for v in mgr.manifest.validators]
-            + [(c, 'client') for c in mgr.manifest.clients]
-        )
+        all_entries = [(v, 'validator') for v in mgr.manifest.validators]
         Print.info(f'Stage 1: SSH probe {len(all_entries)} nodes (timeout={timeout}s)...')
 
         def _ssh_probe(entry):
@@ -352,14 +349,13 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
                 banned.append(client_id)
             Print.info(detail)
 
-        # --- Stage 2: Ping LAN IPs from the client node ---
-        # Find a reachable client to use as the ping source
-        reachable_clients = [
-            c for c in mgr.manifest.clients
-            if ssh_results[c['client_id']][3]  # ssh_ok
+        # --- Stage 2: Ping LAN IPs from the first reachable validator ---
+        reachable_validators = [
+            v for v in mgr.manifest.validators
+            if ssh_results[v['client_id']][3]  # ssh_ok
         ]
-        assert len(reachable_clients) > 0, 'No reachable client node to run ping from'
-        ping_client = reachable_clients[0]
+        assert len(reachable_validators) > 0, 'No reachable validator node to run ping from'
+        ping_client = reachable_validators[0]
         ping_ssh_host = ping_client['ssh_host']
         Print.info(f'\nStage 2: Ping LAN IPs from {ping_client["client_id"]} ({ping_ssh_host})...')
 

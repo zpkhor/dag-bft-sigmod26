@@ -15,7 +15,6 @@ class Manifest:
 
     def __init__(self, validators, clients):
         assert len(validators) > 0, 'No validator nodes found'
-        assert len(clients) > 0, 'No client nodes found'
         self.validators = validators
         self.clients = clients
 
@@ -82,7 +81,6 @@ class Manifest:
                 clients.append(entry)
 
         assert len(validators) > 0, 'No validator nodes found in manifest'
-        assert len(clients) > 0, 'No client nodes found in manifest'
 
         # Sort by numeric index
         def _index(entry):
