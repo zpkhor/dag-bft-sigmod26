@@ -10,6 +10,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use config::{Committee, Parameters, WorkerId};
 use crypto::{Digest, PublicKey};
+use std::sync::{Arc, RwLock};
 use futures::sink::SinkExt as _;
 use log::{error, info, warn};
 use network::{MessageHandler, Receiver, Writer};
@@ -140,14 +141,35 @@ impl Worker {
             /* rx_message */ rx_synchronizer,
         );
 
-        // The `Router` reads committed batches from store and broadcasts to executors.
-        Router::spawn(
-            self.name,
-            self.id,
-            self.committee.clone(),
-            self.store.clone(),
-            rx_router,
-        );
+        if self.parameters.use_writeback_executor {
+            info!("Worker {} using WRITEBACK executor path", self.id);
+            // Writeback path: partition transactions per-executor in the router
+            let initial_partition = config::create_initial_partition(
+                self.parameters.num_executors,
+                self.parameters.num_accounts,
+                config::ShardingStrategy::from_str(&self.parameters.sharding_strategy),
+            );
+            let states_partition_cache = Arc::new(RwLock::new(Some(initial_partition)));
+
+            crate::writeback_router::WritebackRouter::spawn(
+                self.name,
+                self.id,
+                self.committee.clone(),
+                self.store.clone(),
+                states_partition_cache,
+                rx_router,
+                crate::workload::WorkloadType::SmallBank,
+            );
+        } else {
+            // Data fusion path: broadcast full batch to all executors
+            Router::spawn(
+                self.name,
+                self.id,
+                self.committee.clone(),
+                self.store.clone(),
+                rx_router,
+            );
+        }
 
         info!(
             "Worker {} listening to primary messages on {}",

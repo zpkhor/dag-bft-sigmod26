@@ -125,6 +125,9 @@ pub struct Parameters {
     /// Exclude SendPayment transactions (single-account txs only).
     #[serde(default)]
     pub no_send_payment_tx: bool,
+    /// Use writeback executor (old distributed tx executor) instead of data fusion executor
+    #[serde(default)]
+    pub use_writeback_executor: bool,
 }
 
 fn default_sharding_strategy() -> String {
@@ -149,6 +152,7 @@ impl Default for Parameters {
             sharding_strategy: default_sharding_strategy(),
             use_new_scheduler: false,
             no_send_payment_tx: false,
+            use_writeback_executor: false,
         }
     }
 }

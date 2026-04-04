@@ -4,6 +4,12 @@ use std::convert::TryInto;
 
 pub use config::compute_initial_shard_range;
 
+/// Workload type for executor/router dispatch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum WorkloadType {
+    SmallBank,
+}
+
 /// SmallBank transaction types
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[repr(u8)]
