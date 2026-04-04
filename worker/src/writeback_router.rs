@@ -9,7 +9,7 @@ use bytes::Bytes;
 use config::{Committee, ExecutorId, Partition, WorkerId};
 use crypto::{Digest, PublicKey};
 use log::{debug, info, warn};
-use network::{SimpleSender, LAN_BANDWIDTH};
+use network::SimpleSender;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::{Arc, RwLock};
@@ -93,7 +93,7 @@ impl WritebackRouter {
                 rx_execute,
                 workload_type,
                 executor_addresses,
-                executor_network: SimpleSender::new(LAN_BANDWIDTH),
+                executor_network: SimpleSender::new(),
             }
             .run()
             .await;

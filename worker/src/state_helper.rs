@@ -4,7 +4,7 @@ use bytes::Bytes;
 use config::{Committee, ExecutorId};
 use crypto::PublicKey;
 use log::{debug, info};
-use network::{SimpleSender, LAN_BANDWIDTH};
+use network::SimpleSender;
 use primary::ExecutorPrimaryMessage;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

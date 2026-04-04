@@ -143,10 +143,9 @@ impl Worker {
 
         if self.parameters.use_writeback_executor {
             // Writeback path: partition transactions per-executor in the router
-            let validator_ranges: Vec<(u64, u64)> = self.committee.account_ranges.values().cloned().collect();
             let initial_partition = config::create_initial_partition(
                 self.parameters.num_executors,
-                &validator_ranges,
+                self.parameters.num_accounts,
                 config::ShardingStrategy::from_str(&self.parameters.sharding_strategy),
             );
             let states_partition_cache = Arc::new(RwLock::new(Some(initial_partition)));

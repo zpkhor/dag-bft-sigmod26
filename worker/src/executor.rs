@@ -68,8 +68,6 @@ impl Executor {
                 parameters.min_balance,
                 parameters.max_balance,
                 _sharding_strategy,
-                false,
-                0,
                 id,
                 0,
                 Some(initial_partition),

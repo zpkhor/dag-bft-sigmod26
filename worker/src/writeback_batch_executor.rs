@@ -1,6 +1,5 @@
 // Copyright(C) Facebook, Inc. and its affiliates.
 // Adapted from origin/old-executor-patch:worker/src/batch_executor.rs
-use crate::account_accesses::AccountStatsTracker;
 use crate::batch_executor::ClientReplyRequest;
 use crate::state_helper::{StateTransfer, StateTransferRequest};
 use crate::writeback_state_helper::{OutgoingStateInfo, StateWritebackArrival, StateWritebackRequest};
@@ -89,8 +88,6 @@ pub struct DistributedTxExecutor {
     workload_type: WorkloadType,
     /// In-memory account store for SmallBank workload (None for Default workload).
     account_store: Option<AccountStore>,
-    /// Account-level statistics tracker (Some if load balancer enabled).
-    account_accesses: Option<AccountStatsTracker>,
     /// Next expected sequence number.
     next_sequence: u64,
     /// Buffer for out-of-order batches.
@@ -128,7 +125,6 @@ pub struct DistributedTxExecutor {
     tx_feedback: Sender<(u32, u64)>,
     /// Last feedback sequence sent (to avoid redundant sends).
     last_feedback_sent: u64,
-    record_account_accesses: bool,
     /// Cumulative count of actually executed transactions.
     executed_tx_count: u64,
 }
@@ -145,8 +141,6 @@ impl DistributedTxExecutor {
         min_balance: i64,
         max_balance: i64,
         sharding_strategy: config::ShardingStrategy,
-        enable_load_balancer: bool,
-        lb_window_ms: u64,
         executor_id: u32,
         node_id: usize,
         initial_partition: Option<Partition>,
@@ -193,19 +187,9 @@ impl DistributedTxExecutor {
             None
         };
 
-        // Initialize account_accesses tracker if load balancer is enabled
-        let account_accesses = if enable_load_balancer {
-            Some(AccountStatsTracker::new(
-                executor_id,
-                lb_window_ms,
-            ))
-        } else {
-            None
-        };
-
         info!(
-            "DistributedTxExecutor {} initialized: workload={:?}, accounts={}, workers={}, sharding={:?}, load_balancer={}",
-            executor_id, workload_type, num_accounts, num_workers, sharding_strategy, enable_load_balancer
+            "DistributedTxExecutor {} initialized: workload={:?}, accounts={}, workers={}, sharding={:?}",
+            executor_id, workload_type, num_accounts, num_workers, sharding_strategy
         );
 
         tokio::spawn(async move {
@@ -215,7 +199,6 @@ impl DistributedTxExecutor {
                 committee,
                 workload_type,
                 account_store,
-                account_accesses,
                 next_sequence: 0,
                 buffer: BTreeMap::new(),
                 executor_id,
@@ -236,7 +219,6 @@ impl DistributedTxExecutor {
                 incoming_writebacks,
                 tx_feedback,
                 last_feedback_sent: 0,
-                record_account_accesses: true,
             }
             .run()
             .await;
@@ -497,7 +479,6 @@ impl DistributedTxExecutor {
         let mut success = true;
         let mut account_id = 0u64;
         let mut account_state = None;
-        let mut sb_tx_type = None;
 
         match self.workload_type {
             WorkloadType::Default => {
@@ -506,25 +487,6 @@ impl DistributedTxExecutor {
             WorkloadType::SmallBank => {
                 let transaction = Transaction::new(tx_bytes);
                 if let Some(sb_tx) = transaction.parse_smallbank_payload() {
-                    sb_tx_type = Some(sb_tx.tx_type);
-                    // Record account statistics if load balancer is enabled
-                    if let Some(ref mut stats) = self.account_accesses {
-                        match sb_tx.tx_type {
-                            crate::workload::SmallBankTxType::SendPayment => {
-                                stats.record_access(
-                                    vec![sb_tx.account_id, sb_tx.dest_account_id],
-                                    sb_tx.tx_type,
-                                );
-                            }
-                            _ => {
-                                stats.record_access(
-                                    vec![sb_tx.account_id],
-                                    sb_tx.tx_type,
-                                );
-                            }
-                        }
-                    }
-
                     account_id = sb_tx.account_id;
 
                     // Execute transaction and capture state
@@ -598,7 +560,6 @@ impl DistributedTxExecutor {
             success,
             account_id,
             account_state,
-            sb_tx_type,
         };
 
         if let Err(e) = self.tx_client_reply.send(reply_request).await {
@@ -879,14 +840,6 @@ impl DistributedTxExecutor {
                 pending_tx.tx_header.id.tx_counter, pending_tx.tx_header.id.client_id, pending_tx.batch_digest
             );
         }
-        if self.record_account_accesses {
-            if let Some(ref mut stats) = self.account_accesses {
-                stats.record_access(
-                    vec![pending_tx.sb_tx.account_id],
-                    pending_tx.sb_tx.tx_type,
-                );
-            }
-        }
         // Get current src account state (clone for transfer)
         let src_account_state = self.account_store
             .as_ref()
@@ -1152,7 +1105,6 @@ impl DistributedTxExecutor {
             success,
             account_id,
             account_state,
-            sb_tx_type: Some(pending_tx.sb_tx.tx_type),
         };
 
         if let Err(e) = self.tx_client_reply.send(reply_request).await {

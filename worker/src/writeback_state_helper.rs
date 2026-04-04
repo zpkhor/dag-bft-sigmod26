@@ -7,7 +7,7 @@ use bytes::Bytes;
 use config::{Committee, ExecutorId};
 use crypto::PublicKey;
 use log::{debug, info};
-use network::{SimpleSender, LAN_BANDWIDTH};
+use network::SimpleSender;
 use primary::ExecutorPrimaryMessage;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -107,7 +107,7 @@ impl WritebackStateHelper {
                 executor_id,
                 name,
                 committee,
-                network: SimpleSender::new(LAN_BANDWIDTH),
+                network: SimpleSender::new(),
                 rx_send_state,
                 rx_state_writeback,
                 rx_executor_message,
