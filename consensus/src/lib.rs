@@ -38,7 +38,7 @@ impl ValidatorThroughputTracker {
 
     fn record(&mut self, certificate: &Certificate) {
         let origin = certificate.origin();
-        let tx_count: u64 = certificate.header.account_counts.values().sum();
+        let tx_count: u64 = certificate.header.account_counts.values().map(|&c| c as u64).sum();
         let created_at = certificate.header.created_at;
         let round = certificate.round();
 
@@ -173,6 +173,10 @@ fn compute_rerouting(
     prev_avg_qd: &HashMap<PublicKey, f64>,
     delta_t_secs: f64,
 ) -> Vec<MigrationNotice> {
+
+    if quorum_metrics.len() < 2 * f {
+        return vec![];
+    }    
 
     // [STUDY] Simulate Byzantine worst-case: last f validators report quorum_latency
     // at the proven upper bound (1 worker): sum(L_i) <= delta_t * 1000ms.
@@ -344,14 +348,6 @@ fn compute_rerouting(
             acct_load[b].partial_cmp(&acct_load[a]).unwrap().then_with(|| a.cmp(b))
         });
 
-        // Log top-5 heaviest accounts
-        for (i, acct) in sorted_accounts.iter().take(5).enumerate() {
-            let has_latency = account_latency.contains_key(acct);
-            info!(
-                "reroute: donor {} top-{} account {} load={:.1} tx/s has_latency={}",
-                donor_pk, i + 1, acct, acct_load[acct], has_latency
-            );
-        }
 
         // Log receiver spare capacities
         for r in &receivers {
@@ -429,7 +425,7 @@ fn compute_rerouting(
 struct AccountDistributionTracker {
     /// Per-round, per-validator account_counts extracted from certificates.
     /// Mirrors the DAG structure but stores only account_counts.
-    dag: HashMap<Round, HashMap<PublicKey, (BTreeMap<u64, u64>, u64)>>,
+    dag: HashMap<Round, HashMap<PublicKey, (BTreeMap<u32, u16>, u64)>>,
     /// Largest round seen across all received certificates.
     max_round_seen: Round,
 }
@@ -466,7 +462,7 @@ impl AccountDistributionTracker {
             for (pk, (counts, _ts)) in validators {
                 let entry = result.entry(*pk).or_default();
                 for (&acct, &cnt) in counts {
-                    *entry.entry(acct).or_insert(0) += cnt;
+                    *entry.entry(acct as u64).or_insert(0) += cnt as u64;
                 }
             }
         }
@@ -682,9 +678,10 @@ impl Consensus {
                         .unwrap_or_else(|| {
                             // First evaluation: use time since first tracked round
                             let first_round = stable_round.saturating_sub(TRACKING_WINDOW);
-                            throughput_tracker.round_timestamp_ms(first_round)
-                                .map(|first_ts| (current_ts_ms.saturating_sub(first_ts)) as f64 / 1000.0)
-                                .unwrap_or(1.0)
+                            let first_ts = throughput_tracker
+                                .round_timestamp_ms(first_round)
+                                .expect("first tracked round timestamp missing despite get_tps invariant");
+                            (current_ts_ms.saturating_sub(first_ts)) as f64 / 1000.0
                         });
 
                     let old_assignment_sizes: Vec<usize> = current_assignments.iter().map(|s| s.len()).collect();

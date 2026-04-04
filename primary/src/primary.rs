@@ -64,9 +64,9 @@ pub enum ExecutorPrimaryMessage {
 #[derive(Debug, Serialize, Deserialize)]
 pub enum WorkerPrimaryMessage {
     /// The worker indicates it sealed a new batch.
-    OurBatch(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics),
+    OurBatch(Digest, WorkerId, BTreeMap<u32, u16>, QuorumMetrics),
     /// The worker indicates it received a batch's digest from another authority.
-    OthersBatch(Digest, WorkerId, BTreeMap<u64, u64>),
+    OthersBatch(Digest, WorkerId, BTreeMap<u32, u16>),
 }
 
 pub struct Primary;
@@ -81,7 +81,7 @@ impl Primary {
         rx_feedback: Receiver<Certificate>,
     ) {
         let (tx_others_digests, rx_others_digests) = channel(CHANNEL_CAPACITY);
-        let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>, _) = channel(CHANNEL_CAPACITY);
+        let (tx_our_digests, rx_our_digests): (Sender<(Digest, WorkerId, BTreeMap<u32, u16>, QuorumMetrics)>, _) = channel(CHANNEL_CAPACITY);
         let (tx_parents, rx_parents) = channel(CHANNEL_CAPACITY);
         let (tx_headers, rx_headers) = channel(CHANNEL_CAPACITY);
         let (tx_sync_headers, rx_sync_headers) = channel(CHANNEL_CAPACITY);
@@ -261,8 +261,8 @@ impl MessageHandler for PrimaryReceiverHandler {
 /// Defines how the network receiver handles incoming workers messages.
 #[derive(Clone)]
 struct WorkerReceiverHandler {
-    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>, QuorumMetrics)>,
-    tx_others_digests: Sender<(Digest, WorkerId, BTreeMap<u64, u64>)>,
+    tx_our_digests: Sender<(Digest, WorkerId, BTreeMap<u32, u16>, QuorumMetrics)>,
+    tx_others_digests: Sender<(Digest, WorkerId, BTreeMap<u32, u16>)>,
 }
 
 #[async_trait]
