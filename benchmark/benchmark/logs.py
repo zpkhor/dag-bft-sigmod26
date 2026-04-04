@@ -944,6 +944,8 @@ class LogParser:
         if e2e:
             e2e_lines1 = (
                 f' E2E latency (send -> exec reply) (mean): {round(e2e["mean"]):,} ms\n'
+                f' E2E latency (send -> exec reply) (p50): {round(e2e["p50"]):,} ms\n'
+                f' E2E latency (send -> exec reply) (p90): {round(e2e["p90"]):,} ms\n'
                 f' E2E latency (send -> exec reply) (p95): {round(e2e["p95"]):,} ms\n'
             )
 
