@@ -11,11 +11,11 @@ pub struct PayloadReceiver {
     /// The persistent storage.
     store: Store,
     /// Receives batches' digests from the network.
-    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>,
+    rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u32, u16>)>,
 }
 
 impl PayloadReceiver {
-    pub fn spawn(store: Store, rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u64, u64>)>) {
+    pub fn spawn(store: Store, rx_workers: Receiver<(Digest, WorkerId, BTreeMap<u32, u16>)>) {
         tokio::spawn(async move {
             Self { store, rx_workers }.run().await;
         });
