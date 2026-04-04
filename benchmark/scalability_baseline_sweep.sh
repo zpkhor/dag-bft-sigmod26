@@ -105,7 +105,7 @@ run_one_config() {
         echo "CMD: LABEL=$LABEL $FAB_CMD"
         local OUTPUT
         OUTPUT=$(eval "$FAB_CMD" 2>&1) || true
-        echo "$OUTPUT" > "$RUN_DIR/output.log"
+        { echo "CMD: LABEL=$LABEL $FAB_CMD"; printf '%s\n' "$OUTPUT"; } > "$RUN_DIR/output.log"
 
         check_certified_tps_consistency "$RUN_DIR" "$RUN_DIR" "$RUN_DIR/output.log" || true
 
@@ -133,7 +133,7 @@ echo "Scalability baseline sweep (cloudlab)"
 echo "Nodes: ${NODES_LIST[*]}, Rate: $RATE, Worker BW: $WORKER_BW, Primary BW: $PRIMARY_BW"
 echo "Configs: ${#CONFIGS[@]}"
 echo "Duration: ${DURATION}s, Warmup: ${WARMUP}s, Retries: $RETRIES"
-echo "Results: $(pwd)/results/scalability_baseline_cloudlab_<timestamp>"
+echo "Results: $RESULTS_DIR"
 echo "==========================================="
 
 for CONFIG in "${CONFIGS[@]}"; do
