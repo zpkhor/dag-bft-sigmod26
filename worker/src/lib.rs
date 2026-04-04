@@ -28,7 +28,7 @@ pub use crate::state_helper::{
     ExecutorToExecutorMessage, StateHelper, StateTransfer, StateTransferRequest,
 };
 pub use crate::workload::AccountStore;
-pub use crate::worker::{CommitNotification, Worker, WorkerState};
+pub use crate::worker::{CommitNotification, Worker};
 pub use crate::writeback_state_helper::{
     WritebackStateHelper, OutgoingStateInfo, StateWritebackArrival, StateWritebackRequest,
 };
