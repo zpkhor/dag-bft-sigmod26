@@ -1,6 +1,7 @@
 # CloudLab benchmark orchestrator.
 # Deploys Narwhal on CloudLab physical machines using SSH + tmux.
 import json
+import os
 import socket
 import subprocess
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -237,9 +238,9 @@ class CloudLabBench:
                 'set -e',
                 self._detect_iface(),
                 self._strip_all_tc(),
-                f'tc qdisc add dev $IFACE root handle 1: htb default 99',
+                f'tc qdisc add dev $IFACE root handle 1: htb default 9999',
                 f'tc class add dev $IFACE parent 1: classid 1:1 htb rate {client_bw}kbit',
-                f'tc class add dev $IFACE parent 1:1 classid 1:99 htb rate 1mbit ceil {client_bw}kbit',
+                f'tc class add dev $IFACE parent 1:1 classid 1:9999 htb rate 1mbit ceil {client_bw}kbit',
                 *class_lines,
             ])
             self._ssh(c_ssh_host).run(f'sudo bash -c \'{script}\'', hide=True)
@@ -275,7 +276,7 @@ class CloudLabBench:
                 pass
         self._parallel_ssh(ssh_hosts, _kill_one)
 
-    def run(self, debug=False):
+    def run(self, debug=False, log_dir=None):
         assert isinstance(debug, bool)
         Print.heading('Starting CloudLab benchmark')
 
@@ -312,9 +313,15 @@ class CloudLabBench:
             self._reset_tcp_buffers(all_ssh)
 
             # Clean up locally
-            cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
-            subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+            else:
+                cmd = f'{CommandMaker.clean_logs()} ; {CommandMaker.cleanup()}'
+                subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
             sleep(0.5)
+
+            def _cfg(path):
+                return os.path.join(log_dir, os.path.basename(path)) if log_dir else path
 
             # Compile locally
             Print.info('Compiling...')
@@ -361,7 +368,7 @@ class CloudLabBench:
             # Generate keys
             Print.info('Generating configuration files...')
             keys = []
-            key_files = [PathMaker.key_file(i) for i in range(nodes)]
+            key_files = [_cfg(PathMaker.key_file(i)) for i in range(nodes)]
             for filename in key_files:
                 cmd = CommandMaker.generate_key(filename).split()
                 subprocess.run(cmd, check=True)
@@ -405,7 +412,7 @@ class CloudLabBench:
                     use_new_scheduler=self.new_scheduler,
                 )
 
-            self.node_parameters.print(PathMaker.parameters_file())
+            self.node_parameters.print(_cfg(PathMaker.parameters_file()))
 
             # Account distribution
             num_accounts = self.bench_parameters.num_accounts
@@ -432,7 +439,7 @@ class CloudLabBench:
                 exec_reply_port = self.BASE_PORT + 9000
                 committee.set_client_reply_addresses({0: f'{c_ip}:{exec_reply_port}'})
 
-            committee.print(PathMaker.committee_file())
+            committee.print(_cfg(PathMaker.committee_file()))
 
             # Exclude faulty validators from running processes
             good_nodes = nodes - self.faults
@@ -447,9 +454,9 @@ class CloudLabBench:
                     f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs && {db_dirs}',
                     hide=True,
                 )
-                conn.put(PathMaker.committee_file(), '.')
-                conn.put(PathMaker.parameters_file(), '.')
-                conn.put(PathMaker.key_file(i), '.')
+                conn.put(_cfg(PathMaker.committee_file()), '.')
+                conn.put(_cfg(PathMaker.parameters_file()), '.')
+                conn.put(_cfg(PathMaker.key_file(i)), '.')
 
             def _upload_executor(i):
                 conn = self._ssh(e_ssh[i])
@@ -460,9 +467,9 @@ class CloudLabBench:
                     f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs && mkdir -p {exec_db_dirs}',
                     hide=True,
                 )
-                conn.put(PathMaker.committee_file(), '.')
-                conn.put(PathMaker.parameters_file(), '.')
-                conn.put(PathMaker.key_file(i), '.')
+                conn.put(_cfg(PathMaker.committee_file()), '.')
+                conn.put(_cfg(PathMaker.parameters_file()), '.')
+                conn.put(_cfg(PathMaker.key_file(i)), '.')
 
             def _upload_client():
                 conn = self._ssh(c_ssh_host)
@@ -470,8 +477,8 @@ class CloudLabBench:
                     f'{CommandMaker.remote_cleanup()} || true && mkdir -p logs',
                     hide=True,
                 )
-                conn.put(PathMaker.committee_file(), '.')
-                conn.put(PathMaker.parameters_file(), '.')
+                conn.put(_cfg(PathMaker.committee_file()), '.')
+                conn.put(_cfg(PathMaker.parameters_file()), '.')
 
             with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
                 futures = [pool.submit(_upload_validator, i) for i in range(nodes)]
@@ -524,12 +531,17 @@ class CloudLabBench:
                 exec_reply_addr = f'{c_ip}:{self.BASE_PORT + 9000}'
                 exec_reply_flag = f' --execution-reply-addr {exec_reply_addr}'
 
+            e_skew_flag = ''
+            if self.e_skew_weights:
+                e_skew_weights_str = ','.join(str(w) for w in self.e_skew_weights)
+                e_skew_flag = f' --executor-skew-weights {e_skew_weights_str}'
+
             client_command = (
                 f'./benchmark_client --size {self.tx_size} '
                 f'--rate {rate} --nodes {all_nodes_arg} '
                 f'{ar_args} --rate-weights {rate_weights_str} '
                 f'--reply-addr {reply_addr} --own-validator {names[0]} '
-                f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}'
+                f'{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}{e_skew_flag}'
                 f' --rampup-secs {self.warmup}'
             )
 
@@ -580,6 +592,7 @@ class CloudLabBench:
                             f'.db-exec-{i}-{e}',
                             PathMaker.parameters_file(),
                             e,
+                            list(zip(acct_starts, acct_counts)),
                             debug=debug,
                         )
                         self._background_run(
@@ -631,17 +644,26 @@ class CloudLabBench:
 
             # Download logs (parallel)
             Print.info('Downloading logs...')
-            cmd = CommandMaker.clean_logs()
-            subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
-            subprocess.run(['mkdir', '-p', PathMaker.logs_path()])
+            if log_dir:
+                os.makedirs(log_dir, exist_ok=True)
+                for f in os.listdir(log_dir):
+                    if f.endswith('.log'):
+                        os.remove(os.path.join(log_dir, f))
+            else:
+                cmd = CommandMaker.clean_logs()
+                subprocess.run([cmd], shell=True, stderr=subprocess.DEVNULL)
+                subprocess.run(['mkdir', '-p', PathMaker.logs_path()])
+
+            def _local(remote_path):
+                return os.path.join(log_dir, os.path.basename(remote_path)) if log_dir else remote_path
 
             def _download_validator(i):
                 conn = self._ssh(v_ssh[i])
-                conn.get(PathMaker.primary_log_file(i), local=PathMaker.primary_log_file(i))
+                conn.get(PathMaker.primary_log_file(i), local=_local(PathMaker.primary_log_file(i)))
                 for w in range(self.workers):
                     conn.get(
                         PathMaker.worker_log_file(i, w),
-                        local=PathMaker.worker_log_file(i, w),
+                        local=_local(PathMaker.worker_log_file(i, w)),
                     )
 
             def _download_executor(i):
@@ -649,14 +671,14 @@ class CloudLabBench:
                 for e in range(self.num_executors):
                     conn.get(
                         PathMaker.executor_log_file(i, e),
-                        local=PathMaker.executor_log_file(i, e),
+                        local=_local(PathMaker.executor_log_file(i, e)),
                     )
 
             def _download_client():
                 conn = self._ssh(c_ssh_host)
                 conn.get(
                     PathMaker.client_log_file(0, 0),
-                    local=PathMaker.client_log_file(0, 0),
+                    local=_local(PathMaker.client_log_file(0, 0)),
                 )
 
             with ThreadPoolExecutor(max_workers=nodes + len(e_ssh) + 1) as pool:
@@ -668,7 +690,8 @@ class CloudLabBench:
                     f.result()
 
             # Save bench params for log parsing (after download, since clean_logs wipes the dir)
-            with open(PathMaker.bench_params_file(), 'w') as f:
+            params_path = os.path.join(log_dir, 'bench-params.json') if log_dir else PathMaker.bench_params_file()
+            with open(params_path, 'w') as f:
                 json.dump({
                     'duration': self.duration,
                     'warmup': self.warmup,
@@ -678,7 +701,7 @@ class CloudLabBench:
             # Parse logs
             Print.info('Parsing logs...')
             return LogParser.process(
-                PathMaker.logs_path(),
+                log_dir if log_dir else PathMaker.logs_path(),
                 faults=self.faults,
                 duration=self.duration,
                 warmup=self.warmup,

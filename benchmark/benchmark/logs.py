@@ -22,11 +22,19 @@ def to_posix(string):
 class LogParser:
     def __init__(self, clients, primaries, workers, faults=0,
                  workers_by_validator=None, clients_by_validator=None,
-                 duration=None, warmup=0, verbose=False):
+                 duration=None, warmup=0, verbose=False, executor_logs=None):
         inputs = [clients, primaries, workers]
         assert all(isinstance(x, list) for x in inputs)
         assert all(isinstance(x, str) for y in inputs for x in y)
         assert all(x for x in inputs)
+
+        # Parse executor logs: executor_logs is a dict {(validator_id, executor_id): content}
+        # Result: self.executor_total_executed[(validator_id, executor_id)] = final cumulative count
+        self.executor_total_executed = {}
+        if executor_logs:
+            for (v, e), content in executor_logs.items():
+                matches = findall(r'cumulative total_executed (\d+)', content)
+                self.executor_total_executed[(v, e)] = int(matches[-1]) if matches else 0
 
         self.faults = faults
         self.bench_duration = float(duration) if duration is not None else None
@@ -323,9 +331,9 @@ class LogParser:
         return to_posix(string)
 
     def _calculate_latency_metrics(self, latency_list):
-        """Calculate mean, p50, p95, and p99 latency from a list of latencies."""
+        """Calculate mean, p50, p90, p95, and p99 latency from a list of latencies."""
         if not latency_list:
-            return {'mean': 0, 'p50': 0, 'p95': 0, 'p99': 0}
+            return {'mean': 0, 'p50': 0, 'p90': 0, 'p95': 0, 'p99': 0}
 
         result = {'mean': mean(latency_list)}
 
@@ -333,11 +341,13 @@ class LogParser:
             # quantiles(data, n=100) gives 99 cut points at 1st through 99th percentile
             q = quantiles(latency_list, n=100)
             result['p50'] = q[49]
+            result['p90'] = q[89]
             result['p95'] = q[94]
             result['p99'] = q[98]
         else:
             sorted_list = sorted(latency_list)
             result['p50'] = sorted_list[len(sorted_list) // 2]
+            result['p90'] = max(latency_list)
             result['p95'] = max(latency_list)
             result['p99'] = max(latency_list)
 
@@ -464,7 +474,7 @@ class LogParser:
 
     def _worker_committed_latency(self):
         if not isinstance(self.faults, int):
-            return {'mean': 0, 'p95': 0, 'p50': 0, 'p99': 0}
+            return {'mean': 0, 'p50': 0, 'p90': 0, 'p95': 0, 'p99': 0}
         # BFT f+1 threshold: n = 3f+1 → f = (n-1)/3 → f+1 = (n-1)//3 + 1
         threshold = (self.committee_size - 1) // 3 + 1
 
@@ -501,6 +511,19 @@ class LogParser:
             for v, count in result.items()
         }
         return result, percentages
+
+    def _executor_load_distribution(self):
+        # Aggregate by executor index (averaged across validators, since all process the same global set).
+        # Returns (counts_by_executor_idx, percentages_by_executor_idx) where counts are averaged.
+        if not self.executor_total_executed:
+            return None, None
+        by_executor = defaultdict(list)
+        for (v, e), count in self.executor_total_executed.items():
+            by_executor[e].append(count)
+        avg_counts = {e: sum(counts) // len(counts) for e, counts in sorted(by_executor.items())}
+        total = sum(avg_counts.values())
+        percentages = {e: (c / total * 100 if total else 0) for e, c in avg_counts.items()}
+        return avg_counts, percentages
 
     def _per_validator_committed_tps(self):
         if not self.commits:
@@ -909,6 +932,8 @@ class LogParser:
     def _format_results_section(self):
         commit_metrics = self._worker_committed_latency()
         commit_latency = commit_metrics['mean'] * 1_000
+        commit_p50 = commit_metrics['p50'] * 1_000
+        commit_p90 = commit_metrics['p90'] * 1_000
         commit_p95 = commit_metrics['p95'] * 1_000
         consensus_tps, consensus_bps, _ = self._consensus_throughput()
         committed_tps, committed_bps, _ = self._committed_throughput()
@@ -919,6 +944,8 @@ class LogParser:
         if e2e:
             e2e_lines1 = (
                 f' E2E latency (send -> exec reply) (mean): {round(e2e["mean"]):,} ms\n'
+                f' E2E latency (send -> exec reply) (p50): {round(e2e["p50"]):,} ms\n'
+                f' E2E latency (send -> exec reply) (p90): {round(e2e["p90"]):,} ms\n'
                 f' E2E latency (send -> exec reply) (p95): {round(e2e["p95"]):,} ms\n'
             )
 
@@ -930,6 +957,8 @@ class LogParser:
         return (
             ' + RESULTS:\n'
             f' f+1 Commit latency (workers) (mean): {round(commit_latency):,} ms\n'
+            f' f+1 Commit latency (workers) (p50): {round(commit_p50):,} ms\n'
+            f' f+1 Commit latency (workers) (p90): {round(commit_p90):,} ms\n'
             f' f+1 Commit latency (workers) (p95): {round(commit_p95):,} ms\n'
             + e2e_lines1 +
             '\n'
@@ -950,6 +979,11 @@ class LogParser:
         ]
         for v in sorted(tx_counts.keys()):
             lines.append(f' Validator {v}: {tx_counts[v]:,} tx ({percentages[v]:.1f}%)\n')
+        exec_counts, exec_pcts = self._executor_load_distribution()
+        if exec_counts is not None:
+            lines.append('\n + EXECUTOR LOAD DISTRIBUTION (avg across validators):\n')
+            for e in sorted(exec_counts.keys()):
+                lines.append(f' Executor {e}: {exec_counts[e]:,} tx ({exec_pcts[e]:.1f}%)\n')
         lines.append(
             '\n'
             ' + PER-VALIDATOR COMMIT METRICS:\n'
@@ -1088,6 +1122,13 @@ class LogParser:
             if m:
                 workers_by_validator[int(m.group(1))].append(content)
 
+        executor_logs = {}
+        for filename in sorted(glob(join(directory, 'executor-*.log'))):
+            m = search(r'executor-(\d+)-(\d+)', basename(filename))
+            if m:
+                with open(filename, 'r') as f:
+                    executor_logs[(int(m.group(1)), int(m.group(2)))] = f.read()
+
         return cls(
             clients, primaries, workers, faults=faults,
             workers_by_validator=dict(workers_by_validator),
@@ -1095,4 +1136,5 @@ class LogParser:
             duration=duration,
             warmup=warmup,
             verbose=verbose,
+            executor_logs=executor_logs if executor_logs else None,
         )

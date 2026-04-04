@@ -345,7 +345,6 @@ impl DistributedTxExecutor {
         _header: &crate::transaction::TransactionHeader,
     ) -> Vec<u64> {
         match self.workload_type {
-            WorkloadType::Default => Vec::new(), // No accounts for Default workload
             WorkloadType::SmallBank => {
                 if let Some(sb_tx) = transaction.parse_smallbank_payload() {
                     match sb_tx.tx_type {
@@ -481,9 +480,6 @@ impl DistributedTxExecutor {
         let mut account_state = None;
 
         match self.workload_type {
-            WorkloadType::Default => {
-                // Default workload: no operations
-            }
             WorkloadType::SmallBank => {
                 let transaction = Transaction::new(tx_bytes);
                 if let Some(sb_tx) = transaction.parse_smallbank_payload() {

@@ -458,6 +458,7 @@ class BenchParameters:
                         f'account_weights length ({len(self.account_weights)}) '
                         f'must match nodes ({self.nodes[0]})'
                     )
+            self.e_skew_weights = json.get('e_skew_weights', None)
             self.warmup = int(json.get('warmup', 0))
             self.num_accounts = int(json.get('num_accounts', 1_000_000))
         except KeyError as e:

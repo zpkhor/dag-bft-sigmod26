@@ -529,12 +529,17 @@ networks:
                 exec_reply_addr = f"{client_ip}:{self.BASE_PORT + 9000}"
                 exec_reply_flag = f" --execution-reply-addr {exec_reply_addr}"
 
+            e_skew_flag = ""
+            if self.e_skew_weights:
+                e_skew_weights_str = ",".join(str(w) for w in self.e_skew_weights)
+                e_skew_flag = f" --executor-skew-weights {e_skew_weights_str}"
+
             client_command = (
                 f"./benchmark_client --size {self.tx_size} "
                 f"--rate {rate} --nodes {all_nodes_arg} "
                 f"{ar_args} --rate-weights {rate_weights_str} "
                 f"--reply-addr {reply_addr} --own-validator {names[0]} "
-                f"{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}"
+                f"{vw_args}{rr_flag}{no_send_flag}{zipf_flag}{exec_reply_flag}{e_skew_flag}"
                 f" --rampup-secs {self.warmup}"
                 f" 2> /logs/client-0-0.log"
             )
@@ -566,9 +571,14 @@ networks:
             executor_commands = {}  # (validator_idx, executor_id) -> cmd
             for i in range(good_nodes):
                 for e in range(self.num_executors):
+                    range_args = ' '.join(
+                        f'--validator-range {s}:{c}'
+                        for s, c in zip(acct_starts, acct_counts)
+                    )
                     e_cmd = (
                         f"./node {v} run --keys .node-{i}.json --committee .committee.json "
-                        f"--store .db-{i} --parameters .parameters.json executor --id {e}"
+                        f"--store .db-{i} --parameters .parameters.json executor --id {e} "
+                        f"{range_args}"
                         f" 2> /logs/executor-{i}-{e}.log"
                     )
                     executor_commands[(i, e)] = e_cmd

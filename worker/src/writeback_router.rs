@@ -155,12 +155,6 @@ impl WritebackRouter {
             let transaction = Transaction::new(tx_bytes);
 
             match self.workload_type {
-                WorkloadType::Default => {
-                    txs_by_executors
-                        .get_mut(&self.worker_id)
-                        .unwrap()
-                        .push(tx_bytes.clone());
-                }
                 WorkloadType::SmallBank => {
                     let (src_opt, dest_opt) = transaction.extract_account_ids();
 

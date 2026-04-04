@@ -89,16 +89,16 @@ impl QuorumWaiter {
             while let Some(stake) = wait_for_quorum.next().await {
                 total_stake += stake;
                 if total_stake >= self.committee.quorum_threshold() {
-                    let quorum_latency_ms = quorum_start_at.elapsed().as_millis() as u64;
                     #[cfg(feature = "benchmark")]
                     {
+                        let quorum_latency_ms = quorum_start_at.elapsed().as_millis() as u64;
                         let digest = Digest(
                             Sha512::digest(&batch).as_ref()[..32].try_into().unwrap(),
                         );
                         info!("Quorum for batch {:?} queue_delay {}ms quorum_latency {}ms", digest, queue_delay_ms, quorum_latency_ms);
                     }
                     self.tx_batch
-                        .send((batch, QuorumMetrics { queue_delay_ms, quorum_latency_ms }))
+                        .send((batch, QuorumMetrics { queue_delay_ms }))
                         .await
                         .expect("Failed to deliver batch");
                     break;
