@@ -338,33 +338,28 @@ class CloudLabBench:
             # Rsync binaries and required shared libs to all machines (parallel)
             Print.info(f'Distributing binaries to {len(all_ssh)} machines...')
             binary_path = PathMaker.binary_path()
-            libs_to_ship = []
-            for lib_name in ['libstdc++.so.6', 'libgcc_s.so.1']:
-                result = subprocess.run(
-                    f'ldd {binary_path}/node | grep {lib_name}',
-                    shell=True, capture_output=True, text=True,
-                )
-                for line in result.stdout.strip().split('\n'):
-                    parts = line.strip().split('=>')
-                    if len(parts) == 2:
-                        path = parts[1].strip().split('(')[0].strip()
-                        if path and '/lib/x86_64-linux-gnu/' not in path:
-                            libs_to_ship.append(path)
+            # Ship libc and ld-linux from hilbit1 so CloudLab nodes (Ubuntu 22,
+            # GLIBC 2.35) can run binaries compiled on hilbit1 (Ubuntu 24, GLIBC 2.38+).
+            extra_libs = [
+                '/lib/x86_64-linux-gnu/libc.so.6',
+                '/lib64/ld-linux-x86-64.so.2',
+            ]
 
             def _distribute_one(host):
                 subprocess.run(
                     f'rsync -azL {binary_path}/node {binary_path}/benchmark_client '
-                    f'{" ".join(libs_to_ship)} '
+                    f'{" ".join(extra_libs)} '
                     f'{self.username}@{host}:~/',
                     shell=True, check=True,
                 )
-                post_cmds = ['sudo setcap cap_net_admin+ep ~/benchmark_client']
-                if libs_to_ship:
-                    post_cmds.insert(0,
-                        'sudo cp ~/libstdc++.so.6 ~/libgcc_s.so.1 '
-                        '/usr/lib/x86_64-linux-gnu/ && sudo ldconfig'
-                    )
-                self._ssh(host).run(' && '.join(post_cmds), hide=True)
+                self._ssh(host).run(
+                    'patchelf --set-interpreter ~/ld-linux-x86-64.so.2 '
+                    '         --set-rpath ~ ~/node && '
+                    'patchelf --set-interpreter ~/ld-linux-x86-64.so.2 '
+                    '         --set-rpath ~ ~/benchmark_client && '
+                    'sudo setcap cap_net_admin+ep ~/benchmark_client',
+                    hide=True,
+                )
 
             self._parallel_ssh(all_ssh, _distribute_one)
 
@@ -932,11 +927,22 @@ class CloudLabReplayBench:
             Print.info(f'Distributing binary to {len(all_hosts)} nodes...')
             binary_path = PathMaker.binary_path()
 
+            extra_libs = [
+                '/lib/x86_64-linux-gnu/libc.so.6',
+                '/lib64/ld-linux-x86-64.so.2',
+            ]
+
             def _distribute(host):
                 subprocess.run(
                     f'rsync -azL -e "ssh -o StrictHostKeyChecking=no" '
-                    f'{binary_path}/node {self.username}@{host}:~/',
+                    f'{binary_path}/node {" ".join(extra_libs)} '
+                    f'{self.username}@{host}:~/',
                     shell=True, check=True,
+                )
+                self._ssh(host).run(
+                    'patchelf --set-interpreter ~/ld-linux-x86-64.so.2 '
+                    '         --set-rpath ~ ~/node',
+                    hide=True,
                 )
             self._parallel_ssh(all_hosts, _distribute)
 
