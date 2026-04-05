@@ -940,6 +940,7 @@ class CloudLabReplayBench:
                     shell=True, check=True,
                 )
                 self._ssh(host).run(
+                    'sudo apt-get install -y -q patchelf && '
                     'patchelf --set-interpreter ~/ld-linux-x86-64.so.2 '
                     '         --set-rpath ~ ~/node',
                     hide=True,
