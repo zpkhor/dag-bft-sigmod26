@@ -495,6 +495,8 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
           NODE_OFFSET           skip first N nodes in the manifest (default: 0)
           EXECUTOR_SKEW_WEIGHTS comma-separated weights per executor shard, e.g. "3,1,1" (default: uniform)
           DISTRIBUTED_TX_RATE   fraction of txs that are cross-executor SendPayment, 0.0..1.0 (default: 0.0)
+          NO_SEND_PAYMENT       disable SendPayment txs in executor, 1=yes (default: 0)
+          NEW_SCHEDULER         use new dynamic load-aware scheduler, 1=yes (default: 0)
     '''
     replay_csv = os.path.abspath(os.environ.get('REPLAY_CSV', 'benchmark/record_rate25k.csv'))
     replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
@@ -509,6 +511,8 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
     _skew_str = os.environ.get('EXECUTOR_SKEW_WEIGHTS', '')
     executor_skew_weights = [float(w) for w in _skew_str.split(',') if w.strip()] if _skew_str.strip() else []
     distributed_tx_rate = float(os.environ.get('DISTRIBUTED_TX_RATE', 0.0))
+    no_send_payment = os.environ.get('NO_SEND_PAYMENT', '0') == '1'
+    use_new_scheduler = os.environ.get('NEW_SCHEDULER', '0') == '1'
 
     assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
 
@@ -539,6 +543,8 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
             node_offset=node_offset,
             executor_skew_weights=executor_skew_weights,
             distributed_tx_rate=distributed_tx_rate,
+            no_send_payment=no_send_payment,
+            use_new_scheduler=use_new_scheduler,
         ).run(debug)
         print(ret)
     except BenchError as e:

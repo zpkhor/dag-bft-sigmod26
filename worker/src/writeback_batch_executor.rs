@@ -10,12 +10,16 @@ use crypto::{Digest, PublicKey};
 use log::{debug, info, warn};
 use core::panic;
 use std::collections::{BTreeMap, HashMap, HashSet, VecDeque};
+use std::hint::black_box;
 use std::net::SocketAddr;
 use std::sync::{Arc, Mutex};
 use tokio::sync::mpsc::{Receiver, Sender};
 
 /// Flow control feedback interval
 const FEEDBACK_INTERVAL: u64 = 100;
+
+/// To cap executor throughput to worker throughput
+const BUSY_SPINS: u64 = 135_156;
 
 /// Buffered batch waiting for its sequence number to be executed.
 struct BufferedBatch {
@@ -472,6 +476,10 @@ impl DistributedTxExecutor {
                 "Executing sample tx counter {} from client {} in batch {:?}",
                 tx_id.tx_counter, tx_id.client_id, digest
             );
+        }
+
+        for i in 0..BUSY_SPINS {
+            black_box(i);
         }
 
         // Dimension 2: Parse workload-specific data based on configured workload type

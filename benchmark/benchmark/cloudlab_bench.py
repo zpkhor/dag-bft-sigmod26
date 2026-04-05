@@ -735,6 +735,8 @@ class CloudLabReplayBench:
         node_offset,
         executor_skew_weights,
         distributed_tx_rate,
+        no_send_payment,
+        use_new_scheduler,
     ):
         assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
         assert num_workers >= 1
@@ -754,6 +756,8 @@ class CloudLabReplayBench:
         self.node_offset = node_offset
         self.executor_skew_weights = executor_skew_weights
         self.distributed_tx_rate = distributed_tx_rate
+        self.no_send_payment = no_send_payment
+        self.use_new_scheduler = use_new_scheduler
 
         try:
             self.node_parameters = NodeParameters(node_parameters_dict)
@@ -980,8 +984,8 @@ class CloudLabReplayBench:
                 min_balance=10_000,
                 max_balance=100_000,
                 sharding_strategy='range',
-                no_send_payment_tx=False,
-                use_new_scheduler=False,
+                no_send_payment_tx=self.no_send_payment,
+                use_new_scheduler=self.use_new_scheduler,
             )
             self.node_parameters.print(PathMaker.parameters_file())
 
