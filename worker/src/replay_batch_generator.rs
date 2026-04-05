@@ -47,9 +47,31 @@ impl ReplayBatchGenerator {
             let num_accounts = parameters.num_accounts;
             assert!(num_accounts > 0, "num_accounts must be > 0 for replay mode");
 
+            let distributed_tx_rate = parameters.distributed_tx_rate;
+
+            // Precompute executor sub-range shard boundaries and cumulative weights.
+            // Shard i covers accounts [i*shard_size, (i+1)*shard_size), last shard extends to num_accounts.
+            let skew_weights = &parameters.executor_skew_weights;
+            let num_shards = skew_weights.len();
+            let (shard_size, cumulative_weights): (u64, Vec<f64>) = if num_shards > 0 {
+                assert!(
+                    skew_weights.iter().all(|&w| w > 0.0),
+                    "executor_skew_weights must all be positive"
+                );
+                let total: f64 = skew_weights.iter().sum();
+                let mut cum = 0.0f64;
+                let cw = skew_weights.iter().map(|w| { cum += w / total; cum }).collect();
+                (num_accounts / num_shards as u64, cw)
+            } else {
+                (0, vec![])
+            };
+
             for (count, assignment) in my_assignments.iter().enumerate() {
                 let mut rng = rand::rngs::StdRng::seed_from_u64(assignment.batch_index);
                 let mut txs: Vec<Vec<u8>> = Vec::with_capacity(assignment.num_tx);
+                // Counter for cycling through non-SendPayment tx types: Balance(0),
+                // DepositChecking(1), TransactSavings(2), WriteCheck(3).
+                let mut non_dist_idx: u8 = 0;
 
                 for _ in 0..assignment.num_tx {
                     let mut tx = vec![0u8; tx_size];
@@ -57,20 +79,38 @@ impl ReplayBatchGenerator {
                     // Standard header: [tx_type:1][client_id:1][tx_counter:8]
                     tx[0] = 1; // tx_type = 1 (regular, non-sample)
                     tx[1] = 0; // client_id = 0
-                    // tx_counter = 0 (bytes 2..10, already zeroed)
 
-                    // SmallBank payload: [src_account:8][dest_account:8][sb_tx_type:1][amount:8]
-                    let src_account: u64 = rng.gen_range(0, num_accounts);
-                    let sb_tx_type: u8 = rng.gen_range(0, 5);
-                    let dest_account: u64 = if sb_tx_type == 4 {
-                        // SendPayment: different dest
-                        let mut d = rng.gen_range(0, num_accounts);
-                        while d == src_account && num_accounts > 1 {
-                            d = rng.gen_range(0, num_accounts);
-                        }
-                        d
+                    // Select source account: skewed sub-range or uniform.
+                    let src_account: u64 = if num_shards > 0 {
+                        let p: f64 = rng.gen();
+                        let shard_idx = cumulative_weights.iter().position(|&c| p < c)
+                            .unwrap_or(num_shards - 1);
+                        let shard_start = shard_idx as u64 * shard_size;
+                        let shard_count = if shard_idx == num_shards - 1 {
+                            num_accounts - shard_idx as u64 * shard_size
+                        } else {
+                            shard_size
+                        };
+                        shard_start + rng.gen_range(0, shard_count)
                     } else {
-                        src_account
+                        rng.gen_range(0, num_accounts)
+                    };
+
+                    // Decide cross-executor (SendPayment) vs single-account tx.
+                    let is_distributed: bool = rng.gen::<f64>() < distributed_tx_rate;
+                    let (sb_tx_type, dest_account) = if is_distributed {
+                        // SendPayment: dest uniform from all accounts, different from src.
+                        let dest = loop {
+                            let d = rng.gen_range(0, num_accounts);
+                            if d != src_account || num_accounts <= 1 {
+                                break d;
+                            }
+                        };
+                        (4u8, dest)
+                    } else {
+                        let t = non_dist_idx % 4;
+                        non_dist_idx = non_dist_idx.wrapping_add(1);
+                        (t, src_account)
                     };
 
                     let amount: f64 = match sb_tx_type {

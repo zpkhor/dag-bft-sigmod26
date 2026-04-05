@@ -321,6 +321,9 @@ def replay(ctx, debug=False):
     replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
     num_workers = int(os.environ.get('WORKERS', 1))
     num_executors = int(os.environ.get('NUM_EXECUTORS', 1))
+    _skew_str = os.environ.get('EXECUTOR_SKEW_WEIGHTS', '')
+    executor_skew_weights = [float(w) for w in _skew_str.split(',') if w.strip()] if _skew_str.strip() else []
+    distributed_tx_rate = float(os.environ.get('DISTRIBUTED_TX_RATE', 0.0))
     num_accounts = int(os.environ.get('NUM_ACCOUNTS', 1_000_000))
     duration = int(os.environ.get('DURATION', 120))
     in_memory_store = os.environ.get('IN_MEMORY_STORE', '1') == '1'
@@ -354,7 +357,7 @@ def replay(ctx, debug=False):
         Print.info('Setting up replay benchmark...')
         BenchParameters(bench_params)  # validate
         node_parameters = NodeParameters(node_params)
-        node_parameters.set_replay_params(replay_csv, replay_tx_size, num_workers)
+        node_parameters.set_replay_params(replay_csv, replay_tx_size, num_workers, executor_skew_weights, distributed_tx_rate)
         node_parameters.set_executor_params(
             num_executors=num_executors,
             num_accounts=num_accounts,
@@ -487,9 +490,11 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
           NUM_ACCOUNTS       total SmallBank accounts (default: 1_000_000)
           DURATION           benchmark duration in seconds (default: 120)
           EXECUTOR_BW_MBPS   LAN bandwidth cap for executor traffic in Mbit/s (default: 10000)
-          IN_MEMORY_STORE    use in-memory store, 1=yes (default: 1)
-          WRITEBACK_EXECUTOR use writeback executor path, 1=yes (default: 0)
-          NODE_OFFSET        skip first N nodes in the manifest (default: 0)
+          IN_MEMORY_STORE       use in-memory store, 1=yes (default: 1)
+          WRITEBACK_EXECUTOR    use writeback executor path, 1=yes (default: 0)
+          NODE_OFFSET           skip first N nodes in the manifest (default: 0)
+          EXECUTOR_SKEW_WEIGHTS comma-separated weights per executor shard, e.g. "3,1,1" (default: uniform)
+          DISTRIBUTED_TX_RATE   fraction of txs that are cross-executor SendPayment, 0.0..1.0 (default: 0.0)
     '''
     replay_csv = os.path.abspath(os.environ.get('REPLAY_CSV', 'benchmark/record_rate25k.csv'))
     replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
@@ -501,6 +506,9 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
     in_memory_store = os.environ.get('IN_MEMORY_STORE', '1') == '1'
     use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', '0') == '1'
     node_offset = int(os.environ.get('NODE_OFFSET', 0))
+    _skew_str = os.environ.get('EXECUTOR_SKEW_WEIGHTS', '')
+    executor_skew_weights = [float(w) for w in _skew_str.split(',') if w.strip()] if _skew_str.strip() else []
+    distributed_tx_rate = float(os.environ.get('DISTRIBUTED_TX_RATE', 0.0))
 
     assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
 
@@ -529,6 +537,8 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
             node_parameters_dict=node_params,
             executor_bw_kbps=executor_bw_kbps,
             node_offset=node_offset,
+            executor_skew_weights=executor_skew_weights,
+            distributed_tx_rate=distributed_tx_rate,
         ).run(debug)
         print(ret)
     except BenchError as e:

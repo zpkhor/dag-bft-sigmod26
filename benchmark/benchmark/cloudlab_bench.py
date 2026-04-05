@@ -733,6 +733,8 @@ class CloudLabReplayBench:
         node_parameters_dict,
         executor_bw_kbps,
         node_offset,
+        executor_skew_weights,
+        distributed_tx_rate,
     ):
         assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
         assert num_workers >= 1
@@ -750,6 +752,8 @@ class CloudLabReplayBench:
         self.use_writeback_executor = use_writeback_executor
         self.executor_bw_kbps = executor_bw_kbps
         self.node_offset = node_offset
+        self.executor_skew_weights = executor_skew_weights
+        self.distributed_tx_rate = distributed_tx_rate
 
         try:
             self.node_parameters = NodeParameters(node_parameters_dict)
@@ -968,6 +972,7 @@ class CloudLabReplayBench:
             remote_csv = os.path.basename(self.replay_csv)
             self.node_parameters.set_replay_params(
                 remote_csv, self.replay_tx_size, self.num_workers,
+                self.executor_skew_weights, self.distributed_tx_rate,
             )
             self.node_parameters.set_executor_params(
                 num_executors=self.num_executors,

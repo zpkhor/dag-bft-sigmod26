@@ -452,10 +452,13 @@ class NodeParameters:
         self.json['no_send_payment_tx'] = no_send_payment_tx
         self.json['use_new_scheduler'] = use_new_scheduler
 
-    def set_replay_params(self, replay_csv, replay_tx_size, num_workers):
+    def set_replay_params(self, replay_csv, replay_tx_size, num_workers,
+                          executor_skew_weights, distributed_tx_rate):
         self.json['replay_csv'] = replay_csv
         self.json['replay_tx_size'] = replay_tx_size
         self.json['num_workers'] = num_workers
+        self.json['executor_skew_weights'] = list(executor_skew_weights)
+        self.json['distributed_tx_rate'] = distributed_tx_rate
 
 
 class BenchParameters:

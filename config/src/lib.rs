@@ -142,6 +142,14 @@ pub struct Parameters {
     /// Number of workers per validator (for replay batch assignment).
     #[serde(default = "default_num_workers")]
     pub num_workers: u32,
+    /// Executor account skew weights for replay batch generation (length == num_executors).
+    /// Each weight controls the probability of selecting accounts from that executor's shard.
+    /// Empty = uniform sampling across all accounts.
+    #[serde(default)]
+    pub executor_skew_weights: Vec<f64>,
+    /// Fraction of replay transactions that are cross-executor (SendPayment). 0.0..=1.0.
+    #[serde(default = "default_distributed_tx_rate")]
+    pub distributed_tx_rate: f64,
 }
 
 fn default_sharding_strategy() -> String {
@@ -158,6 +166,10 @@ fn default_replay_tx_size() -> usize {
 
 fn default_num_workers() -> u32 {
     1
+}
+
+fn default_distributed_tx_rate() -> f64 {
+    0.0
 }
 
 impl Default for Parameters {
@@ -182,6 +194,8 @@ impl Default for Parameters {
             wan_bandwidth: default_wan_bandwidth(),
             replay_csv: String::new(),
             replay_tx_size: default_replay_tx_size(),
+            executor_skew_weights: Vec::new(),
+            distributed_tx_rate: default_distributed_tx_rate(),
             num_workers: default_num_workers(),
         }
     }
@@ -206,6 +220,10 @@ impl Parameters {
         }
         if !self.replay_csv.is_empty() {
             info!("Replay mode: CSV={}, tx_size={}, num_workers={}", self.replay_csv, self.replay_tx_size, self.num_workers);
+            info!("Replay: distributed_tx_rate={:.1}%", self.distributed_tx_rate * 100.0);
+            if !self.executor_skew_weights.is_empty() {
+                info!("Replay: executor_skew_weights={:?}", self.executor_skew_weights);
+            }
         }
     }
 }
