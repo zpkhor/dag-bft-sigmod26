@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from os.path import basename, splitext
 from time import sleep, time as _now
 
+import paramiko
 from fabric import Connection
 
 from benchmark.commands import CommandMaker
@@ -773,6 +774,7 @@ class CloudLabReplayBench:
                     host, user=self.username,
                     connect_kwargs={'timeout': 15},
                 )
+                conn.client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
                 conn.open()
                 return conn
             except socket.gaierror as e:
@@ -932,7 +934,8 @@ class CloudLabReplayBench:
 
             def _distribute(host):
                 subprocess.run(
-                    f'rsync -azL {binary_path}/node {self.username}@{host}:~/',
+                    f'rsync -azL -e "ssh -o StrictHostKeyChecking=no" '
+                    f'{binary_path}/node {self.username}@{host}:~/',
                     shell=True, check=True,
                 )
             self._parallel_ssh(all_hosts, _distribute)
