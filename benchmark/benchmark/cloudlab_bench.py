@@ -769,7 +769,10 @@ class CloudLabReplayBench:
     def _ssh(self, host, retries=3, delay=2):
         for attempt in range(retries):
             try:
-                conn = Connection(host, user=self.username)
+                conn = Connection(
+                    host, user=self.username,
+                    connect_kwargs={'timeout': 15},
+                )
                 conn.open()
                 return conn
             except socket.gaierror as e:
