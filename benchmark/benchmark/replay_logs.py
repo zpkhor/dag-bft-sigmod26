@@ -46,7 +46,7 @@ class ReplayLogParser:
             ):
                 s = int(seq)
                 ts = _to_posix(t)
-                if s not in self.executed or ts < self.executed[s]:
+                if s not in self.executed or ts > self.executed[s]:
                     self.executed[s] = ts
                 self.total_executed_txs = max(self.total_executed_txs, int(total))
 
