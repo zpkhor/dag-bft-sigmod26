@@ -88,8 +88,6 @@ class ReplayLogParser:
         duration = end - start
         if duration <= 0:
             return 0, 0
-        total_tx = sum(num_tx for _, num_tx in self.dispatched.values()
-                       if _ >= start)
         # Only count txs that were actually executed
         executed_tx = sum(
             self.dispatched[s][1] for s in self.executed
@@ -98,8 +96,20 @@ class ReplayLogParser:
         tps = executed_tx / duration
         return tps, duration
 
+    def _committed_tps(self):
+        """Committed TPS: total dispatched txs / dispatch window duration."""
+        if len(self.dispatched) < 2:
+            return 0
+        times = [t for t, _ in self.dispatched.values()]
+        duration = max(times) - min(times)
+        if duration <= 0:
+            return 0
+        total_tx = sum(n for _, n in self.dispatched.values())
+        return total_tx / duration
+
     def result(self):
         tps, duration = self._tps()
+        committed_tps = self._committed_tps()
         latencies = self._latencies_ms()
         lat = self._percentiles(latencies)
 
@@ -117,7 +127,8 @@ class ReplayLogParser:
             f' Transactions dispatched: {total_tx_dispatched:,}\n'
             f' Replay duration: {duration:.2f} s\n'
             '\n'
-            f' TPS: {round(tps):,} tx/s\n'
+            f' Committed TPS: {round(committed_tps):,} tx/s\n'
+            f' E2E TPS:       {round(tps):,} tx/s\n'
             f' BPS: {round(tps * self.tx_size):,} B/s\n'
             '\n'
             f' Execution latency (dispatch -> executed):\n'
