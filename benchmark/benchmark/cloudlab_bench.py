@@ -732,10 +732,12 @@ class CloudLabReplayBench:
         use_writeback_executor,
         node_parameters_dict,
         executor_bw_kbps,
+        node_offset,
     ):
         assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
         assert num_workers >= 1
         assert num_executors >= 1
+        assert node_offset >= 0
 
         self.username = username
         self.replay_csv = replay_csv
@@ -747,6 +749,7 @@ class CloudLabReplayBench:
         self.in_memory_store = in_memory_store
         self.use_writeback_executor = use_writeback_executor
         self.executor_bw_kbps = executor_bw_kbps
+        self.node_offset = node_offset
 
         try:
             self.node_parameters = NodeParameters(node_parameters_dict)
@@ -754,9 +757,9 @@ class CloudLabReplayBench:
             raise BenchError('Invalid node parameters', e)
 
         self.manager = CloudLabInstanceManager.make(manifest_file, username)
-        required = 1 + num_workers + num_executors
+        required = node_offset + 1 + num_workers + num_executors
         assert required <= self.manager.num_validators(), (
-            f'Need {required} node-X machines (1 primary + {num_workers} workers + '
+            f'Need {required} node-X machines (offset={node_offset}, 1 primary + {num_workers} workers + '
             f'{num_executors} executors) but manifest has {self.manager.num_validators()}'
         )
 
@@ -892,8 +895,8 @@ class CloudLabReplayBench:
         Print.heading('Starting CloudLab replay benchmark')
 
         # --- Node allocation ---
-        all_ssh = self.manager.validator_ssh_hosts()
-        all_ips = self.manager.validator_ips()
+        all_ssh = self.manager.validator_ssh_hosts()[self.node_offset:]
+        all_ips = self.manager.validator_ips()[self.node_offset:]
 
         primary_ssh = all_ssh[0]
         worker_ssh  = all_ssh[1 : 1 + self.num_workers]

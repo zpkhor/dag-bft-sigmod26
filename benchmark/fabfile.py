@@ -489,6 +489,7 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
           EXECUTOR_BW_MBPS   LAN bandwidth cap for executor traffic in Mbit/s (default: 10000)
           IN_MEMORY_STORE    use in-memory store, 1=yes (default: 1)
           WRITEBACK_EXECUTOR use writeback executor path, 1=yes (default: 0)
+          NODE_OFFSET        skip first N nodes in the manifest (default: 0)
     '''
     replay_csv = os.path.abspath(os.environ.get('REPLAY_CSV', 'benchmark/record_rate25k.csv'))
     replay_tx_size = int(os.environ.get('REPLAY_TX_SIZE', 512))
@@ -499,6 +500,7 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
     executor_bw_kbps = int(os.environ.get('EXECUTOR_BW_MBPS', 10_000)) * 1000
     in_memory_store = os.environ.get('IN_MEMORY_STORE', '1') == '1'
     use_writeback_executor = os.environ.get('WRITEBACK_EXECUTOR', '0') == '1'
+    node_offset = int(os.environ.get('NODE_OFFSET', 0))
 
     assert os.path.exists(replay_csv), f'Replay CSV not found: {replay_csv}'
 
@@ -526,6 +528,7 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
             use_writeback_executor=use_writeback_executor,
             node_parameters_dict=node_params,
             executor_bw_kbps=executor_bw_kbps,
+            node_offset=node_offset,
         ).run(debug)
         print(ret)
     except BenchError as e:
