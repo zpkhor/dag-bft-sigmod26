@@ -36,10 +36,14 @@ class ReplayLogParser:
         ):
             self.dispatched[int(seq)] = (_to_posix(t), int(num_tx))
 
-        # Parse executors: seq -> posix_time (earliest across executors)
-        self.executed = {}
-        self.total_executed_txs = 0
+        # Parse executors.
+        # txs = full batch size (same for all executors, NOT per-executor processed count).
+        # total_executed = cumulative per-executor count of transactions actually owned/executed.
+        # For E2E TPS: sum each executor's final total_executed to get total work done.
+        self.executed = {}  # seq -> max completion timestamp across executors
+        self.total_actually_executed = 0  # sum of each executor's final total_executed
         for log in executor_logs:
+            last_total = 0
             for t, seq, txs, total in findall(
                 r'\[(.*?Z) .*Executed batch seq=(\d+) txs=(\d+) total_executed=(\d+)',
                 log
@@ -48,7 +52,8 @@ class ReplayLogParser:
                 ts = _to_posix(t)
                 if s not in self.executed or ts > self.executed[s]:
                     self.executed[s] = ts
-                self.total_executed_txs = max(self.total_executed_txs, int(total))
+                last_total = int(total)
+            self.total_actually_executed += last_total
 
         if not self.dispatched:
             raise ReplayParseError('No "Replay Execute" entries found in primary log')
@@ -88,12 +93,7 @@ class ReplayLogParser:
         duration = end - start
         if duration <= 0:
             return 0, 0
-        # Only count txs that were actually executed
-        executed_tx = sum(
-            self.dispatched[s][1] for s in self.executed
-            if s in self.dispatched
-        )
-        tps = executed_tx / duration
+        tps = self.total_actually_executed / duration
         return tps, duration
 
     def _committed_tps(self):
