@@ -73,12 +73,15 @@ impl ReplayBatchGenerator {
                 // DepositChecking(1), TransactSavings(2), WriteCheck(3).
                 let mut non_dist_idx: u8 = 0;
 
-                for _ in 0..assignment.num_tx {
+                for tx_index in 0..assignment.num_tx as u64 {
                     let mut tx = vec![0u8; tx_size];
 
                     // Standard header: [tx_type:1][client_id:1][tx_counter:8]
                     tx[0] = 1; // tx_type = 1 (regular, non-sample)
                     tx[1] = 0; // client_id = 0
+                    // Unique counter per tx to avoid TxID collisions in state transfer maps.
+                    let tx_counter = assignment.batch_index * assignment.num_tx as u64 + tx_index;
+                    tx[2..10].copy_from_slice(&tx_counter.to_be_bytes());
 
                     // Select source account: skewed sub-range or uniform.
                     let src_account: u64 = if num_shards > 0 {
