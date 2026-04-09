@@ -749,6 +749,13 @@ impl DistributedTxExecutor {
             let locality = self.determine_locality(&required_accounts);
             let is_local_tx = matches!(locality, TransactionLocality::Local);
 
+            // Count each logical tx once: DistributedSource is the owner; DistributedDest is the
+            // other half of the same tx already counted on the src executor. Local txs are counted
+            // inside execute_single_local_transaction.
+            if matches!(locality, TransactionLocality::DistributedSource { .. }) {
+                self.executed_tx_count += 1;
+            }
+
             if self.workload_type == WorkloadType::SmallBank {
                 if !is_local_tx {
                     // Always enqueue distributed transactions first
@@ -807,7 +814,7 @@ impl DistributedTxExecutor {
 
         info!(
             "Executed batch seq={} txs={} total_executed={}",
-            self.next_sequence, transactions.len(), self.lock_stats.total_transactions,
+            self.next_sequence, transactions.len(), self.executed_tx_count,
         );
 
         self.update_queue_metrics();
