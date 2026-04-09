@@ -49,6 +49,14 @@ def main(csv_path):
 
     fig, ax = plt.subplots(figsize=(10, 6))
 
+    # Color encodes executor mode, marker encodes workload — two orthogonal
+    # visual channels so the mode gap and workload gap are each readable at a glance.
+    MODE_COLOR = {'0': '#1f77b4', '1': '#d62728'}  # DataFusion=blue, Writeback=red
+    WORKLOAD_MARKER = {
+        ('0', '1'): 'o',  # dist_tx=0, no_payment
+        ('0.2', '0'): 's',  # dist_tx=0.2, with_payment
+    }
+
     def label_for(key):
         wb, dtx, nsp = key
         mode = 'Writeback' if wb == '1' else 'DataFusion'
@@ -58,10 +66,14 @@ def main(csv_path):
 
     # Sort keys for stable legend order
     for key in sorted(series.keys()):
+        wb, dtx, nsp = key
         points = sorted(series[key])
         xs = [p[0] for p in points]
         ys = [p[1] for p in points]
-        ax.plot(xs, ys, marker='o', label=label_for(key))
+        color = MODE_COLOR.get(wb, 'gray')
+        marker = WORKLOAD_MARKER.get((dtx, nsp), 'x')
+        ax.plot(xs, ys, color=color, marker=marker, markersize=9,
+                linewidth=2, label=label_for(key))
 
     ax.set_xlabel('NUM_EXECUTORS / NUM_WORKERS')
     ax.set_ylabel('E2E TPS')
