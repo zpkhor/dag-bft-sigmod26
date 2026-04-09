@@ -18,9 +18,9 @@ REMOTE_PREFIX = (
 )
 
 CSV_FILES = [
-    '/Users/garvitgupta/Desktop/50%.csv',
-    '/Users/garvitgupta/Desktop/balanced.csv',
-    '/Users/garvitgupta/Desktop/90%.csv',
+    '/Users/garvitgupta/Projects/narwhal/Experiment/50%.csv',
+    '/Users/garvitgupta/Projects/narwhal/Experiment/balanced.csv',
+    '/Users/garvitgupta/Projects/narwhal/Experiment/90%.csv',
 ]
 
 
@@ -33,7 +33,7 @@ def run_remote(cmd):
     remote_cmd = REMOTE_PREFIX + clean_cmd + ' 2>&1'
     result = subprocess.run(
         ['ssh', '-A', SSH_HOST, remote_cmd],
-        capture_output=True, text=True, timeout=600
+        capture_output=True, text=True, timeout=900
     )
     return result.stdout + result.stderr
 
