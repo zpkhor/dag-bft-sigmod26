@@ -946,6 +946,10 @@ impl DistributedTxExecutor {
                 "Queue head mismatch after state transfer check"
             );
 
+            for i in 0..BUSY_SPINS {
+                black_box(i);
+            }
+
             let src_account_id = state_transfer.src_account_id;
             let amount = pending_tx.sb_tx.amount;
 
