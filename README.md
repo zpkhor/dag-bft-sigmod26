@@ -80,3 +80,6 @@ python benchmark/exp/plot_3phase_tps_latency.py <results_dir>
 ## License
 
 Apache-2.0 (see `LICENSE`).
+
+# For simulator of executor please check 
+executor-sim dir
