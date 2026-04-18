@@ -1,101 +1,13 @@
-# DAG-BFT with Validator-Level Load Balancing
+# Narwhal + Executor Tier (Anonymous Submission)
 
-Anonymized artifact accompanying the SIGMOD 2026 submission. This repository
-extends a Narwhal-based DAG-BFT mempool with a load-balancing mechanism that
-migrates clients across validators via `MigrationNotice` messages from the
-worker's `Synchronizer`.
+This repository contains the code accompanying our SIGMOD submission on executor-tier scheduling
+for DAG-based BFT systems. It extends [Narwhal](https://arxiv.org/abs/2105.11827) with a third
+tier of *executor* processes that receive committed batches from workers, partition
+application state across shards, and can be scaled independently of the consensus tier.
 
-## Prerequisites
-
-- Rust toolchain (1.70+) and `clang` (required by rocksdb).
-- Python 3.9 and `tmux`.
-- One of:
-  - **Docker** (for `MODE=docker`, the default), with `docker-compose`.
-  - **CloudLab** allocation plus a `manifest.xml` (for `MODE=cloudlab`).
-
-Setup:
-
-```bash
-# Rust build
-cargo build --release --features benchmark
-
-# Python deps (conda env 'narwhal39' used during development)
-pip install -r benchmark/requirements.txt
-```
-
-## Reproducing Figure 3 (TPS timeline)
-
-Two sweep scripts drive the experiment. Each iterates over the configs listed
-at the top of the file and writes results under
-`benchmark/exp/results/tps_timeline_{lb,baseline}_{docker,cloud}[_isolate]_<timestamp>/`.
-
-### Load-balancing variant
-
-```bash
-# Docker (default MODE)
-bash benchmark/exp/fig_3_tps_timeline_lb.sh
-
-# CloudLab
-MODE=cloudlab MANIFEST=benchmark/manifest.xml \
-    bash benchmark/exp/fig_3_tps_timeline_lb.sh
-```
-
-### Baseline variant (no load balancing; `BASELINE=1` is set by the script)
-
-```bash
-# Docker
-bash benchmark/exp/fig_3_tps_timeline_baseline.sh
-
-# CloudLab
-MODE=cloudlab MANIFEST=benchmark/manifest.xml \
-    bash benchmark/exp/fig_3_tps_timeline_baseline.sh
-```
-
-### Common environment variables
-
-| Variable | Default | Description |
-|---|---|---|
-| `MODE` | `docker` | `docker` or `cloudlab`. |
-| `DURATION` | `900` | Run length in seconds. |
-| `WARMUP` | `240` | Warm-up seconds excluded from metrics. |
-| `RETRIES` | `1` | Runs per (label, rate) pair. |
-| `CPUS_PER_VALIDATOR` | `8` | Pinned CPUs per validator (docker). |
-| `LATENCY` | `100ms` | Inter-validator link latency (docker). |
-| `PRIMARY_BW` | `300mbit` | Primary-network bandwidth (docker). |
-| `MANIFEST` | `manifest.xml` | CloudLab manifest path (cloudlab). |
-| `LOCAL_ORCH` | `0` | Orchestrate from local host if `1` (cloudlab). |
-
-Existing `RUN_DIR`s are skipped, so a sweep can be resumed by re-running the
-same script.
-
-## Plotting
-
-After a sweep completes, produce the Figure 3 TPS-timeline plots with:
-
-```bash
-python benchmark/exp/parse_and_plot_tps_migration_timeline.py <results_dir>
-python benchmark/exp/plot_3phase_tps_latency.py <results_dir>
-```
-
-## License
-
-Apache-2.0 (see `LICENSE`).
-
-# For simulator of executor please check 
-executor-sim dir
-
----
-
-# Executor-Tier Replay Benchmarks (`executor-replay/`)
-
-The `executor-replay/` directory contains the code for the executor-tier
-scheduling experiments from the SIGMOD submission. It extends
-[Narwhal](https://arxiv.org/abs/2105.11827) with a third tier of *executor*
-processes that receive committed batches from workers, partition application
-state across shards, and can be scaled independently of the consensus tier.
-
-All paths in this section are relative to `executor-replay/` unless stated
-otherwise.
+The repository is anonymized for double-blind review. All author-identifying strings
+(usernames, emails, institutions, CloudLab project/experiment IDs) have been replaced with
+generic placeholders such as `anonuser`, `control-host`, and `AnonProject`.
 
 ## Repository layout
 
@@ -115,7 +27,7 @@ otherwise.
 
 * Rust stable (any recent toolchain supporting edition 2021)
 * Clang (required by the RocksDB build)
-* Python 3.9 with the packages in `executor-replay/benchmark/requirements.txt`
+* Python 3.9 with the packages in `benchmark/requirements.txt`
 * `tmux` for local runs
 * Docker + Docker Compose for the `fab docker` driver
 * `sudo`-less SSH access to a set of CloudLab nodes (or equivalent Linux hosts) for the
@@ -124,7 +36,7 @@ otherwise.
 Install the Python dependencies once:
 
 ```bash
-cd executor-replay/benchmark
+cd benchmark
 python3 -m venv ~/venvs/narwhal
 source ~/venvs/narwhal/bin/activate
 pip install -r requirements.txt
@@ -132,10 +44,7 @@ pip install -r requirements.txt
 
 ## Build
 
-From `executor-replay/`:
-
 ```bash
-cd executor-replay
 cargo build --release --features benchmark
 ```
 
@@ -145,8 +54,7 @@ The driver scripts below also invoke this build automatically.
 ## Running benchmarks
 
 All experiments are driven by [Fabric](https://www.fabfile.org/) tasks defined in
-`executor-replay/benchmark/fabfile.py`. From `executor-replay/benchmark/`, list
-available tasks with:
+`benchmark/fabfile.py`. From `benchmark/`, list available tasks with:
 
 ```bash
 fab --list
@@ -159,7 +67,6 @@ pre-recorded batch arrival trace (`benchmark/record_rate*.csv`). The executors p
 SmallBank transactions against a sharded account state.
 
 ```bash
-cd executor-replay/benchmark
 REPLAY_CSV=record_rate100k.csv \
 NUM_WORKERS=4 NUM_EXECUTORS=4 \
 DURATION=80 \
@@ -190,7 +97,6 @@ from a CloudLab RSpec manifest. Worker → executor and executor ↔ executor li
 with `tc` to the configured bandwidth cap.
 
 ```bash
-cd executor-replay/benchmark
 REPLAY_CSV=record_rate100k.csv \
 NUM_WORKERS=4 NUM_EXECUTORS=4 \
 EXECUTOR_BW_MBPS=10000 DURATION=80 \
@@ -201,11 +107,10 @@ fab cloudlab-replay --username <your-ssh-user> --manifest /path/to/manifest.xml
 
 The manifest must describe at least `1 + NUM_WORKERS + NUM_EXECUTORS` nodes. An example
 manifest (downloaded from the CloudLab portal and anonymized) is provided at
-`executor-replay/benchmark/manifest.xml`. Replace `--username` with the SSH user
-configured on your own CloudLab slice.
+`benchmark/manifest.xml`. Replace `--username` with the SSH user configured on your own
+CloudLab slice.
 
-Additional variables (see `executor-replay/benchmark/fabfile.py::cloudlab_replay`
-for the full list):
+Additional variables (see `benchmark/fabfile.py::cloudlab_replay` for the full list):
 
 | Variable                | Meaning                                                        |
 | ----------------------- | -------------------------------------------------------------- |
@@ -221,27 +126,28 @@ routing modes) we use the non-replay drivers:
 * `fab docker` — runs a full 4+ validator testbed in Docker with `tc` shaping per container.
 * `fab cloudlab` — runs the same experiment on CloudLab machines.
 
-See `executor-replay/benchmark/saturation_sweep.sh` and
-`executor-replay/benchmark/scalability_baseline_sweep.sh` for the parameter sweeps
-used in the paper's saturation and scalability plots.
+See `benchmark/saturation_sweep.sh` and `benchmark/scalability_baseline_sweep.sh` for the
+parameter sweeps used in the paper's saturation and scalability plots.
 
 ## Reproducing the paper figures
 
-The `executor-replay/Experiment/` directory holds the result CSVs used for the
-executor-tier figures:
+The `Experiment/` directory holds the result CSVs used for the executor-tier figures:
 
-| File                        | Scenario                                                     |
-| --------------------------- | ------------------------------------------------------------ |
-| `Experiment/balanced.csv`   | Uniform account-access distribution                          |
-| `Experiment/50%.csv`        | One shard receives 50% of the workload (`EXECUTOR_SKEW_WEIGHTS` column) |
-| `Experiment/90%.csv`        | One shard receives 90% of the workload                       |
+| File                    | Scenario                                                     |
+| ----------------------- | ------------------------------------------------------------ |
+| `Experiment/balanced.csv` | Uniform account-access distribution                        |
+| `Experiment/50%.csv`      | One shard receives 50% of the workload (`EXECUTOR_SKEW_WEIGHTS` column) |
+| `Experiment/90%.csv`      | One shard receives 90% of the workload                     |
 
 Each row records the rate, executor/worker count, skew weights, and the committed /
 end-to-end TPS that our run produced, along with the exact `fab cloudlab-replay` command
 line. Re-running those commands on a suitably sized CloudLab slice reproduces the measured
 point.
 
-`executor-replay/benchmark/run_benchmarks.py` is a helper that iterates over the
-three CSVs, SSHes into a control host, and fills the `Committed TPS` / `E2E TPS`
-columns in place. Edit the `SSH_HOST`, `REMOTE_PREFIX`, and `CSV_FILES` constants
-before use.
+`benchmark/run_benchmarks.py` is a helper that iterates over the three CSVs, SSHes into a
+control host, and fills the `Committed TPS` / `E2E TPS` columns in place. Edit the
+`SSH_HOST`, `REMOTE_PREFIX`, and `CSV_FILES` constants before use.
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE).
