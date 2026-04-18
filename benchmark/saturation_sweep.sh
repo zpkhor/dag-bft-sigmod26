@@ -27,7 +27,7 @@ OUTPUT_LOG="$RESULTS_DIR/merged_output.log"
 # Each entry: "label|BANDWIDTHS_MBPS|RATE_WEIGHTS|NODES"
 # For ~60% rate to v0: weight_0 = 1.5*(n-1), others = 1
 # f = (n-1)//3; slow BW validators are the last f or f+1
-CONFIGS=( # /home/zpkhor/narwhal-validator/benchmark/results/saturation_cloudlab_20260326_093013
+CONFIGS=( # /home/anonuser/narwhal-validator/benchmark/results/saturation_cloudlab_20260326_093013
     # n=4, f=1
     "n4_rate_imb|500,500,500,500|4.5,1,1,1|4"
     "n4_bw_f|500,500,500,150|1,1,1,1|4"
@@ -38,7 +38,7 @@ CONFIGS=( # /home/zpkhor/narwhal-validator/benchmark/results/saturation_cloudlab
     # "n7_bw_f1|500,500,500,500,150,150,150|1,1,1,1,1,1,1|7"
 )
 
-RATES=(33000 78000 100000) # /home/zpkhor/narwhal/benchmark/results/saturation_docker_20260327_150719/merged_output.log
+RATES=(33000 78000 100000) # /home/anonuser/narwhal/benchmark/results/saturation_docker_20260327_150719/merged_output.log
 
 check_certified_tps_consistency() {
     local run_dir="$1"

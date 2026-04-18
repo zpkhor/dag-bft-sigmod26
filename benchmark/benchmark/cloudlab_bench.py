@@ -338,8 +338,8 @@ class CloudLabBench:
             # Rsync binaries and required shared libs to all machines (parallel)
             Print.info(f'Distributing binaries to {len(all_ssh)} machines...')
             binary_path = PathMaker.binary_path()
-            # Ship libc and ld-linux from hilbit1 so CloudLab nodes (Ubuntu 22,
-            # GLIBC 2.35) can run binaries compiled on hilbit1 (Ubuntu 24, GLIBC 2.38+).
+            # Ship libc and ld-linux from control-host so CloudLab nodes (Ubuntu 22,
+            # GLIBC 2.35) can run binaries compiled on control-host (Ubuntu 24, GLIBC 2.38+).
             extra_libs = [
                 '/lib/x86_64-linux-gnu/libc.so.6',
                 '/lib64/ld-linux-x86-64.so.2',

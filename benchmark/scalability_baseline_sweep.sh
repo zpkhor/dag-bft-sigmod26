@@ -12,7 +12,7 @@ LATENCY=${LATENCY:-100ms}
 PRIMARY_BW=${PRIMARY_BW:-200mbit}
 WORKER_BW=${WORKER_BW:-600mbit}
 MANIFEST=${MANIFEST:-manifest.xml}
-USERNAME=${USERNAME:-zpkhor}
+USERNAME=${USERNAME:-anonuser}
 
 cd "$(dirname "$0")"
 RESULTS_DIR="$(pwd)/results/scalability_baseline_cloudlab_$(date +%Y%m%d_%H%M%S)"

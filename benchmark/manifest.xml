@@ -33,7 +33,7 @@
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp078.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -50,7 +50,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp078" hardware_type="xl170"/>
-    <host name="node-0.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.117"/>
+    <host name="node-0.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.117"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-1" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp026" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355363">
     <sliver_type name="raw-pc">
@@ -86,7 +86,7 @@
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp026.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -103,7 +103,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp026" hardware_type="xl170"/>
-    <host name="node-1.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.65"/>
+    <host name="node-1.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.65"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-2" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp052" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355380">
     <sliver_type name="raw-pc">
@@ -139,7 +139,7 @@
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp052.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -156,7 +156,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp052" hardware_type="xl170"/>
-    <host name="node-2.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.91"/>
+    <host name="node-2.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.91"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-3" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp091" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355366">
     <sliver_type name="raw-pc">
@@ -192,7 +192,7 @@
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp091.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -209,7 +209,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp091" hardware_type="xl170"/>
-    <host name="node-3.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.130"/>
+    <host name="node-3.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.130"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-4" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp037" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355374">
     <sliver_type name="raw-pc">
@@ -245,7 +245,7 @@
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp037.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -262,7 +262,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp037" hardware_type="xl170"/>
-    <host name="node-4.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.76"/>
+    <host name="node-4.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.76"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-5" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp013" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355370">
     <sliver_type name="raw-pc">
@@ -298,7 +298,7 @@
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp013.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -315,7 +315,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp013" hardware_type="xl170"/>
-    <host name="node-5.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.52"/>
+    <host name="node-5.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.52"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-6" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp199" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355377">
     <sliver_type name="raw-pc">
@@ -351,7 +351,7 @@
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp199.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -368,7 +368,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp199" hardware_type="xl170"/>
-    <host name="node-6.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.238"/>
+    <host name="node-6.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.238"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-7" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp012" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355369">
     <sliver_type name="raw-pc">
@@ -404,7 +404,7 @@
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp012.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -421,7 +421,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp012" hardware_type="xl170"/>
-    <host name="node-7.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.51"/>
+    <host name="node-7.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.51"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-8" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp069" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355365">
     <sliver_type name="raw-pc">
@@ -457,7 +457,7 @@
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp069.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -474,7 +474,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp069" hardware_type="xl170"/>
-    <host name="node-8.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.108"/>
+    <host name="node-8.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.108"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-9" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp027" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355361">
     <sliver_type name="raw-pc">
@@ -510,7 +510,7 @@
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp027.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -527,7 +527,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp027" hardware_type="xl170"/>
-    <host name="node-9.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.66"/>
+    <host name="node-9.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.66"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-10" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp073" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355367">
     <sliver_type name="raw-pc">
@@ -563,7 +563,7 @@
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp073.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -580,7 +580,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp073" hardware_type="xl170"/>
-    <host name="node-10.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.112"/>
+    <host name="node-10.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.112"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-11" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp047" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355368">
     <sliver_type name="raw-pc">
@@ -616,7 +616,7 @@
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp047.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -633,7 +633,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp047" hardware_type="xl170"/>
-    <host name="node-11.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.86"/>
+    <host name="node-11.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.86"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-12" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp014" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355382">
     <sliver_type name="raw-pc">
@@ -669,7 +669,7 @@
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp014.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -686,7 +686,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp014" hardware_type="xl170"/>
-    <host name="node-12.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.53"/>
+    <host name="node-12.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.53"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-13" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp124" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355378">
     <sliver_type name="raw-pc">
@@ -722,7 +722,7 @@
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp124.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -739,7 +739,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp124" hardware_type="xl170"/>
-    <host name="node-13.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.163"/>
+    <host name="node-13.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.163"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-14" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp006" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355371">
     <sliver_type name="raw-pc">
@@ -775,7 +775,7 @@
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp006.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -792,7 +792,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp006" hardware_type="xl170"/>
-    <host name="node-14.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.45"/>
+    <host name="node-14.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.45"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-15" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp077" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355373">
     <sliver_type name="raw-pc">
@@ -828,7 +828,7 @@
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp077.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -845,7 +845,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp077" hardware_type="xl170"/>
-    <host name="node-15.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.116"/>
+    <host name="node-15.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.116"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-16" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp171" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355375">
     <sliver_type name="raw-pc">
@@ -881,7 +881,7 @@
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp171.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -898,7 +898,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp171" hardware_type="xl170"/>
-    <host name="node-16.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.210"/>
+    <host name="node-16.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.210"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-17" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp123" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355362">
     <sliver_type name="raw-pc">
@@ -934,7 +934,7 @@
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp123.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -951,7 +951,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp123" hardware_type="xl170"/>
-    <host name="node-17.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.162"/>
+    <host name="node-17.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.162"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-18" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp074" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355379">
     <sliver_type name="raw-pc">
@@ -987,7 +987,7 @@
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp074.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -1004,7 +1004,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp074" hardware_type="xl170"/>
-    <host name="node-18.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.113"/>
+    <host name="node-18.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.113"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-19" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp054" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355372">
     <sliver_type name="raw-pc">
@@ -1040,7 +1040,7 @@
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp054.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -1057,7 +1057,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp054" hardware_type="xl170"/>
-    <host name="node-19.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.93"/>
+    <host name="node-19.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.93"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-20" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp023" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355364">
     <sliver_type name="raw-pc">
@@ -1093,7 +1093,7 @@
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp023.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -1110,7 +1110,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp023" hardware_type="xl170"/>
-    <host name="node-20.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.62"/>
+    <host name="node-20.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.62"/>
   </node>
   <node xmlns:emulab="http://www.protogeni.net/resources/rspec/ext/emulab/1" client_id="node-21" exclusive="true" component_manager_id="urn:publicid:IDN+utah.cloudlab.us+authority+cm" component_id="urn:publicid:IDN+utah.cloudlab.us+node+hp021" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355381">
     <sliver_type name="raw-pc">
@@ -1146,7 +1146,7 @@
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="yipingma"/>
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="pavlatos"/>
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="xutingl"/>
-      <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="zpkhor"/>
+      <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="anonuser"/>
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="akis"/>
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="hzm628"/>
       <login authentication="ssh-keys" hostname="hp021.utah.cloudlab.us" port="22" username="kevdong"/>
@@ -1163,7 +1163,7 @@
       <execute shell="sh" command="sudo apt update &amp;&amp; sudo apt install python3-pip iperf3 -y"/>
     </services>
     <emulab:vnode name="hp021" hardware_type="xl170"/>
-    <host name="node-21.zpkhor-299491.pennnetworks-PG0.utah.cloudlab.us" ipv4="128.110.218.60"/>
+    <host name="node-21.anonuser-299491.anonproject-PG0.utah.cloudlab.us" ipv4="128.110.218.60"/>
   </node>
   <link client_id="wan-lan" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355384" vlantag="294">
     <interface_ref client_id="node-0:if-lan" component_id="urn:publicid:IDN+utah.cloudlab.us+interface+hp078:eth1" sliver_id="urn:publicid:IDN+utah.cloudlab.us+sliver+2355385"/>
@@ -1694,7 +1694,7 @@ aJl7/9rndDE+ulhb9TSmmUsrU3qGkAWoEzF5qSsbwmJw/uc+W3VSU+Cei4yAZAlw
 IQoR+daiYBzXINBPIA==
 -----END PKCS7-----
 </emulab:password>
-  <emulab:portal name="cloudlab" url="https://www.cloudlab.us/status.php?uuid=ed8a470e-730c-43d2-b6ee-f71be3e6f9c3" project="PennNetworks" experiment="zpkhor-299491" sequence="1775924589"/>
+  <emulab:portal name="cloudlab" url="https://www.cloudlab.us/status.php?uuid=ANONYMIZED" project="AnonProject" experiment="anonuser-299491" sequence="1775924589"/>
   <rs:site_info xmlns:rs="http://www.protogeni.net/resources/rspec/ext/site-info/1">
     <rs:location country="US" latitude="40.750714" longitude="-111.893288"/>
   </rs:site_info>

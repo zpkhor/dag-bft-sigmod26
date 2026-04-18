@@ -232,7 +232,7 @@ def replay_logs(ctx):
 
 @task
 def cloudlab(ctx, debug=False,
-             manifest='manifest.xml', username='zpkhor', latency='100ms', worker_bw='75mbit',
+             manifest='manifest.xml', username='anonuser', latency='100ms', worker_bw='75mbit',
              primary_bw='25mbit', log_dir=''):
     ''' Run benchmarks on CloudLab physical machines '''
     nodes = int(os.environ.get('NODES', 4))
@@ -478,7 +478,7 @@ def replay(ctx, debug=False):
 
 
 @task
-def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='anonuser'):
     ''' Run replay benchmark on CloudLab: primary + each worker + each executor on its own node.
         TC shaping: LAN bandwidth cap on worker->executor and executor->executor traffic.
 
@@ -552,7 +552,7 @@ def cloudlab_replay(ctx, debug=False, manifest='manifest.xml', username='zpkhor'
 
 
 @task
-def cloudlab_install(ctx, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_install(ctx, manifest='manifest.xml', username='anonuser'):
     ''' Install Rust and dependencies on all CloudLab machines '''
     try:
         CloudLabInstaller(manifest, username).install()
@@ -561,7 +561,7 @@ def cloudlab_install(ctx, manifest='manifest.xml', username='zpkhor'):
 
 
 @task
-def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
+def cloudlab_check(ctx, manifest='manifest.xml', username='anonuser', timeout=10):
     ''' Probe all CloudLab nodes via SSH, then ping LAN IPs from client.
         Writes unreachable nodes to cloudlab_ban.txt. '''
     from benchmark.instance import CloudLabInstanceManager
@@ -674,7 +674,7 @@ def cloudlab_check(ctx, manifest='manifest.xml', username='zpkhor', timeout=10):
 
 
 @task
-def cloudlab_kill(ctx, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_kill(ctx, manifest='manifest.xml', username='anonuser'):
     ''' Kill all processes on CloudLab machines '''
     from benchmark.instance import CloudLabInstanceManager
     from concurrent.futures import ThreadPoolExecutor
@@ -694,7 +694,7 @@ def cloudlab_kill(ctx, manifest='manifest.xml', username='zpkhor'):
         Print.error(BenchError('Failed to kill processes', e))
 
 @task
-def cloudlab_get_ssh(ctx, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_get_ssh(ctx, manifest='manifest.xml', username='anonuser'):
     ''' Print SSH connection information for all CloudLab machines '''
     from benchmark.instance import CloudLabInstanceManager
     try:
@@ -710,7 +710,7 @@ def cloudlab_get_ssh(ctx, manifest='manifest.xml', username='zpkhor'):
 
 
 @task
-def cloudlab_nettest(ctx, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_nettest(ctx, manifest='manifest.xml', username='anonuser'):
     ''' Test bandwidth (iperf3) on CloudLab machines '''
     from benchmark.instance import CloudLabInstanceManager
     from concurrent.futures import ThreadPoolExecutor
@@ -828,7 +828,7 @@ def cloudlab_nettest(ctx, manifest='manifest.xml', username='zpkhor'):
 
 
 @task
-def cloudlab_pingtest(ctx, manifest='manifest.xml', username='zpkhor'):
+def cloudlab_pingtest(ctx, manifest='manifest.xml', username='anonuser'):
     ''' Test pairwise latency (ping RTT) on CloudLab machines '''
     from benchmark.instance import CloudLabInstanceManager
     from concurrent.futures import ThreadPoolExecutor

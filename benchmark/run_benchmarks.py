@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Run all benchmark commands from 50%.csv and balanced.csv sequentially on hilbit1,
+Run all benchmark commands from 50%.csv and balanced.csv sequentially on control-host,
 parse Committed TPS and E2E TPS, and update the CSVs after each run.
 
 Uses default manifest.xml (21-node) by stripping --manifest flag from commands.
@@ -10,7 +10,7 @@ import subprocess
 import re
 import sys
 
-SSH_HOST = 'garvit@hilbit1.cis.upenn.edu'
+SSH_HOST = 'anonuser@control-host'
 REMOTE_PREFIX = (
     'cd ~/Projects/narwhal/benchmark && '
     'source ~/venvs/narwhal/bin/activate && '
@@ -18,9 +18,9 @@ REMOTE_PREFIX = (
 )
 
 CSV_FILES = [
-    '/Users/garvitgupta/Projects/narwhal/Experiment/50%.csv',
-    '/Users/garvitgupta/Projects/narwhal/Experiment/balanced.csv',
-    '/Users/garvitgupta/Projects/narwhal/Experiment/90%.csv',
+    '/home/anonuser/narwhal/Experiment/50%.csv',
+    '/home/anonuser/narwhal/Experiment/balanced.csv',
+    '/home/anonuser/narwhal/Experiment/90%.csv',
 ]
 
 
@@ -99,7 +99,7 @@ for csv_file in CSV_FILES:
             if attempt < 3:
                 print('Retrying...')
                 # Kill any leftover processes before retrying
-                run_remote('fab cloudlab-kill --username zpkhor')
+                run_remote('fab cloudlab-kill --username anonuser')
 
         if committed is None:
             print(f'FAILED after 3 attempts for row {i}, giving up.')

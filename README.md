@@ -1,71 +1,153 @@
-> **Note to readers:** MystenLabs is making this codebase production-ready [here](https://github.com/MystenLabs/sui/tree/main/narwhal).
+# Narwhal + Executor Tier (Anonymous Submission)
 
-# Narwhal and Tusk
+This repository contains the code accompanying our SIGMOD submission on executor-tier scheduling
+for DAG-based BFT systems. It extends [Narwhal](https://arxiv.org/abs/2105.11827) with a third
+tier of *executor* processes that receive committed batches from workers, partition
+application state across shards, and can be scaled independently of the consensus tier.
 
-[![build status](https://img.shields.io/github/actions/workflow/status/asonnino/narwhal/rust.yml?branch=master&logo=github&style=flat-square)](https://github.com/asonnino/narwhal/actions)
-[![rustc](https://img.shields.io/badge/rustc-1.51+-blue?style=flat-square&logo=rust)](https://www.rust-lang.org)
-[![python](https://img.shields.io/badge/python-3.9-blue?style=flat-square&logo=python&logoColor=white)](https://www.python.org/downloads/release/python-390/)
-[![license](https://img.shields.io/badge/license-Apache-blue.svg?style=flat-square)](LICENSE)
+The repository is anonymized for double-blind review. All author-identifying strings
+(usernames, emails, institutions, CloudLab project/experiment IDs) have been replaced with
+generic placeholders such as `anonuser`, `control-host`, and `AnonProject`.
 
-This repo provides an implementation of [Narwhal and Tusk](https://arxiv.org/pdf/2105.11827.pdf). The codebase has been designed to be small, efficient, and easy to benchmark and modify. It has not been designed to run in production but uses real cryptography ([dalek](https://doc.dalek.rs/ed25519_dalek)), networking ([tokio](https://docs.rs/tokio)), and storage ([rocksdb](https://docs.rs/rocksdb)).
+## Repository layout
 
-## Quick Start
+| Path                | Purpose                                                              |
+| ------------------- | -------------------------------------------------------------------- |
+| `primary/`          | Primary process (consensus tier)                                     |
+| `worker/`           | Worker process (batching + dissemination tier)                       |
+| `node/src/executor` | Executor process (data-fusion `BatchExecutor` + `DistributedTxExecutor`) |
+| `consensus/`        | Tusk consensus implementation                                        |
+| `network/`          | TCP transport layer                                                  |
+| `config/`           | Committee / parameter types shared by all binaries                   |
+| `crypto/` `store/`  | Ed25519 crypto primitives and RocksDB storage wrapper                |
+| `benchmark/`        | Python driver scripts (Fabric tasks) for local, Docker, and CloudLab runs |
+| `Experiment/`       | Recorded CSV result sets from our paper's experiments                |
 
-The core protocols are written in Rust, but all benchmarking scripts are written in Python and run with [Fabric](http://www.fabfile.org/).
-To deploy and benchmark a testbed of 4 nodes on your local machine, clone the repo and install the python dependencies:
+## Dependencies
 
-```
-$ git clone https://github.com/asonnino/narwhal.git
-$ cd narwhal/benchmark
-$ pip install -r requirements.txt
-```
+* Rust stable (any recent toolchain supporting edition 2021)
+* Clang (required by the RocksDB build)
+* Python 3.9 with the packages in `benchmark/requirements.txt`
+* `tmux` for local runs
+* Docker + Docker Compose for the `fab docker` driver
+* `sudo`-less SSH access to a set of CloudLab nodes (or equivalent Linux hosts) for the
+  `fab cloudlab*` drivers
 
-You also need to install Clang (required by rocksdb) and [tmux](https://linuxize.com/post/getting-started-with-tmux/#installing-tmux) (which runs all nodes and clients in the background). Finally, run a local benchmark using fabric:
+Install the Python dependencies once:
 
-```
-$ fab local
-```
-
-This command may take a long time the first time you run it (compiling rust code in `release` mode may be slow) and you can customize a number of benchmark parameters in `fabfile.py`. When the benchmark terminates, it displays a summary of the execution similarly to the one below.
-
-```
------------------------------------------
- SUMMARY:
------------------------------------------
- + CONFIG:
- Faults: 0 node(s)
- Committee size: 4 node(s)
- Worker(s) per node: 1 worker(s)
- Collocate primary and workers: True
- Input rate: 50,000 tx/s
- Transaction size: 512 B
- Execution time: 19 s
-
- Header size: 1,000 B
- Max header delay: 100 ms
- GC depth: 50 round(s)
- Sync retry delay: 10,000 ms
- Sync retry nodes: 3 node(s)
- batch size: 500,000 B
- Max batch delay: 100 ms
-
- + RESULTS:
- Consensus TPS: 46,478 tx/s
- Consensus BPS: 23,796,531 B/s
- Consensus latency: 464 ms
-
- End-to-end TPS: 46,149 tx/s
- End-to-end BPS: 23,628,541 B/s
- End-to-end latency: 557 ms
------------------------------------------
+```bash
+cd benchmark
+python3 -m venv ~/venvs/narwhal
+source ~/venvs/narwhal/bin/activate
+pip install -r requirements.txt
 ```
 
-## Next Steps
+## Build
 
-The next step is to read the paper [Narwhal and Tusk: A DAG-based Mempool and Efficient BFT Consensus](https://arxiv.org/pdf/2105.11827.pdf). It is then recommended to have a look at the README files of the [worker](https://github.com/asonnino/narwhal/tree/master/worker) and [primary](https://github.com/asonnino/narwhal/tree/master/primary) crates. An additional resource to better understand the Tusk consensus protocol is the paper [All You Need is DAG](https://arxiv.org/abs/2102.08325) as it describes a similar protocol.
+```bash
+cargo build --release --features benchmark
+```
 
-The README file of the [benchmark folder](https://github.com/asonnino/narwhal/tree/master/benchmark) explains how to benchmark the codebase and read benchmarks' results. It also provides a step-by-step tutorial to run benchmarks on [Amazon Web Services (AWS)](https://aws.amazon.com) accross multiple data centers (WAN).
+The `benchmark` feature enables the structured log lines that the Python parsers consume.
+The driver scripts below also invoke this build automatically.
+
+## Running benchmarks
+
+All experiments are driven by [Fabric](https://www.fabfile.org/) tasks defined in
+`benchmark/fabfile.py`. From `benchmark/`, list available tasks with:
+
+```bash
+fab --list
+```
+
+### 1. Replay benchmark (single machine)
+
+`fab replay` runs a primary + N workers + N executors on the local machine, replaying a
+pre-recorded batch arrival trace (`benchmark/record_rate*.csv`). The executors process
+SmallBank transactions against a sharded account state.
+
+```bash
+REPLAY_CSV=record_rate100k.csv \
+NUM_WORKERS=4 NUM_EXECUTORS=4 \
+DURATION=80 \
+NO_SEND_PAYMENT=1 NEW_SCHEDULER=1 \
+fab replay
+```
+
+Relevant environment variables (defaults in parentheses):
+
+| Variable                | Meaning                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `REPLAY_CSV`            | Trace file under `benchmark/` (`record_rate25k.csv`)           |
+| `REPLAY_TX_SIZE`        | Transaction size in bytes (`512`)                              |
+| `WORKERS`               | Number of worker processes (`1`)                               |
+| `NUM_EXECUTORS`         | Number of executor processes (`1`)                             |
+| `NUM_ACCOUNTS`          | Total SmallBank accounts (`1_000_000`)                         |
+| `DURATION`              | Benchmark wall-clock duration in seconds (`120`)               |
+| `EXECUTOR_SKEW_WEIGHTS` | Comma-separated account-range weights, e.g. `3,1,1,1`          |
+| `DISTRIBUTED_TX_RATE`   | Fraction of cross-executor SendPayment transactions, `0.0..1.0`|
+| `NO_SEND_PAYMENT`       | Disable cross-executor SendPayment (`0`)                       |
+| `IN_MEMORY_STORE`       | Use the in-memory store to isolate the executor path (`1`)     |
+| `WRITEBACK_EXECUTOR`    | Use the writeback executor instead of data fusion (`0`)        |
+
+### 2. Replay benchmark (CloudLab / distributed)
+
+`fab cloudlab-replay` places the primary, each worker, and each executor on its own node
+from a CloudLab RSpec manifest. Worker → executor and executor ↔ executor links are shaped
+with `tc` to the configured bandwidth cap.
+
+```bash
+REPLAY_CSV=record_rate100k.csv \
+NUM_WORKERS=4 NUM_EXECUTORS=4 \
+EXECUTOR_BW_MBPS=10000 DURATION=80 \
+NO_SEND_PAYMENT=1 NEW_SCHEDULER=1 \
+EXECUTOR_SKEW_WEIGHTS=3,1,1,1 \
+fab cloudlab-replay --username <your-ssh-user> --manifest /path/to/manifest.xml
+```
+
+The manifest must describe at least `1 + NUM_WORKERS + NUM_EXECUTORS` nodes. An example
+manifest (downloaded from the CloudLab portal and anonymized) is provided at
+`benchmark/manifest.xml`. Replace `--username` with the SSH user configured on your own
+CloudLab slice.
+
+Additional variables (see `benchmark/fabfile.py::cloudlab_replay` for the full list):
+
+| Variable                | Meaning                                                        |
+| ----------------------- | -------------------------------------------------------------- |
+| `EXECUTOR_BW_MBPS`      | LAN bandwidth cap on executor-bound traffic (Mbit/s)           |
+| `NODE_OFFSET`           | Skip the first N nodes of the manifest (useful when sharing a slice) |
+| `NEW_SCHEDULER`         | Enable the load-aware scheduler evaluated in the paper         |
+
+### 3. Consensus-only benchmarks
+
+For the consensus-tier sensitivity experiments (bandwidth asymmetry, validator-rate imbalance,
+routing modes) we use the non-replay drivers:
+
+* `fab docker` — runs a full 4+ validator testbed in Docker with `tc` shaping per container.
+* `fab cloudlab` — runs the same experiment on CloudLab machines.
+
+See `benchmark/saturation_sweep.sh` and `benchmark/scalability_baseline_sweep.sh` for the
+parameter sweeps used in the paper's saturation and scalability plots.
+
+## Reproducing the paper figures
+
+The `Experiment/` directory holds the result CSVs used for the executor-tier figures:
+
+| File                    | Scenario                                                     |
+| ----------------------- | ------------------------------------------------------------ |
+| `Experiment/balanced.csv` | Uniform account-access distribution                        |
+| `Experiment/50%.csv`      | One shard receives 50% of the workload (`EXECUTOR_SKEW_WEIGHTS` column) |
+| `Experiment/90%.csv`      | One shard receives 90% of the workload                     |
+
+Each row records the rate, executor/worker count, skew weights, and the committed /
+end-to-end TPS that our run produced, along with the exact `fab cloudlab-replay` command
+line. Re-running those commands on a suitably sized CloudLab slice reproduces the measured
+point.
+
+`benchmark/run_benchmarks.py` is a helper that iterates over the three CSVs, SSHes into a
+control host, and fills the `Committed TPS` / `E2E TPS` columns in place. Edit the
+`SSH_HOST`, `REMOTE_PREFIX`, and `CSV_FILES` constants before use.
 
 ## License
 
-This software is licensed as [Apache 2.0](LICENSE).
+Apache 2.0 — see [LICENSE](LICENSE).
